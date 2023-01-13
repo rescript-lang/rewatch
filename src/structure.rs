@@ -1,21 +1,21 @@
 use std::{error, fmt, fs};
 
 #[derive(Debug, Clone)]
-pub enum Structure {
+pub enum T {
     File(String, fs::Metadata),
-    Dir(String, Box<Vec<Structure>>),
+    Dir(String, Box<Vec<T>>),
 }
 
-impl fmt::Display for Structure {
+impl fmt::Display for T {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", print_rec(self, 0))
     }
 }
 
-fn print_rec(elem: &Structure, depth: usize) -> String {
+fn print_rec(elem: &T, depth: usize) -> String {
     match elem {
-        Structure::File(name, _metadata) => "-".repeat(depth) + &name.to_string(),
-        Structure::Dir(name, dir) => {
+        T::File(name, _metadata) => "-".repeat(depth) + &name.to_string(),
+        T::Dir(name, dir) => {
             let str = "-".repeat(depth) + &name.to_string() + "\n";
 
             let subdir = match &*dir {
@@ -33,7 +33,7 @@ fn print_rec(elem: &Structure, depth: usize) -> String {
     }
 }
 
-pub fn read_structure(path: &str) -> Result<Structure, Box<dyn error::Error>> {
+pub fn read_structure(path: &str) -> Result<T, Box<dyn error::Error>> {
     let mut structure = vec![];
 
     for entry in fs::read_dir(path)? {
@@ -51,9 +51,9 @@ pub fn read_structure(path: &str) -> Result<Structure, Box<dyn error::Error>> {
                 Err(e) => println!("Error reading directory: \n {}", e),
             }
         } else {
-            structure.push(Structure::File(name, metadata))
+            structure.push(T::File(name, metadata))
         }
     }
 
-    Ok(Structure::Dir(path.to_string(), Box::new(structure)))
+    Ok(T::Dir(path.to_string(), Box::new(structure)))
 }

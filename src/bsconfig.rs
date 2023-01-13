@@ -1,64 +1,88 @@
 use serde::Deserialize;
 use std::fs;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Subdirs {
+    Qualified(Vec<Source>),
+    All(bool),
+}
+#[derive(Deserialize, Debug, Clone)]
 pub struct QualifiedSource {
     pub dir: String,
-    pub subdirs: bool,
+    pub subdirs: Option<Subdirs>,
+    #[serde(rename = "type")]
+    pub type_: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Source {
     ShortHand(Vec<String>),
     Qualified(Vec<QualifiedSource>),
+    SingleShortHand(String),
     Single(QualifiedSource),
 }
 
-#[derive(Deserialize, Debug)]
-pub struct PackageSpecs {
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Sources {
+    Multiple(Vec<Source>),
+    Single(Source),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct PackageSpec {
     pub module: String,
     #[serde(rename = "in-source")]
     pub in_source: bool,
 }
-#[derive(Deserialize, Debug)]
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum PackageSpecs {
+    Multiple(Vec<PackageSpec>),
+    Single(PackageSpec),
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Error {
     Catchall(bool),
     Qualified(String),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Warnings {
     pub number: Option<String>,
     pub error: Option<Error>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Reason {
     #[serde(rename = "react-jsx")]
     pub react_jsx: i32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum PPXFlags {
     Multiple(Vec<String>),
     Single(String),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct T {
     pub name: String,
-    pub sources: Source,
+    pub sources: Sources,
     #[serde(rename = "package-specs")]
-    pub package_specs: Option<Vec<PackageSpecs>>,
-    pub warnings: Warnings,
+    pub package_specs: Option<PackageSpecs>,
+    pub warnings: Option<Warnings>,
     pub suffix: Option<String>,
     #[serde(rename = "pinned-dependencies")]
     pub pinned_dependencies: Option<Vec<String>>,
     #[serde(rename = "bs-dependencies")]
-    pub bs_dependencies: Vec<String>,
+    pub bs_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
     pub ppx_flags: Option<Vec<PPXFlags>>,
     pub reason: Option<Reason>,

@@ -11,3 +11,4 @@ notify = { version = "5.0.0", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = { version = "1.0" }
+ahash = "0.8.2"
