@@ -5,7 +5,7 @@ use std::fs;
 #[serde(untagged)]
 pub enum Subdirs {
     Qualified(Vec<Source>),
-    All(bool),
+    Recurse(bool),
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct QualifiedSource {
@@ -18,10 +18,8 @@ pub struct QualifiedSource {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Source {
-    ShortHand(Vec<String>),
-    Qualified(Vec<QualifiedSource>),
-    SingleShortHand(String),
-    Single(QualifiedSource),
+    Shorthand(String),
+    Qualified(QualifiedSource),
 }
 
 #[derive(Deserialize, Debug, Clone)]
