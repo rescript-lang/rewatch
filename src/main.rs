@@ -58,8 +58,8 @@ fn build(dir: String, parent: Option<String>) -> AHashMap<String, Build> {
     let bsconfig = bsconfig::read(dir.to_owned() + "/bsconfig.json");
 
     let source_folders = match bsconfig.sources.to_owned() {
-        bsconfig::Sources::Single(source) => get_source(&dir, source),
-        bsconfig::Sources::Multiple(sources) => {
+        bsconfig::OneOrMore::Single(source) => get_source(&dir, source),
+        bsconfig::OneOrMore::Multiple(sources) => {
             let mut source_folders: AHashSet<String> = AHashSet::new();
             sources
                 .iter()

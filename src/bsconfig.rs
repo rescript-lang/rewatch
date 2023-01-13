@@ -3,6 +3,13 @@ use std::fs;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
+pub enum OneOrMore<T> {
+    Multiple(Vec<T>),
+    Single(T),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
 pub enum Subdirs {
     Qualified(Vec<Source>),
     Recurse(bool),
@@ -23,24 +30,10 @@ pub enum Source {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum Sources {
-    Multiple(Vec<Source>),
-    Single(Source),
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct PackageSpec {
     pub module: String,
     #[serde(rename = "in-source")]
     pub in_source: bool,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum PackageSpecs {
-    Multiple(Vec<PackageSpec>),
-    Single(PackageSpec),
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -63,18 +56,11 @@ pub struct Reason {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum PPXFlags {
-    Multiple(Vec<String>),
-    Single(String),
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct T {
     pub name: String,
-    pub sources: Sources,
+    pub sources: OneOrMore<Source>,
     #[serde(rename = "package-specs")]
-    pub package_specs: Option<PackageSpecs>,
+    pub package_specs: Option<OneOrMore<PackageSpec>>,
     pub warnings: Option<Warnings>,
     pub suffix: Option<String>,
     #[serde(rename = "pinned-dependencies")]
@@ -82,7 +68,7 @@ pub struct T {
     #[serde(rename = "bs-dependencies")]
     pub bs_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
-    pub ppx_flags: Option<Vec<PPXFlags>>,
+    pub ppx_flags: Option<OneOrMore<Vec<String>>>,
     pub reason: Option<Reason>,
 }
 
