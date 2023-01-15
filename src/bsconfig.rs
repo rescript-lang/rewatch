@@ -8,13 +8,15 @@ pub enum OneOrMore<T> {
     Single(T),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
 #[serde(untagged)]
 pub enum Subdirs {
     Qualified(Vec<Source>),
     Recurse(bool),
 }
-#[derive(Deserialize, Debug, Clone)]
+impl Eq for Subdirs {}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct QualifiedSource {
     pub dir: String,
     pub subdirs: Option<Subdirs>,
@@ -22,12 +24,42 @@ pub struct QualifiedSource {
     pub type_: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+/* This needs a better name / place. Basically, we need to go from this tree like structure, to a flat list of dependencies. We don't want to keep the children's stuff around at this point. But we do want to keep the info regarding wether the directories fully recurse or not around...
+Reason for going this route rather than any other is that we will have all the folders already, and we want them deduplicated so we only go through the sources once...
+ * */
+pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
+    match s {
+        Source::Shorthand(dir) => QualifiedSource {
+            dir: dir.to_owned(),
+            subdirs: None,
+            type_: None,
+        },
+        Source::Qualified(QualifiedSource {
+            dir,
+            type_,
+            subdirs: Some(Subdirs::Recurse(should_recurse)),
+        }) => QualifiedSource {
+            dir: dir.to_owned(),
+            subdirs: Some(Subdirs::Recurse(*should_recurse)),
+            type_: type_.to_owned(),
+        },
+        Source::Qualified(QualifiedSource { dir, type_, .. }) => QualifiedSource {
+            dir: dir.to_owned(),
+            subdirs: None,
+            type_: type_.to_owned(),
+        },
+    }
+}
+
+impl Eq for QualifiedSource {}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
 #[serde(untagged)]
 pub enum Source {
     Shorthand(String),
     Qualified(QualifiedSource),
 }
+impl Eq for Source {}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct PackageSpec {
@@ -68,7 +100,7 @@ pub struct T {
     #[serde(rename = "bs-dependencies")]
     pub bs_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
-    pub ppx_flags: Option<OneOrMore<Vec<String>>>,
+    pub ppx_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
 }
 
