@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["main",""]],"mod":[["bsconfig",""],["build",""],["structure_hashmap",""],["watcher",""]]};

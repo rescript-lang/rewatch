@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["Error",""],["OneOrMore",""],["Source",""],["Subdirs",""]],"fn":[["read",""],["to_qualified_without_children",""]],"struct":[["PackageSpec",""],["QualifiedSource",""],["Reason",""],["T","bsconfig.json representation"],["Warnings",""]]};

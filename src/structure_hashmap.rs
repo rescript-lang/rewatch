@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use std::{error, fmt, fs};
+use std::{error, fs};
 
 pub fn read_structure(
     path: &str,

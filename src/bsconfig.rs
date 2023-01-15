@@ -87,6 +87,9 @@ pub struct Reason {
     pub react_jsx: i32,
 }
 
+/// # bsconfig.json representation
+///
+/// Probably incomplete
 #[derive(Deserialize, Debug, Clone)]
 pub struct T {
     pub name: String,
