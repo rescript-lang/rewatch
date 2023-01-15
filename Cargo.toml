@@ -12,3 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = { version = "1.0" }
 ahash = "0.8.2"
+
+[profile.release]
+codegen-units = 1
+lto = true
