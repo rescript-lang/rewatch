@@ -6,7 +6,12 @@
 4. `cd walnut_monorepo && yarn` (install dependencies for submodule)
 5. `cargo watch -x run`
 
-# compilation process
+# Additional Info
+
+- Build m1 specific release: `"RUSTFLAGS="-C target-cpu=apple-m1" cargo build --release"`
+- Build docs: `cargo doc --no-deps --document-private-items --target-dir ./docs`
+
+# Compilation Process
 
 1. Create the same folder hierarchy in a new build directory:
    .build/...
