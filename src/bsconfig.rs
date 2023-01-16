@@ -104,7 +104,45 @@ pub struct T {
     pub bs_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
     pub ppx_flags: Option<Vec<OneOrMore<String>>>,
+    #[serde(rename = "bsc-flags")]
+    pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
+}
+
+pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
+    match flags {
+        None => vec![],
+        Some(xs) => xs
+            .iter()
+            .map(|x| match x {
+                OneOrMore::Single(y) => vec![y.to_owned()],
+                OneOrMore::Multiple(ys) => ys.to_owned(),
+            })
+            .flatten()
+            .collect::<Vec<String>>(),
+    }
+}
+
+pub fn flatten_ppx_flags(root_dir: &String, flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
+    match flags {
+        None => vec![],
+        Some(xs) => xs
+            .iter()
+            .map(|x| match x {
+                OneOrMore::Single(y) => vec!["-ppx".to_string(), root_dir.to_owned() + "/" + y],
+                OneOrMore::Multiple(ys) if ys.len() == 0 => vec![],
+                OneOrMore::Multiple(ys) => vec![
+                    "-ppx".to_string(),
+                    vec![root_dir.to_owned() + "/" + &ys[0]]
+                        .into_iter()
+                        .chain(ys[1..].to_owned())
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                ],
+            })
+            .flatten()
+            .collect::<Vec<String>>(),
+    }
 }
 
 pub fn read(path: String) -> T {
