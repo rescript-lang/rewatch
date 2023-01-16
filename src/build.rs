@@ -10,6 +10,7 @@ pub struct Package {
     pub parent: Option<String>,
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::QualifiedSource)>,
+    pub source_files: Option<AHashMap<String, fs::Metadata>>,
 }
 
 /// # Read Files from a folder, possibly recursive
@@ -128,6 +129,7 @@ pub fn make(dir: String, parent: Option<String>) -> AHashMap<String, Package> {
             parent,
             bsconfig: bsconfig.to_owned(),
             source_folders,
+            source_files: None,
         },
     );
 
