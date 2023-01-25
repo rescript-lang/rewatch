@@ -46,7 +46,7 @@ fn main() {
     let build = create_build(&test_package);
     let root = &build[test_package];
 
-    let file = "walnut_monorepo/packages/stdlib/src/Array.res";
+    let file = "walnut_monorepo/packages/stdlib/src/Foo.res";
     let version_cmd = Command::new("walnut_monorepo/node_modules/rescript/rescript")
         .args(["-v"])
         .output()
@@ -101,7 +101,7 @@ fn main() {
         .replace("/", "_")
         .to_case(Case::Pascal);
 
-    let ast = "walnut_monorepo/packages/stdlib/src/Array.ast";
+    let ast = file.replace(".res", ".ast");
     let ast_to_deps_args = vec![
         "-hash".to_string(),
         "e43be7fe8e2928155b6d87d24ae4006a".to_string(),
@@ -109,6 +109,8 @@ fn main() {
         namespace.to_string(),
         ast.to_string(),
     ];
+
+    dbg!(&ast_to_deps_args);
 
     let ast_to_deps =
         Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsb_helper.exe")
@@ -124,7 +126,7 @@ fn main() {
         .as_ref()
         .unwrap_or(&vec![])
         .into_iter()
-        .map(|x| vec!["-I".to_string(), x.to_string() + "/lib/ocaml"])
+        .map(|x| vec!["-I".to_string(), folder.to_string() + "/node_modules/" + x + "/lib/ocaml"])
         .collect::<Vec<Vec<String>>>();
 
     let sources = &root
@@ -147,7 +149,7 @@ fn main() {
         .as_ref()
         .unwrap_or(&vec![])
         .into_iter()
-        .map(|x| x.to_string() + "install.stamp")
+        .map(|x| folder.to_owned() + "/node_modules/" + x + "/lib/ocaml/install.stamp")
         .collect::<Vec<String>>()
         .join(" ");
 
@@ -163,7 +165,7 @@ fn main() {
             "-bs-ns".to_string(),
             namespace.to_string(),
             "-I".to_string(),
-            ".".to_string(),
+            "/Users/roland/Git/rewatch/walnut_monorepo/packages/stdlib".to_string(),
         ],
         sources.concat(),
         deps.concat(),
@@ -174,14 +176,14 @@ fn main() {
             format!("es6:{}", abs_file.to_string().replace(".res", ".mjs")),
             "-bs-v".to_string(),
             finger.to_string(),
-            abs_file.to_string(),
+            abs_file.replace(".res", ".ast").to_string(),
         ],
     ]
     .concat();
 
     dbg!(&to_mjs_args);
 
-    let to_mjs = Command::new("walnut_monorepo/node_modules/rescript/bsc")
+    let to_mjs = Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsc.exe")
         .args(to_mjs_args)
         .output()
         .expect("err");
