@@ -8,7 +8,7 @@
 
 # Additional Info
 
-- Build m1 specific release: `"RUSTFLAGS="-C target-cpu=apple-m1" cargo build --release"`
+- Build m1 specific release: `RUSTFLAGS="-C target-cpu=apple-m1" cargo build --release`
 - Build docs: `cargo doc --no-deps --document-private-items --target-dir ./docs`
 
 # Compilation Process
