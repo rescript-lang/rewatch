@@ -24,9 +24,14 @@ pub struct QualifiedSource {
     pub type_: Option<String>,
 }
 
-/* This needs a better name / place. Basically, we need to go from this tree like structure, to a flat list of dependencies. We don't want to keep the children's stuff around at this point. But we do want to keep the info regarding wether the directories fully recurse or not around...
-Reason for going this route rather than any other is that we will have all the folders already, and we want them deduplicated so we only go through the sources once...
- * */
+/* This needs a better name / place. Basically, we need to go from this tree like
+ * structure, to a flat list of dependencies. We don't want to keep the
+ * children's stuff around at this point. But we do want to keep the info
+ * regarding wether the directories fully recurse or not around... 
+ * Reason for going this route rather than any other is that we will have all the
+ * folders already, and we want them deduplicated so we only go through the sources
+ * once...
+ */
 pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
     match s {
         Source::Shorthand(dir) => QualifiedSource {
