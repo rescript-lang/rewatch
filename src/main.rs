@@ -34,14 +34,30 @@ fn start_watcher(folder: &str) {
     });
 }
 
+fn get_abs_path(path: &str) -> String {
+    let abs_path_buf = PathBuf::from(path);
+    return fs::canonicalize(abs_path_buf)
+        .expect("Could not canonicalize")
+        .to_str()
+        .expect("Could not canonicalize")
+        .to_string();
+}
+
+fn get_basename(path: &str) -> String {
+    let path_buf = PathBuf::from(path);
+    return path_buf
+        .file_stem()
+        .expect("Could not get basename")
+        .to_str()
+        .expect("Could not get basename")
+        .to_string();
+}
+
 fn main() {
     let folder = "walnut_monorepo";
-    //let build = create_build(folder);
-
-    //println!("{:?}", build);
-
+    // let build = create_build(folder);
+    // println!("{:?}", build);
     //start_watcher(folder)
-
     let test_package = "walnut_monorepo/packages/stdlib";
     let build = create_build(&test_package);
     let root = &build[test_package];
@@ -54,14 +70,28 @@ fn main() {
     let version = std::str::from_utf8(&version_cmd.stdout)
         .expect("Could not read version from rescript")
         .replace("\n", "");
-    let abs_path_buf = PathBuf::from(&(folder.to_owned() + "/node_modules"));
-    let abs_path = fs::canonicalize(abs_path_buf)
-        .expect("Could not canonicalize")
-        .to_str()
-        .expect("Could not canonicalize")
-        .to_string();
+    let abs_node_modules_path = get_abs_path(&(folder.to_owned() + "/node_modules"));
+    let pkg_path = get_abs_path(&(folder.to_owned() + "/packages/stdlib"));
 
-    let ppx_flags = bsconfig::flatten_ppx_flags(&abs_path, &root.bsconfig.ppx_flags);
+    let build_path = get_abs_path(&(folder.to_owned() + "/packages/stdlib/_build"));
+    let namespace = &root
+        .bsconfig
+        .name
+        .to_owned()
+        .replace("@", "")
+        .replace("/", "_")
+        .to_case(Case::Pascal);
+
+    // we append the filename with the namespace with "-" -- this will not be used in the
+    // generated js name (the AST file basename is informing the JS file name)!
+    let ast_path = build_path.to_string()
+        + "/"
+        + &(get_basename(&file.to_string()).to_owned())
+        + "-"
+        + &namespace
+        + ".ast";
+
+    let ppx_flags = bsconfig::flatten_ppx_flags(&abs_node_modules_path, &root.bsconfig.ppx_flags);
     let bsc_flags = bsconfig::flatten_flags(&root.bsconfig.bsc_flags);
     let res_to_ast_args = vec![
         vec![
@@ -80,37 +110,32 @@ fn main() {
         vec![
             "-absname".to_string(),
             "-bs-ast".to_string(),
+            "-o".to_string(),
+            ast_path.to_string(),
             file.to_string(),
         ],
     ]
     .concat();
 
     /* Create .ast */
-    let res_to_ast = Command::new("walnut_monorepo/node_modules/rescript/bsc")
+    let res_to_ast = Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsc.exe")
         .args(res_to_ast_args)
         .output()
         .expect("Error converting .res to .ast");
     println!("{}", std::str::from_utf8(&res_to_ast.stderr).expect(""));
 
-    /* Create .d */
-    let namespace = &root
-        .bsconfig
-        .name
-        .to_owned()
-        .replace("@", "")
-        .replace("/", "_")
-        .to_case(Case::Pascal);
+    // /* Create .d */
+    // let ast = file.replace(".res", ".ast");
 
-    let ast = file.replace(".res", ".ast");
     let ast_to_deps_args = vec![
         "-hash".to_string(),
         "e43be7fe8e2928155b6d87d24ae4006a".to_string(),
         "-bs-ns".to_string(),
         namespace.to_string(),
-        ast.to_string(),
+        ast_path.to_string(),
     ];
 
-    dbg!(&ast_to_deps_args);
+    // dbg!(&ast_to_deps_args);
 
     let ast_to_deps =
         Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsb_helper.exe")
@@ -120,28 +145,35 @@ fn main() {
 
     println!("{}", std::str::from_utf8(&ast_to_deps.stderr).expect(""));
 
-    let deps = &root
-        .bsconfig
-        .bs_dependencies
-        .as_ref()
-        .unwrap_or(&vec![])
-        .into_iter()
-        .map(|x| vec!["-I".to_string(), folder.to_string() + "/node_modules/" + x + "/lib/ocaml"])
-        .collect::<Vec<Vec<String>>>();
+    // we skip this because we compile everything in a single dir
+    // let deps = &root
+    //     .bsconfig
+    //     .bs_dependencies
+    //     .as_ref()
+    //     .unwrap_or(&vec![])
+    //     .into_iter()
+    //     .map(|x| {
+    //         vec![
+    //             "-I".to_string(),
+    //             folder.to_string() + "/node_modules/" + x + "/lib/ocaml",
+    //         ]
+    //     })
+    //     .collect::<Vec<Vec<String>>>();
+    // dbg!(deps);
 
-    let sources = &root
-        .source_files
-        .as_ref()
-        .map(|x| {
-            x.keys()
-                .into_iter()
-                .map(|x| x.to_owned())
-                .collect::<Vec<String>>()
-        })
-        .unwrap_or(vec![])
-        .into_iter()
-        .map(|x| vec!["-I".to_string(), x])
-        .collect::<Vec<Vec<String>>>();
+    // let sources = &root
+    //     .source_files
+    //     .as_ref()
+    //     .map(|x| {
+    //         x.keys()
+    //             .into_iter()
+    //             .map(|x| x.to_owned())
+    //             .collect::<Vec<String>>()
+    //     })
+    //     .unwrap_or(vec![])
+    //     .into_iter()
+    //     .map(|x| vec!["-I".to_string(), x])
+    //     .collect::<Vec<Vec<String>>>();
 
     let finger = &root
         .bsconfig
@@ -153,37 +185,35 @@ fn main() {
         .collect::<Vec<String>>()
         .join(" ");
 
-    let abs_path_buf = PathBuf::from(file);
-    let abs_file = fs::canonicalize(abs_path_buf)
-        .expect("Could not canonicalize")
-        .to_str()
-        .expect("Could not canonicalize")
-        .to_string();
+    let abs_file = get_abs_path(file);
 
     let to_mjs_args = vec![
         vec![
-            "-bs-ns".to_string(),
-            namespace.to_string(),
+            // "-bs-ns".to_string(),
+            // namespace.to_string(),
             "-I".to_string(),
-            "/Users/roland/Git/rewatch/walnut_monorepo/packages/stdlib".to_string(),
+            // PathBuf::from(&(folder.to_owned() + "walnut_monorepo/packages/stdlib")).to_string(),
+            // "/Users/jfrolich/development/rewatch/walnut_monorepo/packages/stdlib".to_string(),
+            build_path.to_string(),
         ],
-        sources.concat(),
-        deps.concat(),
+        // sources.concat(),
+        // deps.concat(),
         vec![
             "-bs-package-name".to_string(),
             root.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
-            format!("es6:{}", abs_file.to_string().replace(".res", ".mjs")),
+            format!("es6:{}:.mjs", "src"),
             "-bs-v".to_string(),
             finger.to_string(),
-            abs_file.replace(".res", ".ast").to_string(),
+            ast_path.to_string(),
         ],
     ]
     .concat();
 
     dbg!(&to_mjs_args);
 
-    let to_mjs = Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsc.exe")
+    let to_mjs = Command::new("../../node_modules/rescript/darwinarm64/bsc.exe")
+        .current_dir(pkg_path.to_string())
         .args(to_mjs_args)
         .output()
         .expect("err");
