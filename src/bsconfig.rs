@@ -88,6 +88,13 @@ pub struct Reason {
     pub react_jsx: i32,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Namespace {
+    Bool(bool),
+    String(String),
+}
+
 /// # bsconfig.json representation
 /// This is tricky, there is a lot of ambiguity. This is probably incomplete.
 #[derive(Deserialize, Debug, Clone)]
@@ -107,6 +114,7 @@ pub struct T {
     #[serde(rename = "bsc-flags")]
     pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
+    pub namespace: Option<Namespace>,
 }
 
 /// This flattens string flags

@@ -83,14 +83,14 @@ pub fn create_ast(version: &str, project_root: &str, bsconfig: &bsconfig::T, fil
         .output();
 
     //match ast {
-        //Ok(x) => {
-            //println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
-            //println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
-        //}
-        //Err(e) => {
-            //println!("Could not compile: {:?}, ", e);
-            //panic!("")
-        //}
+    //Ok(x) => {
+    //println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
+    //println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
+    //}
+    //Err(e) => {
+    //println!("Could not compile: {:?}, ", e);
+    //panic!("")
+    //}
     //}
 
     ast_path
