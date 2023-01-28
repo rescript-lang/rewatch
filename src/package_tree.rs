@@ -13,6 +13,7 @@ pub struct Package {
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
+    pub namespace: bool,
 }
 
 impl PartialEq for Package {
@@ -118,6 +119,14 @@ fn build_package(
             bsconfig: bsconfig.to_owned(),
             source_folders,
             source_files: None,
+            namespace: match bsconfig.namespace {
+                Some(bsconfig::Namespace::Bool(true)) => true,
+                Some(bsconfig::Namespace::String(str)) => match str.as_str() {
+                    "true" => true,
+                    _ => false,
+                },
+                _ => false,
+            },
         },
     );
 
