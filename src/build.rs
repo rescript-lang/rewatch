@@ -1,16 +1,29 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::structure_hashmap;
-use ahash::{AHashMap, AHashSet};
+use ahash::{AHashMap, AHashSet, AHasher};
 use std::fs;
+use std::hash::{Hash, Hasher};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
     pub parent: Option<String>,
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::QualifiedSource)>,
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
+}
+
+impl PartialEq for Package {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+impl Eq for Package {}
+impl Hash for Package {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
 }
 
 /// # Read Files from a folder, possibly recursive
@@ -34,9 +47,7 @@ pub fn read_files(dir: &String, source: &QualifiedSource) -> AHashMap<String, fs
         QualifiedSource { type_, .. } => (false, type_),
     };
 
-    let structure = structure_hashmap::read_folders(dir, recurse);
-
-    match structure {
+    match structure_hashmap::read_folders(dir, recurse) {
         Ok(files) => map.extend(files),
         Err(_e) if type_ == &Some("dev".to_string()) => {
             println!("Could not read folder: {dir}... Probably ok as type is dev")
