@@ -10,7 +10,17 @@ fn main() {
 
     let package_tree = package_tree::make(&folder);
     let rescript_version = build::get_version(&folder);
-    let source_files = build::generate_asts(rescript_version, &folder, package_tree);
+    let source_files = build::get_dependencies(rescript_version, &folder, package_tree);
 
-    dbg!(source_files.len());
+    //source_files
+        //.iter()
+        //.filter(|(_file, source)| source.ast_deps.len() == 0)
+        //.for_each(|(_file, source)| {
+            ////dbg!(file);
+            //let pkg_path_abs = folder.to_owned() + "/node_modules/" + &source.bsconfig.name;
+            //let abs_node_modules_path =
+                //helpers::get_abs_path(&(folder.to_owned() + "/node_modules"));
+
+            //build::compile_file(&pkg_path_abs, &abs_node_modules_path, source);
+        //});
 }
