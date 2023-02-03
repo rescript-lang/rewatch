@@ -116,7 +116,50 @@
 <span id="116">116</span>
 <span id="117">117</span>
 <span id="118">118</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">serde::Deserialize</span>;
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">rayon::prelude</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">serde::Deserialize</span>;
 <span class="kw">use</span> <span class="ident">std::fs</span>;
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
@@ -135,33 +178,33 @@
 <span class="kw">impl</span> <span class="ident">Eq</span> <span class="kw">for</span> <span class="ident">Subdirs</span> {}
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">QualifiedSource</span> {
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">PackageSource</span> {
     <span class="kw">pub</span> <span class="ident">dir</span>: <span class="ident">String</span>,
     <span class="kw">pub</span> <span class="ident">subdirs</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Subdirs</span><span class="op">&gt;</span>,
     <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">rename</span> <span class="op">=</span> <span class="string">&quot;type&quot;</span>)]</span>
     <span class="kw">pub</span> <span class="ident">type_</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
 }
 
-<span class="comment">/* This needs a better name / place. Basically, we need to go from this tree like structure, to a flat list of dependencies. We don&#39;t want to keep the children&#39;s stuff around at this point. But we do want to keep the info regarding wether the directories fully recurse or not around...
-Reason for going this route rather than any other is that we will have all the folders already, and we want them deduplicated so we only go through the sources once...
- * */</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">to_qualified_without_children</span>(<span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">Source</span>) -&gt; <span class="ident">QualifiedSource</span> {
+<span class="doccomment">/// `to_qualified_without_children` takes a tree like structure of dependencies, coming in from</span>
+<span class="doccomment">/// `bsconfig`, and turns it into a flat list. The main thing we extract here are the source</span>
+<span class="doccomment">/// folders, and optional subdirs, where potentially, the subdirs recurse or not.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">to_qualified_without_children</span>(<span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">Source</span>) -&gt; <span class="ident">PackageSource</span> {
     <span class="kw">match</span> <span class="ident">s</span> {
-        <span class="ident">Source::Shorthand</span>(<span class="ident">dir</span>) =&gt; <span class="ident">QualifiedSource</span> {
+        <span class="ident">Source::Shorthand</span>(<span class="ident">dir</span>) =&gt; <span class="ident">PackageSource</span> {
             <span class="ident">dir</span>: <span class="ident">dir</span>.<span class="ident">to_owned</span>(),
             <span class="ident">subdirs</span>: <span class="prelude-val">None</span>,
             <span class="ident">type_</span>: <span class="prelude-val">None</span>,
         },
-        <span class="ident">Source::Qualified</span>(<span class="ident">QualifiedSource</span> {
+        <span class="ident">Source::Qualified</span>(<span class="ident">PackageSource</span> {
             <span class="ident">dir</span>,
             <span class="ident">type_</span>,
             <span class="ident">subdirs</span>: <span class="prelude-val">Some</span>(<span class="ident">Subdirs::Recurse</span>(<span class="ident">should_recurse</span>)),
-        }) =&gt; <span class="ident">QualifiedSource</span> {
+        }) =&gt; <span class="ident">PackageSource</span> {
             <span class="ident">dir</span>: <span class="ident">dir</span>.<span class="ident">to_owned</span>(),
             <span class="ident">subdirs</span>: <span class="prelude-val">Some</span>(<span class="ident">Subdirs::Recurse</span>(<span class="kw-2">*</span><span class="ident">should_recurse</span>)),
             <span class="ident">type_</span>: <span class="ident">type_</span>.<span class="ident">to_owned</span>(),
         },
-        <span class="ident">Source::Qualified</span>(<span class="ident">QualifiedSource</span> { <span class="ident">dir</span>, <span class="ident">type_</span>, .. }) =&gt; <span class="ident">QualifiedSource</span> {
+        <span class="ident">Source::Qualified</span>(<span class="ident">PackageSource</span> { <span class="ident">dir</span>, <span class="ident">type_</span>, .. }) =&gt; <span class="ident">PackageSource</span> {
             <span class="ident">dir</span>: <span class="ident">dir</span>.<span class="ident">to_owned</span>(),
             <span class="ident">subdirs</span>: <span class="prelude-val">None</span>,
             <span class="ident">type_</span>: <span class="ident">type_</span>.<span class="ident">to_owned</span>(),
@@ -169,13 +212,13 @@ Reason for going this route rather than any other is that we will have all the f
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Eq</span> <span class="kw">for</span> <span class="ident">QualifiedSource</span> {}
+<span class="kw">impl</span> <span class="ident">Eq</span> <span class="kw">for</span> <span class="ident">PackageSource</span> {}
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Hash</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">untagged</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Source</span> {
     <span class="ident">Shorthand</span>(<span class="ident">String</span>),
-    <span class="ident">Qualified</span>(<span class="ident">QualifiedSource</span>),
+    <span class="ident">Qualified</span>(<span class="ident">PackageSource</span>),
 }
 <span class="kw">impl</span> <span class="ident">Eq</span> <span class="kw">for</span> <span class="ident">Source</span> {}
 
@@ -206,8 +249,7 @@ Reason for going this route rather than any other is that we will have all the f
 }
 
 <span class="doccomment">/// # bsconfig.json representation</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// Probably incomplete</span>
+<span class="doccomment">/// This is tricky, there is a lot of ambiguity. This is probably incomplete.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">T</span> {
     <span class="kw">pub</span> <span class="ident">name</span>: <span class="ident">String</span>,
@@ -222,9 +264,51 @@ Reason for going this route rather than any other is that we will have all the f
     <span class="kw">pub</span> <span class="ident">bs_dependencies</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">rename</span> <span class="op">=</span> <span class="string">&quot;ppx-flags&quot;</span>)]</span>
     <span class="kw">pub</span> <span class="ident">ppx_flags</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">OneOrMore</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">rename</span> <span class="op">=</span> <span class="string">&quot;bsc-flags&quot;</span>)]</span>
+    <span class="kw">pub</span> <span class="ident">bsc_flags</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">OneOrMore</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">reason</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Reason</span><span class="op">&gt;</span>,
 }
 
+<span class="doccomment">/// This flattens string flags</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">flatten_flags</span>(<span class="ident">flags</span>: <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">OneOrMore</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>) -&gt; <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+    <span class="kw">match</span> <span class="ident">flags</span> {
+        <span class="prelude-val">None</span> =&gt; <span class="macro">vec!</span>[],
+        <span class="prelude-val">Some</span>(<span class="ident">xs</span>) =&gt; <span class="ident">xs</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">x</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">x</span> {
+                <span class="ident">OneOrMore::Single</span>(<span class="ident">y</span>) =&gt; <span class="macro">vec!</span>[<span class="ident">y</span>.<span class="ident">to_owned</span>()],
+                <span class="ident">OneOrMore::Multiple</span>(<span class="ident">ys</span>) =&gt; <span class="ident">ys</span>.<span class="ident">to_owned</span>(),
+            })
+            .<span class="ident">flatten</span>()
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span>(),
+    }
+}
+
+<span class="doccomment">/// Since ppx-flags could be one or more, and could be nested potentiall, this function takes the</span>
+<span class="doccomment">/// flags and flattens them outright.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">flatten_ppx_flags</span>(<span class="ident">root_dir</span>: <span class="kw-2">&amp;</span><span class="ident">String</span>, <span class="ident">flags</span>: <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">OneOrMore</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>) -&gt; <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+    <span class="kw">match</span> <span class="ident">flags</span> {
+        <span class="prelude-val">None</span> =&gt; <span class="macro">vec!</span>[],
+        <span class="prelude-val">Some</span>(<span class="ident">xs</span>) =&gt; <span class="ident">xs</span>
+            .<span class="ident">par_iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">x</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">x</span> {
+                <span class="ident">OneOrMore::Single</span>(<span class="ident">y</span>) =&gt; <span class="macro">vec!</span>[<span class="string">&quot;-ppx&quot;</span>.<span class="ident">to_string</span>(), <span class="ident">root_dir</span>.<span class="ident">to_owned</span>() <span class="op">+</span> <span class="string">&quot;/&quot;</span> <span class="op">+</span> <span class="ident">y</span>],
+                <span class="ident">OneOrMore::Multiple</span>(<span class="ident">ys</span>) <span class="kw">if</span> <span class="ident">ys</span>.<span class="ident">len</span>() <span class="op">==</span> <span class="number">0</span> =&gt; <span class="macro">vec!</span>[],
+                <span class="ident">OneOrMore::Multiple</span>(<span class="ident">ys</span>) =&gt; <span class="macro">vec!</span>[
+                    <span class="string">&quot;-ppx&quot;</span>.<span class="ident">to_string</span>(),
+                    <span class="macro">vec!</span>[<span class="ident">root_dir</span>.<span class="ident">to_owned</span>() <span class="op">+</span> <span class="string">&quot;/&quot;</span> <span class="op">+</span> <span class="kw-2">&amp;</span><span class="ident">ys</span>[<span class="number">0</span>]]
+                        .<span class="ident">into_iter</span>()
+                        .<span class="ident">chain</span>(<span class="ident">ys</span>[<span class="number">1</span>..].<span class="ident">to_owned</span>())
+                        .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+                        .<span class="ident">join</span>(<span class="string">&quot; &quot;</span>),
+                ],
+            })
+            .<span class="ident">flatten</span>()
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="op">&gt;</span>(),
+    }
+}
+
+<span class="doccomment">/// Try to convert a bsconfig from a certain path to a bsconfig struct</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">read</span>(<span class="ident">path</span>: <span class="ident">String</span>) -&gt; <span class="ident">T</span> {
     <span class="ident">fs::read_to_string</span>(<span class="ident">path</span>.<span class="ident">clone</span>())
         .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="macro">format!</span>(<span class="string">&quot;Could not read bsconfig. {path} - {e}&quot;</span>))

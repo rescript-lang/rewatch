@@ -12,6 +12,7 @@ pub struct SourceFile {
     pub bsconfig: bsconfig::T,
 }
 
+// Get the rescript version no. relative to project_root + `/node_modules/rescript/rescript`
 pub fn get_version(project_root: &str) -> String {
     let version_cmd = Command::new(project_root.to_owned() + "/node_modules/rescript/rescript")
         .args(["-v"])
@@ -23,6 +24,7 @@ pub fn get_version(project_root: &str) -> String {
         .replace("\n", "")
 }
 
+// Create a single AST for a rescript version.
 pub fn create_ast(version: &str, project_root: &str, bsconfig: &bsconfig::T, file: &str) {
     // we append the filename with the namespace with "-" -- this will not be used in the
     // generated js name (the AST file basename is informing the JS file name)!

@@ -14,59 +14,21 @@
 <span id="14">14</span>
 <span id="15">15</span>
 <span id="16">16</span>
-<span id="17">17</span>
-<span id="18">18</span>
-<span id="19">19</span>
-<span id="20">20</span>
-<span id="21">21</span>
-<span id="22">22</span>
-<span id="23">23</span>
-<span id="24">24</span>
-<span id="25">25</span>
-<span id="26">26</span>
-<span id="27">27</span>
-<span id="28">28</span>
-<span id="29">29</span>
-<span id="30">30</span>
-<span id="31">31</span>
-<span id="32">32</span>
-<span id="33">33</span>
-<span id="34">34</span>
-<span id="35">35</span>
 </pre><pre class="rust"><code><span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">bsconfig</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">build</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">helpers</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">package_tree</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">structure_hashmap</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">watcher</span>;
-<span class="kw">use</span> <span class="ident">ahash::AHashMap</span>;
-<span class="kw">use</span> <span class="ident">std::fs</span>;
 
 <span class="kw">fn</span> <span class="ident">main</span>() {
-    <span class="comment">/* By Extending, we should eventually be able to parallalize */</span>
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">map</span>: <span class="ident">AHashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">build::Package</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">AHashMap::new</span>();
-    <span class="ident">map</span>.<span class="ident">extend</span>(<span class="ident">build::make</span>(<span class="string">&quot;walnut_monorepo&quot;</span>.<span class="ident">to_string</span>(), <span class="prelude-val">None</span>));
+    <span class="kw">let</span> <span class="ident">folder</span> <span class="op">=</span> <span class="string">&quot;walnut_monorepo&quot;</span>;
 
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">source_files</span>: <span class="ident">AHashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">fs::Metadata</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">AHashMap::new</span>();
-    <span class="comment">/* We should do this in order of the tree. Start with the leaves, then walk up. Then, within
-     * there, get the dependencies for every file (ie, map&lt;filename, [deps]&gt;), then resort the map
-     * at the end, insert all the deps of the files before the filenames. Probably in some ordered
-     * set like structure to we can remove duplicate files. As long as we sort the dependencies
-     * correctly first, the ones without dependencies should sort to the top automatically. */</span>
-    <span class="ident">map</span>.<span class="ident">iter</span>().<span class="ident">for_each</span>(<span class="op">|</span>(<span class="ident">_key</span>, <span class="ident">value</span>)<span class="op">|</span> {
-        <span class="comment">/* We may want to directly build a reverse-lookup from filename -&gt; package while we do this */</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">map</span>: <span class="ident">AHashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">fs::Metadata</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">AHashMap::new</span>();
-        <span class="ident">value</span>.<span class="ident">source_folders</span>.<span class="ident">iter</span>().<span class="ident">for_each</span>(<span class="op">|</span>(<span class="ident">dir</span>, <span class="ident">source</span>)<span class="op">|</span> {
-            <span class="ident">map</span>.<span class="ident">extend</span>(<span class="ident">build::read_files</span>(<span class="ident">dir</span>, <span class="ident">source</span>));
-        });
-        <span class="ident">source_files</span>.<span class="ident">extend</span>(<span class="ident">map</span>)
-    });
+    <span class="kw">let</span> <span class="ident">package_tree</span> <span class="op">=</span> <span class="ident">package_tree::make</span>(<span class="kw-2">&amp;</span><span class="ident">folder</span>);
+    <span class="kw">let</span> <span class="ident">rescript_version</span> <span class="op">=</span> <span class="ident">build::get_version</span>(<span class="kw-2">&amp;</span><span class="ident">folder</span>);
+    <span class="kw">let</span> <span class="ident">source_files</span> <span class="op">=</span> <span class="ident">build::generate_asts</span>(<span class="ident">rescript_version</span>, <span class="kw-2">&amp;</span><span class="ident">folder</span>, <span class="ident">package_tree</span>);
 
-    <span class="macro">dbg!</span>(<span class="ident">source_files</span>.<span class="ident">keys</span>());
-
-    <span class="ident">futures::executor::block_on</span>(<span class="kw">async</span> {
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span> <span class="ident">watcher::async_watch</span>(<span class="string">&quot;walnut_monorepo&quot;</span>).<span class="kw">await</span> {
-            <span class="macro">println!</span>(<span class="string">&quot;error: {:?}&quot;</span>, <span class="ident">e</span>)
-        }
-    });
+    <span class="macro">dbg!</span>(<span class="ident">source_files</span>.<span class="ident">len</span>());
 }
 </code></pre></div>
 </section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="rewatch" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0 (a55dd71d5 2022-09-19)" ></div></body></html>

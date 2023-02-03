@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":[["get_sources","Get Sources"],["make","Make Package"],["read_files","Read Files from a folder, possibly recursive"]],"struct":[["Package",""]]};
+window.SIDEBAR_ITEMS = {"fn":[["create_ast",""],["generate_asts",""],["get_version",""]],"struct":[["SourceFile",""]]};
