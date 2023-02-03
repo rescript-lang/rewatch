@@ -17,7 +17,7 @@ pub enum Subdirs {
 impl Eq for Subdirs {}
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
-pub struct QualifiedSource {
+pub struct PackageSource {
     pub dir: String,
     pub subdirs: Option<Subdirs>,
     #[serde(rename = "type")]
@@ -32,23 +32,23 @@ pub struct QualifiedSource {
  * folders already, and we want them deduplicated so we only go through the sources
  * once...
  */
-pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
+pub fn to_qualified_without_children(s: &Source) -> PackageSource {
     match s {
-        Source::Shorthand(dir) => QualifiedSource {
+        Source::Shorthand(dir) => PackageSource {
             dir: dir.to_owned(),
             subdirs: None,
             type_: None,
         },
-        Source::Qualified(QualifiedSource {
+        Source::Qualified(PackageSource {
             dir,
             type_,
             subdirs: Some(Subdirs::Recurse(should_recurse)),
-        }) => QualifiedSource {
+        }) => PackageSource {
             dir: dir.to_owned(),
             subdirs: Some(Subdirs::Recurse(*should_recurse)),
             type_: type_.to_owned(),
         },
-        Source::Qualified(QualifiedSource { dir, type_, .. }) => QualifiedSource {
+        Source::Qualified(PackageSource { dir, type_, .. }) => PackageSource {
             dir: dir.to_owned(),
             subdirs: None,
             type_: type_.to_owned(),
@@ -56,13 +56,13 @@ pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
     }
 }
 
-impl Eq for QualifiedSource {}
+impl Eq for PackageSource {}
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
 #[serde(untagged)]
 pub enum Source {
     Shorthand(String),
-    Qualified(QualifiedSource),
+    Qualified(PackageSource),
 }
 impl Eq for Source {}
 

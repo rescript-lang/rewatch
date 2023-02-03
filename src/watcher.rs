@@ -2,7 +2,7 @@ use futures::{
     channel::mpsc::{channel, Receiver},
     SinkExt, StreamExt,
 };
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher, Config};
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 
 fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
@@ -22,7 +22,7 @@ fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Resul
     Ok((watcher, rx))
 }
 
-pub async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
+async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     let (mut watcher, mut rx) = async_watcher()?;
 
     // Add a path to be watched. All files and directories at that path and
@@ -37,4 +37,12 @@ pub async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn start(folder: &str) {
+    futures::executor::block_on(async {
+        if let Err(e) = async_watch(folder).await {
+            println!("error: {:?}", e)
+        }
+    });
 }
