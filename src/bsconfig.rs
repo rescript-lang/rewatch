@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::fs;
 
@@ -27,7 +28,7 @@ pub struct PackageSource {
 /* This needs a better name / place. Basically, we need to go from this tree like
  * structure, to a flat list of dependencies. We don't want to keep the
  * children's stuff around at this point. But we do want to keep the info
- * regarding wether the directories fully recurse or not around... 
+ * regarding wether the directories fully recurse or not around...
  * Reason for going this route rather than any other is that we will have all the
  * folders already, and we want them deduplicated so we only go through the sources
  * once...
@@ -118,7 +119,7 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
     match flags {
         None => vec![],
         Some(xs) => xs
-            .iter()
+            .par_iter()
             .map(|x| match x {
                 OneOrMore::Single(y) => vec![y.to_owned()],
                 OneOrMore::Multiple(ys) => ys.to_owned(),
@@ -132,7 +133,7 @@ pub fn flatten_ppx_flags(root_dir: &String, flags: &Option<Vec<OneOrMore<String>
     match flags {
         None => vec![],
         Some(xs) => xs
-            .iter()
+            .par_iter()
             .map(|x| match x {
                 OneOrMore::Single(y) => vec!["-ppx".to_string(), root_dir.to_owned() + "/" + y],
                 OneOrMore::Multiple(ys) if ys.len() == 0 => vec![],

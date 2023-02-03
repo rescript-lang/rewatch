@@ -2,6 +2,7 @@ use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::structure_hashmap;
 use ahash::{AHashMap, AHashSet};
+use rayon::prelude::*;
 use std::fs;
 use std::hash::{Hash, Hasher};
 
@@ -60,9 +61,13 @@ fn get_source_dirs(
     ));
 
     if !full_recursive {
-        subdirs.unwrap_or(vec![]).iter().for_each(|subdir| {
-            source_folders.extend(get_source_dirs(&full_path, subdir.to_owned()))
-        })
+        subdirs
+            .unwrap_or(vec![])
+            .par_iter()
+            .map(|subdir| get_source_dirs(&full_path, subdir.to_owned()))
+            .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
+            .into_iter()
+            .for_each(|subdir| source_folders.extend(subdir))
     }
 
     source_folders
@@ -91,9 +96,12 @@ fn build_package(
         bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
         bsconfig::OneOrMore::Multiple(sources) => {
             let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> = AHashSet::new();
-            sources.iter().for_each(|source| {
-                source_folders.extend(get_source_dirs(&package_dir, source.to_owned()))
-            });
+            sources
+                .par_iter()
+                .map(|source| get_source_dirs(&package_dir, source.to_owned()))
+                .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
+                .into_iter()
+                .for_each(|source| source_folders.extend(source));
             source_folders
         }
     };
@@ -117,15 +125,11 @@ fn build_package(
         .bs_dependencies
         .to_owned()
         .unwrap_or(vec![])
-        .iter()
-        .for_each(|dep| {
-            children.extend(build_package(
-                false,
-                &project_root,
-                &dep,
-                Some(package_dir.to_string()),
-            ))
-        });
+        .par_iter()
+        .map(|dep| build_package(false, &project_root, &dep, Some(package_dir.to_string())))
+        .collect::<Vec<AHashMap<String, Package>>>()
+        .into_iter()
+        .for_each(|child| children.extend(child));
 
     children
 }
@@ -166,9 +170,13 @@ pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String
 fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String, Package> {
     for (_key, value) in build.iter_mut() {
         let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
-        value.source_folders.iter().for_each(|(dir, source)| {
-            map.extend(get_source_files(dir, source));
-        });
+        value
+            .source_folders
+            .par_iter()
+            .map(|(dir, source)| get_source_files(dir, source))
+            .collect::<Vec<AHashMap<String, fs::Metadata>>>()
+            .into_iter()
+            .for_each(|source| map.extend(source));
         value.source_files = Some(map);
     }
 
