@@ -72,20 +72,27 @@ fn get_source_dirs(
 /// Given a directory that includes a bsconfig file, read it, and recursively find all other
 /// bsconfig files, and turn those into Packages as well.
 fn build_package(
+    is_root: bool,
     project_root: &str,
-    package_dir: &str,
+    package_name: &str,
     parent: Option<String>,
 ) -> AHashMap<String, Package> {
     let mut children: AHashMap<String, Package> = AHashMap::new();
 
+    let package_dir = if is_root {
+        project_root.to_owned()
+    } else {
+        project_root.to_owned() + "/node_modules/" + package_name
+    };
+
     let bsconfig = bsconfig::read(package_dir.to_string() + "/bsconfig.json");
 
     let source_folders = match bsconfig.sources.to_owned() {
-        bsconfig::OneOrMore::Single(source) => get_source_dirs(package_dir, source),
+        bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
         bsconfig::OneOrMore::Multiple(sources) => {
             let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> = AHashSet::new();
             sources.iter().for_each(|source| {
-                source_folders.extend(get_source_dirs(package_dir, source.to_owned()))
+                source_folders.extend(get_source_dirs(&package_dir, source.to_owned()))
             });
             source_folders
         }
@@ -96,7 +103,7 @@ fn build_package(
      * have this deduplication. From that point on, we can add the source files for every single
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
     children.insert(
-        package_dir.to_string(),
+        package_dir.to_owned(),
         Package {
             name: bsconfig.name.to_owned(),
             parent,
@@ -113,8 +120,9 @@ fn build_package(
         .iter()
         .for_each(|dep| {
             children.extend(build_package(
+                false,
                 &project_root,
-                &(project_root.to_owned() + "/node_modules/" + &dep),
+                &dep,
                 Some(package_dir.to_string()),
             ))
         });
@@ -177,7 +185,7 @@ pub fn make(folder: &str) -> AHashMap<String, Package> {
     /* The build_package get's called recursively. By using extend, we deduplicate all the packages
      * */
     let mut map: AHashMap<String, Package> = AHashMap::new();
-    map.extend(build_package(folder, folder, None));
+    map.extend(build_package(true, folder, "", None));
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     extend_with_children(map)
