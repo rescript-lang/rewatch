@@ -12,6 +12,7 @@ serde_json = { version = "1.0" }
 ahash = "0.8.2"
 convert_case = "0.6.0"
 linked_hash_set = "0.1.4"
+rayon = "1.6.1"
 
 [profile.release]
 codegen-units = 1
