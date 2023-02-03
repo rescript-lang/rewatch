@@ -153,6 +153,41 @@ fn compile(package: &package_tree::Package, ast_path: &str, root_path: &str) {
     println!("STDERR: {}", std::str::from_utf8(&to_mjs.stderr).expect(""));
 }
 
+fn gen_mlmap(
+    package: &package_tree::Package,
+    namespace: &str,
+    modules: Vec<String>,
+    root_path: &str,
+) {
+    let build_path_abs = get_build_path(root_path, &package.name);
+    let digest = "a".repeat(16) + "\n" + &modules.join("\n");
+    fs::write(build_path_abs + "/" + namespace + ".mlmap", digest).expect("Unable to write mlmap");
+}
+
+fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
+    let abs_node_modules_path = get_node_modules_path(root_path);
+    let build_path_abs = get_build_path(root_path, &package.name);
+
+    let mlmap_name = format!("{}.mlmap", namespace);
+    let args = vec![vec![
+        "-w",
+        "-49",
+        "-color",
+        "always",
+        "-no-alias-deps",
+        &mlmap_name,
+    ]]
+    .concat();
+
+    let _ = Command::new(
+        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+    )
+    .current_dir(build_path_abs.to_string())
+    .args(args)
+    .output()
+    .expect("err");
+}
+
 fn main() {
     let folder = "walnut_monorepo";
 
