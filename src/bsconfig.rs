@@ -25,14 +25,9 @@ pub struct PackageSource {
     pub type_: Option<String>,
 }
 
-/* This needs a better name / place. Basically, we need to go from this tree like
- * structure, to a flat list of dependencies. We don't want to keep the
- * children's stuff around at this point. But we do want to keep the info
- * regarding wether the directories fully recurse or not around...
- * Reason for going this route rather than any other is that we will have all the
- * folders already, and we want them deduplicated so we only go through the sources
- * once...
- */
+/// `to_qualified_without_children` takes a tree like structure of dependencies, coming in from
+/// `bsconfig`, and turns it into a flat list. The main thing we extract here are the source
+/// folders, and optional subdirs, where potentially, the subdirs recurse or not.
 pub fn to_qualified_without_children(s: &Source) -> PackageSource {
     match s {
         Source::Shorthand(dir) => PackageSource {
@@ -94,8 +89,7 @@ pub struct Reason {
 }
 
 /// # bsconfig.json representation
-///
-/// Probably incomplete
+/// This is tricky, there is a lot of ambiguity. This is probably incomplete.
 #[derive(Deserialize, Debug, Clone)]
 pub struct T {
     pub name: String,
@@ -115,11 +109,12 @@ pub struct T {
     pub reason: Option<Reason>,
 }
 
+/// This flattens string flags
 pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
     match flags {
         None => vec![],
         Some(xs) => xs
-            .par_iter()
+            .iter()
             .map(|x| match x {
                 OneOrMore::Single(y) => vec![y.to_owned()],
                 OneOrMore::Multiple(ys) => ys.to_owned(),
@@ -129,6 +124,8 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
     }
 }
 
+/// Since ppx-flags could be one or more, and could be nested potentiall, this function takes the
+/// flags and flattens them outright.
 pub fn flatten_ppx_flags(root_dir: &String, flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
     match flags {
         None => vec![],
@@ -151,6 +148,7 @@ pub fn flatten_ppx_flags(root_dir: &String, flags: &Option<Vec<OneOrMore<String>
     }
 }
 
+/// Try to convert a bsconfig from a certain path to a bsconfig struct
 pub fn read(path: String) -> T {
     fs::read_to_string(path.clone())
         .map_err(|e| format!("Could not read bsconfig. {path} - {e}"))

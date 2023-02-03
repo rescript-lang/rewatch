@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":[["read_structure",""]]};
+window.SIDEBAR_ITEMS = {"fn":[["read_folders",""]]};
