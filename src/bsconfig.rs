@@ -17,33 +17,38 @@ pub enum Subdirs {
 impl Eq for Subdirs {}
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
-pub struct QualifiedSource {
+pub struct PackageSource {
     pub dir: String,
     pub subdirs: Option<Subdirs>,
     #[serde(rename = "type")]
     pub type_: Option<String>,
 }
 
-/* This needs a better name / place. Basically, we need to go from this tree like structure, to a flat list of dependencies. We don't want to keep the children's stuff around at this point. But we do want to keep the info regarding wether the directories fully recurse or not around...
-Reason for going this route rather than any other is that we will have all the folders already, and we want them deduplicated so we only go through the sources once...
- * */
-pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
+/* This needs a better name / place. Basically, we need to go from this tree like
+ * structure, to a flat list of dependencies. We don't want to keep the
+ * children's stuff around at this point. But we do want to keep the info
+ * regarding wether the directories fully recurse or not around... 
+ * Reason for going this route rather than any other is that we will have all the
+ * folders already, and we want them deduplicated so we only go through the sources
+ * once...
+ */
+pub fn to_qualified_without_children(s: &Source) -> PackageSource {
     match s {
-        Source::Shorthand(dir) => QualifiedSource {
+        Source::Shorthand(dir) => PackageSource {
             dir: dir.to_owned(),
             subdirs: None,
             type_: None,
         },
-        Source::Qualified(QualifiedSource {
+        Source::Qualified(PackageSource {
             dir,
             type_,
             subdirs: Some(Subdirs::Recurse(should_recurse)),
-        }) => QualifiedSource {
+        }) => PackageSource {
             dir: dir.to_owned(),
             subdirs: Some(Subdirs::Recurse(*should_recurse)),
             type_: type_.to_owned(),
         },
-        Source::Qualified(QualifiedSource { dir, type_, .. }) => QualifiedSource {
+        Source::Qualified(PackageSource { dir, type_, .. }) => PackageSource {
             dir: dir.to_owned(),
             subdirs: None,
             type_: type_.to_owned(),
@@ -51,13 +56,13 @@ pub fn to_qualified_without_children(s: &Source) -> QualifiedSource {
     }
 }
 
-impl Eq for QualifiedSource {}
+impl Eq for PackageSource {}
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
 #[serde(untagged)]
 pub enum Source {
     Shorthand(String),
-    Qualified(QualifiedSource),
+    Qualified(PackageSource),
 }
 impl Eq for Source {}
 
