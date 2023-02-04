@@ -1,7 +1,7 @@
 use crate::bsconfig;
 use crate::helpers::*;
 use crate::package_tree;
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::fs;
@@ -13,9 +13,11 @@ use std::process::Command;
 #[derive(Debug, Clone)]
 pub struct SourceFile {
     pub dirty: bool,
+    pub is_ml_map: bool,
+    pub namespace: String,
     pub ast_path: Option<String>,
     pub ast_deps: Vec<String>,
-    pub bsconfig: bsconfig::T,
+    pub package: package_tree::Package,
 }
 
 // Get the rescript version no. relative to project_root + `/node_modules/rescript/rescript`
@@ -30,76 +32,63 @@ pub fn get_version(project_root: &str) -> String {
         .replace("\n", "")
 }
 
-// Create a single AST for a rescript version.
-pub fn create_ast(version: &str, project_root: &str, bsconfig: &bsconfig::T, file: &str) -> String {
-    // we append the filename with the namespace with "-" -- this will not be used in the
-    // generated js name (the AST file basename is informing the JS file name)!
-    let namespace = bsconfig
-        .name
-        .to_owned()
-        .replace("@", "")
-        .replace("/", "_")
-        .to_case(Case::Pascal);
+fn generate_ast(
+    package: package_tree::Package,
+    filename: &str,
+    root_path: &str,
+    version: &str,
+) -> String {
+    let file = &filename.to_string();
+    let build_path_abs = get_build_path(root_path, &package.name);
+    let ast_path = (get_basename(&file.to_string()).to_owned()) + ".ast";
+    let abs_node_modules_path = get_node_modules_path(root_path);
 
-    let abs_node_modules_path = get_abs_path(&(project_root.to_owned() + "/node_modules"));
+    let ppx_flags =
+        bsconfig::flatten_ppx_flags(&abs_node_modules_path, &package.bsconfig.ppx_flags);
+    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
-    let build_path_rel = &(project_root.to_owned() + "/node_modules/" + &bsconfig.name + "/_build");
-
-    let _ = fs::create_dir(&build_path_rel);
-
-    let build_path = get_abs_path(build_path_rel);
-    let version_flags = vec![
-        "-bs-v".to_string(),
-        format!("{}", version), // TODO - figure out what these string are. - Timestamps?
-    ];
-    let ppx_flags = bsconfig::flatten_ppx_flags(&abs_node_modules_path, &bsconfig.ppx_flags);
-    let bsc_flags = bsconfig::flatten_flags(&bsconfig.bsc_flags);
-    let react_flags = bsconfig
-        .reason
-        .to_owned()
-        .map(|x| vec!["-bs-jsx".to_string(), format!("{}", x.react_jsx)])
-        .unwrap_or(vec![]);
-
-    let ast_path = build_path.to_string()
-        + "/"
-        + &(get_basename(&file.to_string()).to_owned())
-        + "-"
-        + &namespace
-        + ".ast";
-
-    let file_args = vec![
-        "-absname".to_string(),
-        "-bs-ast".to_string(),
-        "-o".to_string(),
-        ast_path.to_string(),
-        file.to_string(),
-    ];
-
-    let args = vec![version_flags, ppx_flags, react_flags, bsc_flags, file_args].concat();
+    let res_to_ast_args = vec![
+        vec![
+            "-bs-v".to_string(),
+            format!("{}", version), // TODO - figure out what these string are. - Timestamps?
+        ],
+        ppx_flags,
+        {
+            package
+                .bsconfig
+                .reason
+                .to_owned()
+                .map(|x| vec!["-bs-jsx".to_string(), format!("{}", x.react_jsx)])
+                .unwrap_or(vec![])
+        },
+        bsc_flags,
+        vec![
+            "-absname".to_string(),
+            "-bs-ast".to_string(),
+            "-o".to_string(),
+            ast_path.to_string(),
+            file.to_string(),
+        ],
+    ]
+    .concat();
 
     /* Create .ast */
-    let ast = Command::new("walnut_monorepo/node_modules/rescript/darwinarm64/bsc.exe")
-        .args(args)
-        .output();
+    //let res_to_ast =
+    //Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
+    //.current_dir(build_path_abs.to_string())
+    //.args(res_to_ast_args)
+    //.output()
+    //.expect("Error converting .res to .ast");
 
-    //match ast {
-    //Ok(x) => {
-    //println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
-    //println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
-    //}
-    //Err(e) => {
-    //println!("Could not compile: {:?}, ", e);
-    //panic!("")
-    //}
-    //}
+    //println!(
+    //"{}",
+    //std::str::from_utf8(&res_to_ast.stderr).expect("Failure")
+    //);
 
     ast_path
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
+fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<File>>> {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
@@ -120,7 +109,7 @@ where
 
 fn get_dep_modules(ast_file: &str) -> Vec<String> {
     let mut deps = Vec::new();
-    if let Ok(lines) = read_lines(ast_file) {
+    if let Ok(lines) = read_lines(ast_file.to_string()) {
         // we skip the first line with is some null characters
         // the following lines in the AST are the dependency modules
         // we stop when we hit a line that starts with a "/", this is the path of the file.
@@ -142,6 +131,35 @@ fn get_dep_modules(ast_file: &str) -> Vec<String> {
     return deps;
 }
 
+pub fn get_namespace(package: &package_tree::Package) -> Option<String> {
+    if package.namespace {
+        return Some(
+            package
+                .bsconfig
+                .name
+                .to_owned()
+                .replace("@", "")
+                .replace("/", "_")
+                .to_case(Case::Pascal),
+        );
+    }
+    return None;
+}
+
+fn gen_mlmap(
+    package: &package_tree::Package,
+    namespace: &str,
+    modules: &Vec<String>,
+    root_path: &str,
+) -> String {
+    let build_path_abs = get_build_path(root_path, &package.name);
+    let digest = "a".repeat(16) + "\n" + &modules.join("\n");
+    let file = build_path_abs + "/" + namespace + ".mlmap";
+    fs::write(&file, digest).expect("Unable to write mlmap");
+
+    file.to_string()
+}
+
 pub fn get_dependencies(
     version: String,
     project_root: &str,
@@ -149,29 +167,66 @@ pub fn get_dependencies(
 ) -> AHashMap<String, SourceFile> {
     let mut files: AHashMap<String, SourceFile> = AHashMap::new();
 
-    packages
-        .iter()
-        .for_each(|(_package_name, package)| match &package.source_files {
+    packages.iter().for_each(|(_package_name, package)| {
+        get_namespace(package).iter().for_each(|namespace| {
+            let mlmap = gen_mlmap(
+                &package,
+                namespace,
+                &package
+                    .source_files
+                    .to_owned()
+                    .map(|x| x.keys().cloned().collect::<Vec<String>>())
+                    .unwrap_or(vec![]),
+                project_root,
+            );
+
+            files.insert(
+                mlmap.to_owned(),
+                SourceFile {
+                    dirty: true,
+                    is_ml_map: true,
+                    namespace: namespace.to_string(),
+                    ast_path: None,
+                    ast_deps: vec![],
+                    package: package.to_owned(),
+                },
+            );
+        });
+
+        match &package.source_files {
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
                 files.insert(
                     file.to_owned(),
                     SourceFile {
                         dirty: true,
+                        is_ml_map: false,
+                        namespace: "".to_string(),
                         ast_path: None,
                         ast_deps: vec![],
-                        bsconfig: package.bsconfig.to_owned(),
+                        package: package.to_owned(),
                     },
                 );
             }),
-        });
+        }
+    });
 
     files
         .par_iter()
         .map(|(file, metadata)| {
-            let ast_path = create_ast(&version, project_root, &metadata.bsconfig, file);
-            println!("{}", &ast_path);
-            let ast_deps = get_dep_modules(&ast_path);
+            let ast_path = generate_ast(
+                metadata.package.to_owned(),
+                file,
+                &get_abs_path(project_root),
+                &version,
+            );
+
+            let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
+            let ast_deps = if !metadata.is_ml_map {
+                get_dep_modules(&(build_path + "/" + &ast_path))
+            } else {
+                vec![]
+            };
 
             (file.to_owned(), ast_path, ast_deps)
         })
@@ -185,21 +240,64 @@ pub fn get_dependencies(
         });
 
     files
+        .clone()
+        .into_iter()
+        .filter(|(_, metadata)| metadata.is_ml_map)
+        .collect::<Vec<(String, SourceFile)>>()
+        .into_iter()
+        .for_each(|(file, metadata)| {
+            let mut deps: AHashSet<String> = AHashSet::new();
+
+            metadata.ast_deps.iter().for_each(|ast_dep| {
+                deps.insert(ast_dep.to_string());
+            });
+
+            files.entry(file.to_string()).and_modify(|file| {
+                file.ast_deps = deps.into_iter().collect();
+            });
+        });
+
+    files
 }
 
 pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &SourceFile) {
-    let build_path_abs = &(pkg_path_abs.to_string() + &source.bsconfig.name + "/_build");
+    let build_path_abs = &(pkg_path_abs.to_string() + "/_build");
+
+    let deps = &source
+        .package
+        .bsconfig
+        .bs_dependencies
+        .as_ref()
+        .unwrap_or(&vec![])
+        .into_iter()
+        .map(|x| {
+            vec![
+                "-I".to_string(),
+                abs_node_modules_path.to_string() + x + "/lib/ocaml",
+            ]
+        })
+        .collect::<Vec<Vec<String>>>();
+
     let to_mjs_args = vec![
         vec!["-I".to_string(), ".".to_string()],
+        //sources.concat(),
+        deps.concat(),
         vec![
             "-bs-package-name".to_string(),
-            source.bsconfig.name.to_owned(),
+            source.package.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
             format!("es6:{}:.mjs", "src"),
             source.ast_path.to_owned().expect("No path found"),
         ],
     ]
     .concat();
+
+    dbg!(
+        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+        build_path_abs.to_string(),
+        &source.ast_deps,
+        &to_mjs_args
+    );
 
     let to_mjs = Command::new(
         abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
@@ -210,7 +308,7 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
 
     match to_mjs {
         Ok(x) => {
-            //println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
+            println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
             println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
         }
         Err(e) => println!("ERROR, {}, {:?}", e, source.ast_path),

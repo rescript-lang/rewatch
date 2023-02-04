@@ -128,6 +128,11 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
                 OneOrMore::Multiple(ys) => ys.to_owned(),
             })
             .flatten()
+            .collect::<Vec<String>>()
+            .iter()
+            .map(|str| str.split(" "))
+            .flatten()
+            .map(|str| str.to_string())
             .collect::<Vec<String>>(),
     }
 }
