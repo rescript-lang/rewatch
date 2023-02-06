@@ -35,3 +35,16 @@ pub fn get_basename(path: &str) -> String {
         .expect("Could not get basename")
         .to_string();
 }
+
+/// Capitalizes the first character in s.
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+pub fn file_path_to_module_name(path: &str) -> String {
+    capitalize(&get_basename(path))
+}

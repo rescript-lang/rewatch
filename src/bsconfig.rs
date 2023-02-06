@@ -139,17 +139,22 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
 
 /// Since ppx-flags could be one or more, and could be nested potentiall, this function takes the
 /// flags and flattens them outright.
-pub fn flatten_ppx_flags(root_dir: &String, flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
+pub fn flatten_ppx_flags(
+    node_modules_dir: &String,
+    flags: &Option<Vec<OneOrMore<String>>>,
+) -> Vec<String> {
     match flags {
         None => vec![],
         Some(xs) => xs
             .par_iter()
             .map(|x| match x {
-                OneOrMore::Single(y) => vec!["-ppx".to_string(), root_dir.to_owned() + "/" + y],
+                OneOrMore::Single(y) => {
+                    vec!["-ppx".to_string(), node_modules_dir.to_owned() + "/" + y]
+                }
                 OneOrMore::Multiple(ys) if ys.len() == 0 => vec![],
                 OneOrMore::Multiple(ys) => vec![
                     "-ppx".to_string(),
-                    vec![root_dir.to_owned() + "/" + &ys[0]]
+                    vec![node_modules_dir.to_owned() + "/" + &ys[0]]
                         .into_iter()
                         .chain(ys[1..].to_owned())
                         .collect::<Vec<String>>()
