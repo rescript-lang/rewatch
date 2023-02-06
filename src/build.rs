@@ -14,7 +14,7 @@ use std::process::Command;
 pub struct SourceFile {
     pub dirty: bool,
     pub is_ml_map: bool,
-    pub namespace: String,
+    pub namespace: Option<String>,
     pub ast_path: Option<String>,
     pub ast_deps: Vec<String>,
     pub package: package_tree::Package,
@@ -32,6 +32,10 @@ pub fn get_version(project_root: &str) -> String {
         .replace("\n", "")
 }
 
+// fn get_ast_path(file_path: &str, root_path: &str, package_name: &str) -> String {
+//     return (get_basename(&file_path.to_string()).to_owned()) + ".ast";
+// }
+
 fn generate_ast(
     package: package_tree::Package,
     filename: &str,
@@ -45,6 +49,7 @@ fn generate_ast(
 
     let ppx_flags =
         bsconfig::flatten_ppx_flags(&abs_node_modules_path, &package.bsconfig.ppx_flags);
+
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let res_to_ast_args = vec![
@@ -72,18 +77,20 @@ fn generate_ast(
     ]
     .concat();
 
+    // dbg!("ARgs FLAGS:");
+    // dbg!(res_to_ast_args.clone());
     /* Create .ast */
-    //let res_to_ast =
-    //Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
-    //.current_dir(build_path_abs.to_string())
-    //.args(res_to_ast_args)
-    //.output()
-    //.expect("Error converting .res to .ast");
+    let res_to_ast =
+        Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
+            .current_dir(build_path_abs.to_string())
+            .args(res_to_ast_args)
+            .output()
+            .expect("Error converting .res to .ast");
 
-    //println!(
-    //"{}",
-    //std::str::from_utf8(&res_to_ast.stderr).expect("Failure")
-    //);
+    println!(
+        "{}",
+        std::str::from_utf8(&res_to_ast.stderr).expect("Failure")
+    );
 
     ast_path
 }
@@ -169,30 +176,30 @@ pub fn get_dependencies(
 
     packages.iter().for_each(|(_package_name, package)| {
         get_namespace(package).iter().for_each(|namespace| {
-            let mlmap = gen_mlmap(
-                &package,
-                namespace,
-                &package
-                    .source_files
-                    .to_owned()
-                    .map(|x| x.keys().cloned().collect::<Vec<String>>())
-                    .unwrap_or(vec![]),
-                project_root,
-            );
+            // generate the mlmap "AST" file for modules that have a namespace configured
+            let ast_deps = &package
+                .source_files
+                .to_owned()
+                .map(|x| {
+                    x.keys()
+                        .map(|path| file_path_to_module_name(&path))
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or(vec![]);
+            let mlmap = gen_mlmap(&package, namespace, ast_deps, project_root);
 
             files.insert(
                 mlmap.to_owned(),
                 SourceFile {
                     dirty: true,
                     is_ml_map: true,
-                    namespace: namespace.to_string(),
-                    ast_path: None,
-                    ast_deps: vec![],
+                    namespace: None,
+                    ast_path: Some(mlmap.to_owned()),
+                    ast_deps: ast_deps.to_owned(),
                     package: package.to_owned(),
                 },
             );
         });
-
         match &package.source_files {
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
@@ -201,7 +208,7 @@ pub fn get_dependencies(
                     SourceFile {
                         dirty: true,
                         is_ml_map: false,
-                        namespace: "".to_string(),
+                        namespace: None,
                         ast_path: None,
                         ast_deps: vec![],
                         package: package.to_owned(),
@@ -212,23 +219,27 @@ pub fn get_dependencies(
     });
 
     files
-        .par_iter()
+        // .par_iter()
+        .iter()
         .map(|(file, metadata)| {
-            let ast_path = generate_ast(
-                metadata.package.to_owned(),
-                file,
-                &get_abs_path(project_root),
-                &version,
-            );
-
-            let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
-            let ast_deps = if !metadata.is_ml_map {
-                get_dep_modules(&(build_path + "/" + &ast_path))
+            if metadata.is_ml_map {
+                (
+                    file.to_owned(),
+                    metadata.ast_path.to_owned().unwrap(),
+                    metadata.ast_deps.to_owned(),
+                )
             } else {
-                vec![]
-            };
+                let ast_path = generate_ast(
+                    metadata.package.to_owned(),
+                    file,
+                    &get_abs_path(project_root),
+                    &version,
+                );
 
-            (file.to_owned(), ast_path, ast_deps)
+                let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
+                let ast_deps = get_dep_modules(&(build_path + "/" + &ast_path));
+                (file.to_owned(), ast_path, ast_deps)
+            }
         })
         .collect::<Vec<(String, String, Vec<String>)>>()
         .into_iter()
@@ -236,24 +247,6 @@ pub fn get_dependencies(
             files.entry(file).and_modify(|file| {
                 file.ast_path = Some(ast_path);
                 file.ast_deps = ast_deps;
-            });
-        });
-
-    files
-        .clone()
-        .into_iter()
-        .filter(|(_, metadata)| metadata.is_ml_map)
-        .collect::<Vec<(String, SourceFile)>>()
-        .into_iter()
-        .for_each(|(file, metadata)| {
-            let mut deps: AHashSet<String> = AHashSet::new();
-
-            metadata.ast_deps.iter().for_each(|ast_dep| {
-                deps.insert(ast_dep.to_string());
-            });
-
-            files.entry(file.to_string()).and_modify(|file| {
-                file.ast_deps = deps.into_iter().collect();
             });
         });
 
