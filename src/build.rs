@@ -1,13 +1,12 @@
 use crate::bsconfig;
 use crate::helpers::*;
 use crate::package_tree;
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Clone)]
@@ -262,6 +261,30 @@ pub fn get_dependencies(
         });
 
     files
+}
+
+pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
+    let abs_node_modules_path = get_node_modules_path(root_path);
+    let build_path_abs = get_build_path(root_path, &package.name);
+
+    let mlmap_name = format!("{}.mlmap", namespace);
+    let args = vec![vec![
+        "-w",
+        "-49",
+        "-color",
+        "always",
+        "-no-alias-deps",
+        &mlmap_name,
+    ]]
+    .concat();
+
+    let _ = Command::new(
+        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+    )
+    .current_dir(build_path_abs.to_string())
+    .args(args)
+    .output()
+    .expect("err");
 }
 
 pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &SourceFile) {
