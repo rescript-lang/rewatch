@@ -47,8 +47,11 @@ fn generate_ast(
     let ast_path = (get_basename(&file.to_string()).to_owned()) + ".ast";
     let abs_node_modules_path = get_node_modules_path(root_path);
 
-    let ppx_flags =
-        bsconfig::flatten_ppx_flags(&abs_node_modules_path, &package.bsconfig.ppx_flags);
+    let ppx_flags = bsconfig::flatten_ppx_flags(
+        &abs_node_modules_path,
+        &package.bsconfig.ppx_flags,
+        &package.name,
+    );
 
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 

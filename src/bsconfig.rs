@@ -142,6 +142,7 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
 pub fn flatten_ppx_flags(
     node_modules_dir: &String,
     flags: &Option<Vec<OneOrMore<String>>>,
+    package_name: &String,
 ) -> Vec<String> {
     match flags {
         None => vec![],
@@ -149,17 +150,35 @@ pub fn flatten_ppx_flags(
             .par_iter()
             .map(|x| match x {
                 OneOrMore::Single(y) => {
-                    vec!["-ppx".to_string(), node_modules_dir.to_owned() + "/" + y]
+                    let first_character = y.chars().nth(0);
+                    match first_character {
+                        Some('.') => {
+                            vec![
+                                "-ppx".to_string(),
+                                node_modules_dir.to_owned() + "/" + package_name + "/" + y,
+                            ]
+                        }
+                        _ => vec!["-ppx".to_string(), node_modules_dir.to_owned() + "/" + y],
+                    }
                 }
                 OneOrMore::Multiple(ys) if ys.len() == 0 => vec![],
-                OneOrMore::Multiple(ys) => vec![
-                    "-ppx".to_string(),
-                    vec![node_modules_dir.to_owned() + "/" + &ys[0]]
-                        .into_iter()
-                        .chain(ys[1..].to_owned())
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                ],
+                OneOrMore::Multiple(ys) => {
+                    let first_character = ys[0].chars().nth(0);
+                    let ppx = match first_character {
+                        Some('.') => {
+                            node_modules_dir.to_owned() + "/" + package_name + "/" + &ys[0]
+                        }
+                        _ => node_modules_dir.to_owned() + "/" + &ys[0],
+                    };
+                    vec![
+                        "-ppx".to_string(),
+                        vec![ppx]
+                            .into_iter()
+                            .chain(ys[1..].to_owned())
+                            .collect::<Vec<String>>()
+                            .join(" "),
+                    ]
+                }
             })
             .flatten()
             .collect::<Vec<String>>(),
