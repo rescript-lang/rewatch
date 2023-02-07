@@ -4,6 +4,33 @@ pub mod helpers;
 pub mod package_tree;
 pub mod structure_hashmap;
 pub mod watcher;
+use ahash::{AHashMap, AHashSet};
+use convert_case::{Case, Casing};
+use helpers::*;
+use std::fs;
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn get_abs_path(path: &str) -> String {
+    let abs_path_buf = PathBuf::from(path);
+    return fs::canonicalize(abs_path_buf)
+        .expect("Could not canonicalize")
+        .to_str()
+        .expect("Could not canonicalize")
+        .to_string();
+}
+
+fn get_basename(path: &str) -> String {
+    let path_buf = PathBuf::from(path);
+    return path_buf
+        .file_stem()
+        .expect("Could not get basename")
+        .to_str()
+        .expect("Could not get basename")
+        .to_string();
+}
 
 //fn compile(package: &package_tree::Package, ast_path: &str, root_path: &str) {
 //let abs_node_modules_path = get_node_modules_path(root_path);
@@ -41,11 +68,12 @@ pub mod watcher;
 //}
 
 fn main() {
-    let folder = "walnut_monorepo";
+    let project_root = get_abs_path("walnut_monorepo");
 
-    let packages = package_tree::make(&folder);
-    let rescript_version = build::get_version(&folder);
-    let _source_files = build::get_dependencies(rescript_version, &folder, packages.to_owned());
+    let packages = package_tree::make(&project_root);
+    let rescript_version = build::get_version(&project_root);
+    let modules =
+        build::parse_and_get_dependencies(rescript_version, &project_root, packages.to_owned());
     println!("FINISH CONVERSION TO AST");
 
     //let root = &packages["@teamwalnut/stdlib"];
@@ -67,6 +95,23 @@ fn main() {
     //compile(root, &ast_file, &project_root);
 
     println!("START COMPILING");
+    let mut compiled_modules = AHashSet::<String>::new();
+
+    for (module, source_file) in modules.iter() {
+        if source_file.ast_deps.is_subset(&compiled_modules) {
+            if source_file.is_ml_map {
+                compile_mlmap(&source_file.package, module, &project_root)
+            } else {
+                build::compile_file(
+                    &get_package_path(&project_root, &source_file.package.name),
+                    &get_node_modules_path(&project_root),
+                    source_file,
+                )
+            }
+            let _ = compiled_modules.insert(module.to_owned());
+        }
+    }
+
     // source_files
     //     .iter()
     //     .filter(|(_file, source)| source.ast_deps.len() == 0)

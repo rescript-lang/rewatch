@@ -14,8 +14,9 @@ pub struct SourceFile {
     pub dirty: bool,
     pub is_ml_map: bool,
     pub namespace: Option<String>,
+    pub file_path: String,
     pub ast_path: Option<String>,
-    pub ast_deps: Vec<String>,
+    pub ast_deps: AHashSet<String>,
     pub package: package_tree::Package,
 }
 
@@ -177,7 +178,7 @@ fn gen_mlmap(
     file.to_string()
 }
 
-pub fn get_dependencies(
+pub fn parse_and_get_dependencies(
     version: String,
     project_root: &str,
     packages: AHashMap<String, package_tree::Package>,
@@ -193,14 +194,20 @@ pub fn get_dependencies(
                 .map(|x| {
                     x.keys()
                         .map(|path| file_path_to_module_name(&path))
-                        .collect::<Vec<String>>()
+                        .collect::<AHashSet<String>>()
                 })
-                .unwrap_or(vec![]);
-            let mlmap = gen_mlmap(&package, namespace, ast_deps, project_root);
+                .unwrap_or(AHashSet::new());
+            let mlmap = gen_mlmap(
+                &package,
+                namespace,
+                &Vec::from_iter(ast_deps.to_owned()),
+                project_root,
+            );
 
             files.insert(
-                mlmap.to_owned(),
+                file_path_to_module_name(&mlmap.to_owned()),
                 SourceFile {
+                    file_path: mlmap.to_owned(),
                     dirty: true,
                     is_ml_map: true,
                     namespace: None,
@@ -214,13 +221,14 @@ pub fn get_dependencies(
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
                 files.insert(
-                    file.to_owned(),
+                    file_path_to_module_name(&file.to_owned()),
                     SourceFile {
+                        file_path: file.to_owned(),
                         dirty: true,
                         is_ml_map: false,
                         namespace: None,
                         ast_path: None,
-                        ast_deps: vec![],
+                        ast_deps: AHashSet::new(),
                         package: package.to_owned(),
                     },
                 );
@@ -231,30 +239,32 @@ pub fn get_dependencies(
     files
         .par_iter()
         // .iter()
-        .map(|(file, metadata)| {
+        .map(|(module_name, metadata)| {
             if metadata.is_ml_map {
                 (
-                    file.to_owned(),
+                    module_name.to_owned(),
                     metadata.ast_path.to_owned().unwrap(),
                     metadata.ast_deps.to_owned(),
                 )
             } else {
                 let ast_path = generate_ast(
                     metadata.package.to_owned(),
-                    file,
+                    &metadata.file_path.to_owned(),
                     &get_abs_path(project_root),
                     &version,
                 );
 
                 let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
-                let ast_deps = get_dep_modules(&(build_path + "/" + &ast_path));
-                (file.to_owned(), ast_path, ast_deps)
+                let ast_deps = get_dep_modules(&(build_path + "/" + &ast_path))
+                    .into_iter()
+                    .collect::<AHashSet<String>>();
+                (module_name.to_owned(), ast_path, ast_deps)
             }
         })
-        .collect::<Vec<(String, String, Vec<String>)>>()
+        .collect::<Vec<(String, String, AHashSet<String>)>>()
         .into_iter()
-        .for_each(|(file, ast_path, ast_deps)| {
-            files.entry(file).and_modify(|file| {
+        .for_each(|(module_name, ast_path, ast_deps)| {
+            files.entry(module_name).and_modify(|file| {
                 file.ast_path = Some(ast_path);
                 file.ast_deps = ast_deps;
             });
@@ -300,11 +310,14 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
         .map(|x| {
             vec![
                 "-I".to_string(),
-                abs_node_modules_path.to_string() + x + "/lib/ocaml",
+                abs_node_modules_path.to_string() + x + "/_build",
             ]
         })
         .collect::<Vec<Vec<String>>>();
 
+    dbg!("BLLLLAALAL");
+    dbg!(pkg_path_abs);
+    dbg!(&source.file_path);
     let to_mjs_args = vec![
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
@@ -312,7 +325,17 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
             "-bs-package-name".to_string(),
             source.package.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
-            format!("es6:{}:.mjs", "src"),
+            format!(
+                "es6:{}:.mjs",
+                "./".to_string()
+                    + Path::new(&source.file_path)
+                        .strip_prefix(pkg_path_abs)
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+            ),
             source.ast_path.to_owned().expect("No path found"),
         ],
     ]
