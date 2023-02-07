@@ -36,6 +36,15 @@ pub fn get_version(project_root: &str) -> String {
 //     return (get_basename(&file_path.to_string()).to_owned()) + ".ast";
 // }
 
+fn contains_ascii_characters(str: &str) -> bool {
+    for chr in str.chars() {
+        if chr.is_ascii_alphanumeric() {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn generate_ast(
     package: package_tree::Package,
     filename: &str,
@@ -90,11 +99,10 @@ fn generate_ast(
             .output()
             .expect("Error converting .res to .ast");
 
-    println!(
-        "{}",
-        std::str::from_utf8(&res_to_ast.stderr).expect("Failure")
-    );
-
+    let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("");
+    if contains_ascii_characters(stderr) {
+        println!("{}", stderr);
+    }
     ast_path
 }
 
@@ -222,8 +230,8 @@ pub fn get_dependencies(
     });
 
     files
-        // .par_iter()
-        .iter()
+        .par_iter()
+        // .iter()
         .map(|(file, metadata)| {
             if metadata.is_ml_map {
                 (
@@ -276,7 +284,6 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
 
     let to_mjs_args = vec![
         vec!["-I".to_string(), ".".to_string()],
-        //sources.concat(),
         deps.concat(),
         vec![
             "-bs-package-name".to_string(),

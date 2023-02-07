@@ -97,6 +97,7 @@ fn main() {
     let packages = package_tree::make(&folder);
     let rescript_version = build::get_version(&folder);
     let source_files = build::get_dependencies(rescript_version, &folder, packages.to_owned());
+    println!("FINISH CONVERSION TO AST");
 
     //let root = &packages["@teamwalnut/stdlib"];
 
@@ -117,22 +118,22 @@ fn main() {
     //compile(root, &ast_file, &project_root);
 
     println!("START COMPILING");
-    source_files
-        .iter()
-        .filter(|(_file, source)| source.ast_deps.len() == 0)
-        .for_each(|(file, source)| {
-            let pkg_path_abs = folder.to_owned() + "/node_modules/" + &source.package.bsconfig.name;
-            let abs_node_modules_path =
-                helpers::get_abs_path(&(folder.to_owned() + "/node_modules"));
+    // source_files
+    //     .iter()
+    //     .filter(|(_file, source)| source.ast_deps.len() == 0)
+    //     .for_each(|(file, source)| {
+    //         let pkg_path_abs = folder.to_owned() + "/node_modules/" + &source.package.bsconfig.name;
+    //         let abs_node_modules_path =
+    //             helpers::get_abs_path(&(folder.to_owned() + "/node_modules"));
 
-            if source.is_ml_map {
-                dbg!(file);
-            }
+    //         if source.is_ml_map {
+    //             dbg!(file);
+    //         }
 
-            //if source.is_ml_map {
-                //compile_mlmap(&source.package, &source.namespace, &folder)
-            //} else {
-                //build::compile_file(&pkg_path_abs, &abs_node_modules_path, source);
-            //}
-        });
+    //         //if source.is_ml_map {
+    //             //compile_mlmap(&source.package, &source.namespace, &folder)
+    //         //} else {
+    //             //build::compile_file(&pkg_path_abs, &abs_node_modules_path, source);
+    //         //}
+    //     });
 }
