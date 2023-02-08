@@ -7,13 +7,20 @@ use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SourceType {
+    Interface,
+    Implementation,
+    MlMap,
+}
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
     pub dirty: bool,
-    pub is_ml_map: bool,
+    pub source_type: SourceType,
     pub namespace: Option<String>,
     pub file_path: String,
     pub ast_path: Option<String>,
@@ -54,7 +61,16 @@ fn generate_ast(
 ) -> String {
     let file = &filename.to_string();
     let build_path_abs = get_build_path(root_path, &package.name);
-    let ast_path = (get_basename(&file.to_string()).to_owned()) + ".ast";
+    let ast_path = (get_basename(&file.to_string()).to_owned())
+        + match PathBuf::from(filename)
+            .extension()
+            .unwrap()
+            .to_str()
+            .unwrap()
+        {
+            "resi" => ".iast",
+            _ => ".ast",
+        };
     let abs_node_modules_path = get_node_modules_path(root_path);
 
     let ppx_flags = bsconfig::flatten_ppx_flags(
@@ -189,7 +205,7 @@ pub fn parse_and_get_dependencies(
     packages.iter().for_each(|(_package_name, package)| {
         get_namespace(package).iter().for_each(|namespace| {
             // generate the mlmap "AST" file for modules that have a namespace configured
-            let ast_deps = &package
+            let ast_deps = package
                 .source_files
                 .to_owned()
                 .map(|x| {
@@ -198,6 +214,7 @@ pub fn parse_and_get_dependencies(
                         .collect::<AHashSet<String>>()
                 })
                 .unwrap_or(AHashSet::new());
+
             let mlmap = gen_mlmap(
                 &package,
                 namespace,
@@ -210,7 +227,7 @@ pub fn parse_and_get_dependencies(
                 SourceFile {
                     file_path: mlmap.to_owned(),
                     dirty: true,
-                    is_ml_map: true,
+                    source_type: SourceType::MlMap,
                     namespace: None,
                     ast_path: Some(mlmap.to_owned()),
                     ast_deps: ast_deps.to_owned(),
@@ -226,8 +243,27 @@ pub fn parse_and_get_dependencies(
                     SourceFile {
                         file_path: file.to_owned(),
                         dirty: true,
-                        is_ml_map: false,
-                        namespace: None,
+                        source_type: {
+                            match PathBuf::from(file).extension().unwrap().to_str().unwrap() {
+                                "res" => SourceType::Implementation,
+                                "ml" => SourceType::Implementation,
+                                "re" => SourceType::Implementation,
+                                "resi" => SourceType::Interface,
+                                "mli" => SourceType::Interface,
+                                "rei" => SourceType::Interface,
+                                // perhaps crash here
+                                lol => {
+                                    dbg!("LOL");
+                                    dbg!(lol);
+                                    unreachable!();
+                                }
+                            }
+                        },
+                        namespace: if package.namespace {
+                            get_namespace(package)
+                        } else {
+                            None
+                        },
                         ast_path: None,
                         ast_deps: AHashSet::new(),
                         package: package.to_owned(),
@@ -240,14 +276,13 @@ pub fn parse_and_get_dependencies(
     files
         .par_iter()
         // .iter()
-        .map(|(module_name, metadata)| {
-            if metadata.is_ml_map {
-                (
-                    module_name.to_owned(),
-                    metadata.ast_path.to_owned().unwrap(),
-                    metadata.ast_deps.to_owned(),
-                )
-            } else {
+        .map(|(module_name, metadata)| match metadata.source_type {
+            SourceType::MlMap => (
+                module_name.to_owned(),
+                metadata.ast_path.to_owned().unwrap(),
+                metadata.ast_deps.to_owned(),
+            ),
+            SourceType::Interface | SourceType::Implementation => {
                 let ast_path = generate_ast(
                     metadata.package.to_owned(),
                     &metadata.file_path.to_owned(),
@@ -256,9 +291,14 @@ pub fn parse_and_get_dependencies(
                 );
 
                 let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
-                let ast_deps = get_dep_modules(&(build_path + "/" + &ast_path))
+
+                let mut ast_deps = get_dep_modules(&(build_path + "/" + &ast_path))
                     .into_iter()
                     .collect::<AHashSet<String>>();
+
+                ast_deps.insert("Pervasives".to_owned());
+                ast_deps.remove(module_name);
+
                 (module_name.to_owned(), ast_path, ast_deps)
             }
         })
@@ -298,7 +338,12 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
     .expect("err");
 }
 
-pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &SourceFile) {
+pub fn compile_file(
+    pkg_path_abs: &str,
+    abs_node_modules_path: &str,
+    source: &SourceFile,
+    is_interface: bool,
+) {
     let build_path_abs = &(pkg_path_abs.to_string() + "/_build");
 
     let deps = &source
@@ -311,7 +356,7 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
         .map(|x| {
             vec![
                 "-I".to_string(),
-                abs_node_modules_path.to_string() + x + "/_build",
+                abs_node_modules_path.to_string() + "/" + x + "/_build",
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -319,9 +364,20 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
     dbg!("BLLLLAALAL");
     dbg!(pkg_path_abs);
     dbg!(&source.file_path);
-    let to_mjs_args = vec![
-        vec!["-I".to_string(), ".".to_string()],
-        deps.concat(),
+    let namespace_args = match source.namespace.to_owned() {
+        Some(namespace) => vec!["-bs-ns".to_string(), namespace],
+        None => vec![],
+    };
+    dbg!("NAMESPACE!");
+    dbg!(source.namespace.to_owned());
+    let read_cmi_args = if is_interface {
+        vec!["-bs-read-cmi".to_string()]
+    } else {
+        vec![]
+    };
+    let implementation_args = if is_interface {
+        vec![]
+    } else {
         vec![
             "-bs-package-name".to_string(),
             source.package.bsconfig.name.to_owned(),
@@ -337,8 +393,21 @@ pub fn compile_file(pkg_path_abs: &str, abs_node_modules_path: &str, source: &So
                         .to_str()
                         .unwrap(),
             ),
-            source.ast_path.to_owned().expect("No path found"),
-        ],
+        ]
+    };
+
+    let to_mjs_args = vec![
+        namespace_args,
+        read_cmi_args,
+        vec!["-I".to_string(), ".".to_string()],
+        deps.concat(),
+        vec!["-warn-error".to_string(), "A".to_string()],
+        implementation_args,
+        // vec![
+        //     "-I".to_string(),
+        //     abs_node_modules_path.to_string() + "/rescript/ocaml",
+        // ],
+        vec![source.ast_path.to_owned().expect("No path found")],
     ]
     .concat();
 

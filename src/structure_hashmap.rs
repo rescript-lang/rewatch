@@ -1,3 +1,4 @@
+use crate::helpers::LexicalAbsolute;
 use ahash::AHashMap;
 use std::path::PathBuf;
 use std::{error, fs};
@@ -9,7 +10,8 @@ pub fn read_folders(
     let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
 
     let path_buf = PathBuf::from(path);
-    let abs_path = fs::canonicalize(path_buf)
+    let abs_path = path_buf
+        .to_lexical_absolute()
         .map(|x| x.to_str().map(|y| y.to_string()).unwrap_or("".to_string()))
         .and_then(|x| fs::metadata(x.to_owned()).map(|m| (x.to_owned(), m)));
 
