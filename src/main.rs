@@ -20,7 +20,7 @@ fn main() {
     let mut compiled_modules = AHashSet::<String>::new();
 
     for (module, source_file) in modules.iter() {
-        if source_file.ast_deps.is_subset(&compiled_modules) {
+        if source_file.ast_deps.is_subset(&compiled_modules) && !compiled_modules.contains(module) {
             match source_file.source_type.to_owned() {
                 build::SourceType::MlMap => {
                     build::compile_mlmap(&source_file.package, module, &project_root)

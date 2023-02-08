@@ -189,7 +189,11 @@ fn gen_mlmap(
 ) -> String {
     let build_path_abs = get_build_path(root_path, &package.name);
     let digest = "a".repeat(16) + "\n" + &modules.join("\n");
-    let file = build_path_abs + "/" + namespace + ".mlmap";
+    let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
+    fs::DirBuilder::new()
+        .recursive(true)
+        .create(PathBuf::from(build_path_abs.to_string()))
+        .unwrap();
     fs::write(&file, digest).expect("Unable to write mlmap");
 
     file.to_string()
@@ -230,7 +234,7 @@ pub fn parse_and_get_dependencies(
                     source_type: SourceType::MlMap,
                     namespace: None,
                     ast_path: Some(mlmap.to_owned()),
-                    ast_deps: ast_deps.to_owned(),
+                    ast_deps: AHashSet::new(),
                     package: package.to_owned(),
                 },
             );
@@ -238,6 +242,11 @@ pub fn parse_and_get_dependencies(
         match &package.source_files {
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
+                let namespace = if package.namespace {
+                    get_namespace(package)
+                } else {
+                    None
+                };
                 files.insert(
                     file_path_to_module_name(&file.to_owned()),
                     SourceFile {
@@ -259,11 +268,7 @@ pub fn parse_and_get_dependencies(
                                 }
                             }
                         },
-                        namespace: if package.namespace {
-                            get_namespace(package)
-                        } else {
-                            None
-                        },
+                        namespace: namespace,
                         ast_path: None,
                         ast_deps: AHashSet::new(),
                         package: package.to_owned(),
@@ -297,6 +302,12 @@ pub fn parse_and_get_dependencies(
                     .collect::<AHashSet<String>>();
 
                 ast_deps.insert("Pervasives".to_owned());
+                match metadata.namespace.to_owned() {
+                    Some(namespace) => {
+                        let _ = ast_deps.insert(namespace);
+                    }
+                    None => (),
+                }
                 ast_deps.remove(module_name);
 
                 (module_name.to_owned(), ast_path, ast_deps)
