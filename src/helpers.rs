@@ -1,5 +1,30 @@
-use std::fs;
+use std::path::Component;
+use std::path::Path;
 use std::path::PathBuf;
+
+pub trait LexicalAbsolute {
+    fn to_lexical_absolute(&self) -> std::io::Result<PathBuf>;
+}
+
+impl LexicalAbsolute for Path {
+    fn to_lexical_absolute(&self) -> std::io::Result<PathBuf> {
+        let mut absolute = if self.is_absolute() {
+            PathBuf::new()
+        } else {
+            std::env::current_dir()?
+        };
+        for component in self.components() {
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    absolute.pop();
+                }
+                component @ _ => absolute.push(component.as_os_str()),
+            }
+        }
+        Ok(absolute)
+    }
+}
 
 pub fn get_package_path(root: &str, package_name: &str) -> String {
     format!("{}/node_modules/{}", root, package_name)
@@ -19,7 +44,9 @@ pub fn get_node_modules_path(root: &str) -> String {
 
 pub fn get_abs_path(path: &str) -> String {
     let abs_path_buf = PathBuf::from(path);
-    return fs::canonicalize(abs_path_buf)
+
+    return abs_path_buf
+        .to_lexical_absolute()
         .expect("Could not canonicalize")
         .to_str()
         .expect("Could not canonicalize")

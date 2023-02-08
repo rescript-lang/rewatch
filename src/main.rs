@@ -21,14 +21,18 @@ fn main() {
 
     for (module, source_file) in modules.iter() {
         if source_file.ast_deps.is_subset(&compiled_modules) {
-            if source_file.is_ml_map {
-                build::compile_mlmap(&source_file.package, module, &project_root)
-            } else {
-                build::compile_file(
-                    &get_package_path(&project_root, &source_file.package.name),
-                    &get_node_modules_path(&project_root),
-                    source_file,
-                )
+            match source_file.source_type.to_owned() {
+                build::SourceType::MlMap => {
+                    build::compile_mlmap(&source_file.package, module, &project_root)
+                }
+                build::SourceType::Implementation | build::SourceType::Interface => {
+                    build::compile_file(
+                        &get_package_path(&project_root, &source_file.package.name),
+                        &get_node_modules_path(&project_root),
+                        source_file,
+                        source_file.source_type == build::SourceType::Interface,
+                    )
+                }
             }
             let _ = compiled_modules.insert(module.to_owned());
         }

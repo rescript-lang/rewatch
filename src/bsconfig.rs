@@ -1,4 +1,3 @@
-use rayon::prelude::*;
 use serde::Deserialize;
 use std::fs;
 
@@ -147,7 +146,7 @@ pub fn flatten_ppx_flags(
     match flags {
         None => vec![],
         Some(xs) => xs
-            .par_iter()
+            .iter()
             .map(|x| match x {
                 OneOrMore::Single(y) => {
                     let first_character = y.chars().nth(0);
