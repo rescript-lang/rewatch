@@ -2,7 +2,6 @@ use crate::bsconfig;
 use crate::helpers::*;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
-use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
@@ -12,19 +11,20 @@ use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceType {
-    Interface,
-    Implementation,
+    SourceFile,
     MlMap,
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceFile {
+pub struct Module {
     pub dirty: bool,
     pub source_type: SourceType,
     pub namespace: Option<String>,
     pub file_path: String,
+    pub interface_file_path: Option<String>,
     pub ast_path: Option<String>,
-    pub ast_deps: AHashSet<String>,
+    pub asti_path: Option<String>,
+    pub deps: AHashSet<String>,
     pub package: package_tree::Package,
 }
 
@@ -142,7 +142,12 @@ fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<File>>> {
 // constructing the AST, so these modules are hidden from compilation.
 // in the top namespace however, we alias with the proper names
 
-fn get_dep_modules(ast_file: &str) -> Vec<String> {
+fn get_dep_modules(
+    ast_file: &str,
+    namespace: Option<String>,
+    package_modules: &AHashSet<String>,
+    valid_modules: &AHashSet<String>,
+) -> AHashSet<String> {
     let mut deps = Vec::new();
     if let Ok(lines) = read_lines(ast_file.to_string()) {
         // we skip the first line with is some null characters
@@ -159,26 +164,37 @@ fn get_dep_modules(ast_file: &str) -> Vec<String> {
                         deps.push(line);
                     }
                 }
-                Err(e) => println!("Error: {}", e),
+                Err(_) => (),
             }
         }
     }
-    return deps;
-}
 
-pub fn get_namespace(package: &package_tree::Package) -> Option<String> {
-    if package.namespace {
-        return Some(
-            package
-                .bsconfig
-                .name
-                .to_owned()
-                .replace("@", "")
-                .replace("/", "_")
-                .to_case(Case::Pascal),
-        );
-    }
-    return None;
+    return deps
+        .into_iter()
+        .map(|dep| {
+            dep.split('.')
+                .collect::<Vec<&str>>()
+                .first()
+                .unwrap()
+                .to_string()
+        })
+        .map(|dep| match namespace.to_owned() {
+            Some(namespace) => {
+                let namespaced_name = dep.to_owned() + "-" + &namespace;
+                if package_modules.contains(&namespaced_name) {
+                    return namespaced_name;
+                } else {
+                    return dep;
+                };
+            }
+            None => dep,
+        })
+        .filter(|dep| valid_modules.contains(dep))
+        .filter(|dep| match namespace.to_owned() {
+            Some(namespace) => !dep.eq(&namespace),
+            None => true,
+        })
+        .collect::<AHashSet<String>>();
 }
 
 fn gen_mlmap(
@@ -203,91 +219,137 @@ pub fn parse_and_get_dependencies(
     version: String,
     project_root: &str,
     packages: AHashMap<String, package_tree::Package>,
-) -> AHashMap<String, SourceFile> {
-    let mut files: AHashMap<String, SourceFile> = AHashMap::new();
+) -> AHashMap<String, Module> {
+    let mut modules: AHashMap<String, Module> = AHashMap::new();
+    let mut all_modules: AHashSet<String> = AHashSet::new();
 
     packages.iter().for_each(|(_package_name, package)| {
-        get_namespace(package).iter().for_each(|namespace| {
-            // generate the mlmap "AST" file for modules that have a namespace configured
-            let ast_deps = package
-                .source_files
-                .to_owned()
-                .map(|x| {
-                    x.keys()
-                        .map(|path| file_path_to_module_name(&path))
-                        .collect::<AHashSet<String>>()
-                })
-                .unwrap_or(AHashSet::new());
+        match package.modules.to_owned() {
+            Some(package_modules) => all_modules.extend(package_modules),
+            None => (),
+        }
 
-            let mlmap = gen_mlmap(
-                &package,
-                namespace,
-                &Vec::from_iter(ast_deps.to_owned()),
-                project_root,
-            );
+        package_tree::get_namespace(package)
+            .iter()
+            .for_each(|namespace| {
+                // generate the mlmap "AST" file for modules that have a namespace configured
+                let source_files = match package.source_files.to_owned() {
+                    Some(source_files) => source_files
+                        .keys()
+                        .map(|key| key.to_owned())
+                        .collect::<Vec<String>>(),
+                    None => unreachable!(),
+                };
 
-            files.insert(
-                file_path_to_module_name(&mlmap.to_owned()),
-                SourceFile {
-                    file_path: mlmap.to_owned(),
-                    dirty: true,
-                    source_type: SourceType::MlMap,
-                    namespace: None,
-                    ast_path: Some(mlmap.to_owned()),
-                    ast_deps: AHashSet::new(),
-                    package: package.to_owned(),
-                },
-            );
-        });
+                let depending_modules = source_files
+                    .iter()
+                    .map(|path| file_path_to_module_name(&path, None))
+                    .collect::<AHashSet<String>>();
+
+                let mlmap = gen_mlmap(
+                    &package,
+                    namespace,
+                    &Vec::from_iter(depending_modules.to_owned()),
+                    project_root,
+                );
+
+                let deps = source_files
+                    .iter()
+                    .map(|path| {
+                        file_path_to_module_name(&path, package_tree::get_namespace(package))
+                    })
+                    .collect::<AHashSet<String>>();
+
+                modules.insert(
+                    file_path_to_module_name(&mlmap.to_owned(), None),
+                    Module {
+                        file_path: mlmap.to_owned(),
+                        interface_file_path: None,
+                        dirty: true,
+                        source_type: SourceType::MlMap,
+                        namespace: None,
+                        ast_path: Some(mlmap.to_owned()),
+                        asti_path: None,
+                        deps: deps,
+                        package: package.to_owned(),
+                    },
+                );
+            });
         match &package.source_files {
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
                 let namespace = if package.namespace {
-                    get_namespace(package)
+                    package_tree::get_namespace(package)
                 } else {
                     None
                 };
-                files.insert(
-                    file_path_to_module_name(&file.to_owned()),
-                    SourceFile {
-                        file_path: file.to_owned(),
-                        dirty: true,
-                        source_type: {
-                            match PathBuf::from(file).extension().unwrap().to_str().unwrap() {
-                                "res" => SourceType::Implementation,
-                                "ml" => SourceType::Implementation,
-                                "re" => SourceType::Implementation,
-                                "resi" => SourceType::Interface,
-                                "mli" => SourceType::Interface,
-                                "rei" => SourceType::Interface,
-                                // perhaps crash here
-                                lol => {
-                                    dbg!("LOL");
-                                    dbg!(lol);
-                                    unreachable!();
-                                }
+
+                let file_buf = PathBuf::from(file);
+                let extension = file_buf.extension().unwrap().to_str().unwrap();
+                let is_implementation = match extension {
+                    "res" | "ml" | "re" => true,
+                    _ => false,
+                };
+                let module_name = file_path_to_module_name(&file.to_owned(), namespace.to_owned());
+                if is_implementation {
+                    modules
+                        .entry(module_name.to_string())
+                        .and_modify(|module| {
+                            if module.file_path.len() > 0 {
+                                dbg!("Multiple files for module: ".to_string() + &module_name);
+                                dbg!(&module.file_path);
+                                dbg!(&file);
+
+                                panic!("ERROR");
                             }
-                        },
-                        namespace: namespace,
-                        ast_path: None,
-                        ast_deps: AHashSet::new(),
-                        package: package.to_owned(),
-                    },
-                );
+                            module.file_path = file.to_owned();
+                        })
+                        .or_insert(Module {
+                            file_path: file.to_owned(),
+                            interface_file_path: None,
+                            dirty: true,
+                            source_type: SourceType::SourceFile,
+                            namespace: namespace,
+                            ast_path: None,
+                            asti_path: None,
+                            deps: AHashSet::new(),
+                            package: package.to_owned(),
+                        });
+                } else {
+                    modules
+                        .entry(file_path_to_module_name(
+                            &file.to_owned(),
+                            namespace.to_owned(),
+                        ))
+                        .and_modify(|module| module.interface_file_path = Some(file.to_owned()))
+                        .or_insert(Module {
+                            file_path: file.to_string(),
+                            interface_file_path: Some(file.to_owned()),
+                            dirty: true,
+                            source_type: SourceType::SourceFile,
+                            namespace: namespace,
+                            ast_path: None,
+                            asti_path: None,
+                            deps: AHashSet::new(),
+                            package: package.to_owned(),
+                        });
+                }
             }),
         }
     });
 
-    files
+    modules
         .par_iter()
         // .iter()
         .map(|(module_name, metadata)| match metadata.source_type {
             SourceType::MlMap => (
                 module_name.to_owned(),
                 metadata.ast_path.to_owned().unwrap(),
-                metadata.ast_deps.to_owned(),
+                None,
+                metadata.deps.to_owned(),
             ),
-            SourceType::Interface | SourceType::Implementation => {
+
+            SourceType::SourceFile => {
                 let ast_path = generate_ast(
                     metadata.package.to_owned(),
                     &metadata.file_path.to_owned(),
@@ -295,34 +357,50 @@ pub fn parse_and_get_dependencies(
                     &version,
                 );
 
+                let asti_path = match metadata.interface_file_path.to_owned() {
+                    Some(interface_file_path) => Some(generate_ast(
+                        metadata.package.to_owned(),
+                        &interface_file_path.to_owned(),
+                        &get_abs_path(project_root),
+                        &version,
+                    )),
+                    _ => None,
+                };
+
                 let build_path = get_build_path(project_root, &metadata.package.bsconfig.name);
 
-                let mut ast_deps = get_dep_modules(&(build_path + "/" + &ast_path))
-                    .into_iter()
-                    .collect::<AHashSet<String>>();
-
-                ast_deps.insert("Pervasives".to_owned());
-                match metadata.namespace.to_owned() {
-                    Some(namespace) => {
-                        let _ = ast_deps.insert(namespace);
-                    }
+                // choose the namespaced dep if that module appears in the package, otherwise global dep
+                let mut deps = get_dep_modules(
+                    &(build_path.to_string() + "/" + &ast_path),
+                    metadata.namespace.to_owned(),
+                    &metadata.package.modules.as_ref().unwrap(),
+                    &all_modules,
+                );
+                match asti_path.to_owned() {
+                    Some(asti_path) => deps.extend(get_dep_modules(
+                        &(build_path.to_owned() + "/" + &asti_path),
+                        metadata.namespace.to_owned(),
+                        &metadata.package.modules.as_ref().unwrap(),
+                        &all_modules,
+                    )),
                     None => (),
                 }
-                ast_deps.remove(module_name);
+                deps.remove(module_name);
 
-                (module_name.to_owned(), ast_path, ast_deps)
+                (module_name.to_owned(), ast_path, asti_path, deps)
             }
         })
-        .collect::<Vec<(String, String, AHashSet<String>)>>()
+        .collect::<Vec<(String, String, Option<String>, AHashSet<String>)>>()
         .into_iter()
-        .for_each(|(module_name, ast_path, ast_deps)| {
-            files.entry(module_name).and_modify(|file| {
-                file.ast_path = Some(ast_path);
-                file.ast_deps = ast_deps;
+        .for_each(|(module_name, ast_path, asti_path, deps)| {
+            modules.entry(module_name).and_modify(|module| {
+                module.ast_path = Some(ast_path);
+                module.asti_path = asti_path;
+                module.deps = deps;
             });
         });
 
-    files
+    modules
 }
 
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
@@ -352,7 +430,8 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
 pub fn compile_file(
     pkg_path_abs: &str,
     abs_node_modules_path: &str,
-    source: &SourceFile,
+    ast_path: &str,
+    source: &Module,
     is_interface: bool,
 ) {
     let build_path_abs = &(pkg_path_abs.to_string() + "/_build");
@@ -381,14 +460,19 @@ pub fn compile_file(
     };
     dbg!("NAMESPACE!");
     dbg!(source.namespace.to_owned());
-    let read_cmi_args = if is_interface {
-        vec!["-bs-read-cmi".to_string()]
-    } else {
-        vec![]
+
+    let read_cmi_args = match source.asti_path {
+        Some(_) => vec!["-bs-read-cmi".to_string()],
+        _ => vec![],
     };
+
     let implementation_args = if is_interface {
         vec![]
     } else {
+        dbg!("INFO");
+        dbg!(&source.file_path);
+        dbg!(&pkg_path_abs);
+
         vec![
             "-bs-package-name".to_string(),
             source.package.bsconfig.name.to_owned(),
@@ -418,14 +502,14 @@ pub fn compile_file(
         //     "-I".to_string(),
         //     abs_node_modules_path.to_string() + "/rescript/ocaml",
         // ],
-        vec![source.ast_path.to_owned().expect("No path found")],
+        vec![ast_path.to_owned()],
     ]
     .concat();
 
     dbg!(
         abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
         build_path_abs.to_string(),
-        &source.ast_deps,
+        &source.deps,
         &to_mjs_args
     );
 
@@ -441,6 +525,6 @@ pub fn compile_file(
             println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
             println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
         }
-        Err(e) => println!("ERROR, {}, {:?}", e, source.ast_path),
+        Err(e) => println!("ERROR, {}, {:?}", e, ast_path),
     }
 }
