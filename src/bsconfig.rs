@@ -108,6 +108,8 @@ pub struct T {
     pub pinned_dependencies: Option<Vec<String>>,
     #[serde(rename = "bs-dependencies")]
     pub bs_dependencies: Option<Vec<String>>,
+    #[serde(rename = "bs-dev-dependencies")]
+    pub bs_dev_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
     pub ppx_flags: Option<Vec<OneOrMore<String>>>,
     #[serde(rename = "bsc-flags")]

@@ -1,7 +1,9 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
+use crate::helpers;
 use crate::structure_hashmap;
 use ahash::{AHashMap, AHashSet};
+use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -14,6 +16,7 @@ pub struct Package {
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
     pub namespace: bool,
+    pub modules: Option<AHashSet<String>>,
 }
 
 impl PartialEq for Package {
@@ -127,6 +130,7 @@ fn build_package(
                 },
                 _ => false,
             },
+            modules: None,
         },
     );
 
@@ -174,6 +178,21 @@ pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String
     map
 }
 
+pub fn get_namespace(package: &Package) -> Option<String> {
+    if package.namespace {
+        return Some(
+            package
+                .bsconfig
+                .name
+                .to_owned()
+                .replace("@", "")
+                .replace("/", "_")
+                .to_case(Case::Pascal),
+        );
+    }
+    return None;
+}
+
 /// This takes the tree of packages, and finds all the source files for each, adding them to the
 /// respective packages.
 fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String, Package> {
@@ -186,9 +205,21 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
             .collect::<Vec<AHashMap<String, fs::Metadata>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
+
+        let namespace = get_namespace(value);
+        let mut modules = AHashSet::from_iter(
+            map.keys()
+                .map(|key| helpers::file_path_to_module_name(key, namespace.to_owned())),
+        );
+        match namespace {
+            Some(namespace) => {
+                let _ = modules.insert(namespace);
+            }
+            None => (),
+        }
+        value.modules = Some(modules);
         value.source_files = Some(map);
     }
-
     build
 }
 

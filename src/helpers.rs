@@ -72,6 +72,10 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-pub fn file_path_to_module_name(path: &str) -> String {
-    capitalize(&get_basename(path))
+pub fn file_path_to_module_name(path: &str, namespace: Option<String>) -> String {
+    let module_name = capitalize(&get_basename(path));
+    match namespace {
+        Some(namespace) => module_name.to_string() + "-" + &namespace,
+        None => module_name,
+    }
 }
