@@ -229,60 +229,53 @@ pub fn parse_and_get_dependencies(
             None => (),
         }
 
-        package_tree::get_namespace(package)
-            .iter()
-            .for_each(|namespace| {
-                // generate the mlmap "AST" file for modules that have a namespace configured
-                let source_files = match package.source_files.to_owned() {
-                    Some(source_files) => source_files
-                        .keys()
-                        .map(|key| key.to_owned())
-                        .collect::<Vec<String>>(),
-                    None => unreachable!(),
-                };
+        package.namespace.iter().for_each(|namespace| {
+            // generate the mlmap "AST" file for modules that have a namespace configured
+            let source_files = match package.source_files.to_owned() {
+                Some(source_files) => source_files
+                    .keys()
+                    .map(|key| key.to_owned())
+                    .collect::<Vec<String>>(),
+                None => unreachable!(),
+            };
 
-                let depending_modules = source_files
-                    .iter()
-                    .map(|path| file_path_to_module_name(&path, None))
-                    .collect::<AHashSet<String>>();
+            let depending_modules = source_files
+                .iter()
+                .map(|path| file_path_to_module_name(&path, None))
+                .collect::<AHashSet<String>>();
 
-                let mlmap = gen_mlmap(
-                    &package,
-                    namespace,
-                    &Vec::from_iter(depending_modules.to_owned()),
-                    project_root,
-                );
+            let mlmap = gen_mlmap(
+                &package,
+                namespace,
+                &Vec::from_iter(depending_modules.to_owned()),
+                project_root,
+            );
+            compile_mlmap(&package, namespace, &project_root);
 
-                let deps = source_files
-                    .iter()
-                    .map(|path| {
-                        file_path_to_module_name(&path, package_tree::get_namespace(package))
-                    })
-                    .collect::<AHashSet<String>>();
+            let deps = source_files
+                .iter()
+                .map(|path| file_path_to_module_name(&path, package.namespace.to_owned()))
+                .collect::<AHashSet<String>>();
 
-                modules.insert(
-                    file_path_to_module_name(&mlmap.to_owned(), None),
-                    Module {
-                        file_path: mlmap.to_owned(),
-                        interface_file_path: None,
-                        dirty: true,
-                        source_type: SourceType::MlMap,
-                        namespace: None,
-                        ast_path: Some(mlmap.to_owned()),
-                        asti_path: None,
-                        deps: deps,
-                        package: package.to_owned(),
-                    },
-                );
-            });
+            modules.insert(
+                file_path_to_module_name(&mlmap.to_owned(), None),
+                Module {
+                    file_path: mlmap.to_owned(),
+                    interface_file_path: None,
+                    dirty: true,
+                    source_type: SourceType::MlMap,
+                    namespace: None,
+                    ast_path: Some(mlmap.to_owned()),
+                    asti_path: None,
+                    deps: deps,
+                    package: package.to_owned(),
+                },
+            );
+        });
         match &package.source_files {
             None => (),
             Some(source_files) => source_files.iter().for_each(|(file, _)| {
-                let namespace = if package.namespace {
-                    package_tree::get_namespace(package)
-                } else {
-                    None
-                };
+                let namespace = package.namespace.to_owned();
 
                 let file_buf = PathBuf::from(file);
                 let extension = file_buf.extension().unwrap().to_str().unwrap();
@@ -317,13 +310,10 @@ pub fn parse_and_get_dependencies(
                         });
                 } else {
                     modules
-                        .entry(file_path_to_module_name(
-                            &file.to_owned(),
-                            namespace.to_owned(),
-                        ))
+                        .entry(module_name.to_string())
                         .and_modify(|module| module.interface_file_path = Some(file.to_owned()))
                         .or_insert(Module {
-                            file_path: file.to_string(),
+                            file_path: "".to_string(),
                             interface_file_path: Some(file.to_owned()),
                             dirty: true,
                             source_type: SourceType::SourceFile,
@@ -435,6 +425,7 @@ pub fn compile_file(
     is_interface: bool,
 ) {
     let build_path_abs = &(pkg_path_abs.to_string() + "/_build");
+    let bsc_flags = bsconfig::flatten_flags(&source.package.bsconfig.bsc_flags);
 
     let deps = &source
         .package
@@ -451,7 +442,20 @@ pub fn compile_file(
         })
         .collect::<Vec<Vec<String>>>();
 
-    dbg!("BLLLLAALAL");
+    if is_interface {
+        dbg!(
+            "Compiling: ".to_string()
+                + &file_path_to_module_name(
+                    &source.interface_file_path.as_ref().unwrap(),
+                    source.namespace.to_owned()
+                )
+        );
+    } else {
+        dbg!(
+            "Compiling: ".to_string()
+                + &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
+        );
+    }
     dbg!(pkg_path_abs);
     dbg!(&source.file_path);
     let namespace_args = match source.namespace.to_owned() {
@@ -462,7 +466,13 @@ pub fn compile_file(
     dbg!(source.namespace.to_owned());
 
     let read_cmi_args = match source.asti_path {
-        Some(_) => vec!["-bs-read-cmi".to_string()],
+        Some(_) => {
+            if is_interface {
+                vec![]
+            } else {
+                vec!["-bs-read-cmi".to_string()]
+            }
+        }
         _ => vec![],
     };
 
@@ -496,6 +506,7 @@ pub fn compile_file(
         read_cmi_args,
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
+        bsc_flags,
         vec!["-warn-error".to_string(), "A".to_string()],
         implementation_args,
         // vec![

@@ -15,7 +15,7 @@ pub struct Package {
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
-    pub namespace: bool,
+    pub namespace: Option<String>,
     pub modules: Option<AHashSet<String>>,
 }
 
@@ -123,12 +123,14 @@ fn build_package(
             source_folders,
             source_files: None,
             namespace: match bsconfig.namespace {
-                Some(bsconfig::Namespace::Bool(true)) => true,
+                Some(bsconfig::Namespace::Bool(true)) => {
+                    Some(namespace_from_package_name(&bsconfig.name))
+                }
                 Some(bsconfig::Namespace::String(str)) => match str.as_str() {
-                    "true" => true,
-                    _ => false,
+                    "true" => Some(namespace_from_package_name(&bsconfig.name)),
+                    namespace => Some(namespace.to_string()),
                 },
-                _ => false,
+                _ => None,
             },
             modules: None,
         },
@@ -178,19 +180,12 @@ pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String
     map
 }
 
-pub fn get_namespace(package: &Package) -> Option<String> {
-    if package.namespace {
-        return Some(
-            package
-                .bsconfig
-                .name
-                .to_owned()
-                .replace("@", "")
-                .replace("/", "_")
-                .to_case(Case::Pascal),
-        );
-    }
-    return None;
+pub fn namespace_from_package_name(package_name: &str) -> String {
+    package_name
+        .to_owned()
+        .replace("@", "")
+        .replace("/", "_")
+        .to_case(Case::Pascal)
 }
 
 /// This takes the tree of packages, and finds all the source files for each, adding them to the
@@ -206,12 +201,11 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
             .into_iter()
             .for_each(|source| map.extend(source));
 
-        let namespace = get_namespace(value);
         let mut modules = AHashSet::from_iter(
             map.keys()
-                .map(|key| helpers::file_path_to_module_name(key, namespace.to_owned())),
+                .map(|key| helpers::file_path_to_module_name(key, value.namespace.to_owned())),
         );
-        match namespace {
+        match value.namespace.to_owned() {
             Some(namespace) => {
                 let _ = modules.insert(namespace);
             }
