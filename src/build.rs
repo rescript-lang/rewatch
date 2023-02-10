@@ -422,43 +422,53 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
 }
 
 pub fn compile_file(
-    pkg_path_abs: &str,
-    abs_node_modules_path: &str,
+    package_name: &str,
     ast_path: &str,
     source: &Module,
+    root_path: &str,
     is_interface: bool,
 ) {
-    let build_path_abs = &(pkg_path_abs.to_string() + "/_build");
+    let build_path_abs = get_build_path(root_path, package_name);
+    let pkg_path_abs = get_package_path(root_path, package_name);
+    let abs_node_modules_path = get_node_modules_path(root_path);
     let bsc_flags = bsconfig::flatten_flags(&source.package.bsconfig.bsc_flags);
 
-    let deps = &source
+    let normal_deps = source
         .package
         .bsconfig
         .bs_dependencies
         .as_ref()
         .unwrap_or(&vec![])
+        .to_owned();
+
+    // don't compile dev-deps yet
+    // let dev_deps = source
+    //     .package
+    //     .bsconfig
+    //     .bs_dev_dependencies
+    //     .as_ref()
+    //     .unwrap_or(&vec![])
+    //     .to_owned();
+
+    let deps = vec![normal_deps]
+        .concat()
         .into_iter()
-        .map(|x| {
-            vec![
-                "-I".to_string(),
-                abs_node_modules_path.to_string() + "/" + x + "/_build",
-            ]
-        })
+        .map(|x| vec!["-I".to_string(), get_build_path(root_path, &x)])
         .collect::<Vec<Vec<String>>>();
 
     //if is_interface {
-        //dbg!(
-            //"Compiling: ".to_string()
-                //+ &file_path_to_module_name(
-                    //&source.interface_file_path.as_ref().unwrap(),
-                    //source.namespace.to_owned()
-                //)
-        //);
+    //dbg!(
+    //"Compiling: ".to_string()
+    //+ &file_path_to_module_name(
+    //&source.interface_file_path.as_ref().unwrap(),
+    //source.namespace.to_owned()
+    //)
+    //);
     //} else {
-        //dbg!(
-            //"Compiling: ".to_string()
-                //+ &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
-        //);
+    //dbg!(
+    //"Compiling: ".to_string()
+    //+ &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
+    //);
     //}
     //dbg!(pkg_path_abs);
     //dbg!(&source.file_path);
@@ -521,10 +531,10 @@ pub fn compile_file(
     .concat();
 
     //dbg!(
-        //abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
-        //build_path_abs.to_string(),
-        //&source.deps,
-        //&to_mjs_args
+    //abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+    //build_path_abs.to_string(),
+    //&source.deps,
+    //&to_mjs_args
     //);
 
     let to_mjs = Command::new(

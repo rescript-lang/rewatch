@@ -173,12 +173,15 @@ pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String
         PackageSource { type_, .. } => (false, type_),
     };
 
-    match structure_hashmap::read_folders(dir, recurse) {
-        Ok(files) => map.extend(files),
-        Err(_e) if type_ == &Some("dev".to_string()) => {
-            println!("Could not read folder: {dir}... Probably ok as type is dev")
+    // don't include dev sources for now
+    if type_ != &Some("dev".to_string()) {
+        match structure_hashmap::read_folders(dir, recurse) {
+            Ok(files) => map.extend(files),
+            Err(_e) if type_ == &Some("dev".to_string()) => {
+                println!("Could not read folder: {dir}... Probably ok as type is dev")
+            }
+            Err(_e) => println!("Could not read folder: {dir}..."),
         }
-        Err(_e) => println!("Could not read folder: {dir}..."),
     }
 
     map
