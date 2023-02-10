@@ -5,8 +5,9 @@ pub mod package_tree;
 pub mod structure_hashmap;
 pub mod watcher;
 use ahash::AHashSet;
-use helpers::*;
 use rayon::prelude::*;
+
+fn clean() {}
 
 fn main() {
     let project_root = helpers::get_abs_path("walnut_monorepo");
@@ -14,22 +15,22 @@ fn main() {
     let packages = package_tree::make(&project_root);
     let rescript_version = build::get_version(&project_root);
 
-    println!("PARSE___");
     let modules =
         build::parse_and_get_dependencies(rescript_version, &project_root, packages.to_owned());
 
     println!("FINISH CONVERSION TO AST");
 
-    let all_modules = modules
-        .keys()
-        .map(|key| key.to_owned())
-        .collect::<AHashSet<String>>();
+    // let all_modules = modules
+    //     .keys()
+    //     .map(|key| key.to_owned())
+    //     .collect::<AHashSet<String>>();
 
     let mut compiled_modules = AHashSet::<String>::new();
     loop {
         dbg!("COMPILE PASS");
         let mut compiled_count = 0;
         modules
+            // .iter()
             .par_iter()
             .map(|(module_name, module)| {
                 if module.deps.is_subset(&compiled_modules)
