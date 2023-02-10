@@ -7,9 +7,20 @@ pub mod watcher;
 use ahash::AHashSet;
 use rayon::prelude::*;
 
-fn clean() {}
+fn clean() {
+    let project_root = helpers::get_abs_path("walnut_monorepo");
+    let packages = package_tree::make(&project_root);
 
-fn main() {
+    packages.iter().for_each(|(_, package)| {
+        println!("Cleaning {}...", package.name);
+        let path = std::path::Path::new(&package.package_dir)
+            .join("lib")
+            .join("bs");
+        let _ = std::fs::remove_dir_all(path);
+    })
+}
+
+fn build() {
     let project_root = helpers::get_abs_path("walnut_monorepo");
     let packages = package_tree::make(&project_root);
     let rescript_version = build::get_version(&project_root);
@@ -86,5 +97,14 @@ fn main() {
             dbg!("No incremental compile -- breaking");
             break;
         };
+    }
+}
+
+fn main() {
+    let command = std::env::args().nth(1).unwrap_or("build".to_string());
+    match command.as_str() {
+        "clean" => clean(),
+        "build" => build(),
+        _ => println!("Not a valid build command"),
     }
 }
