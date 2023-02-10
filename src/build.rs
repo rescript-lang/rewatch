@@ -106,8 +106,8 @@ fn generate_ast(
     ]
     .concat();
 
-    dbg!("ARgs FLAGS:");
-    dbg!(res_to_ast_args.clone());
+    //dbg!("ARgs FLAGS:");
+    //dbg!(res_to_ast_args.clone());
     /* Create .ast */
     let res_to_ast =
         Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
@@ -294,8 +294,8 @@ pub fn parse_and_get_dependencies(
                         .and_modify(|module| {
                             if module.file_path.len() > 0 {
                                 dbg!("Multiple files for module: ".to_string() + &module_name);
-                                dbg!(&module.file_path);
-                                dbg!(&file);
+                                //dbg!(&module.file_path);
+                                //dbg!(&file);
 
                                 panic!("ERROR");
                             }
@@ -446,28 +446,28 @@ pub fn compile_file(
         })
         .collect::<Vec<Vec<String>>>();
 
-    if is_interface {
-        dbg!(
-            "Compiling: ".to_string()
-                + &file_path_to_module_name(
-                    &source.interface_file_path.as_ref().unwrap(),
-                    source.namespace.to_owned()
-                )
-        );
-    } else {
-        dbg!(
-            "Compiling: ".to_string()
-                + &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
-        );
-    }
-    dbg!(pkg_path_abs);
-    dbg!(&source.file_path);
+    //if is_interface {
+        //dbg!(
+            //"Compiling: ".to_string()
+                //+ &file_path_to_module_name(
+                    //&source.interface_file_path.as_ref().unwrap(),
+                    //source.namespace.to_owned()
+                //)
+        //);
+    //} else {
+        //dbg!(
+            //"Compiling: ".to_string()
+                //+ &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
+        //);
+    //}
+    //dbg!(pkg_path_abs);
+    //dbg!(&source.file_path);
     let namespace_args = match source.namespace.to_owned() {
         Some(namespace) => vec!["-bs-ns".to_string(), namespace],
         None => vec![],
     };
-    dbg!("NAMESPACE!");
-    dbg!(source.namespace.to_owned());
+    //dbg!("NAMESPACE!");
+    //dbg!(source.namespace.to_owned());
 
     let read_cmi_args = match source.asti_path {
         Some(_) => {
@@ -483,9 +483,9 @@ pub fn compile_file(
     let implementation_args = if is_interface {
         vec![]
     } else {
-        dbg!("INFO");
-        dbg!(&source.file_path);
-        dbg!(&pkg_path_abs);
+        //dbg!("INFO");
+        //dbg!(&source.file_path);
+        //dbg!(&pkg_path_abs);
 
         vec![
             "-bs-package-name".to_string(),
@@ -521,12 +521,12 @@ pub fn compile_file(
     ]
     .concat();
 
-    dbg!(
-        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
-        build_path_abs.to_string(),
-        &source.deps,
-        &to_mjs_args
-    );
+    //dbg!(
+        //abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+        //build_path_abs.to_string(),
+        //&source.deps,
+        //&to_mjs_args
+    //);
 
     let to_mjs = Command::new(
         abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
