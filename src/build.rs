@@ -493,14 +493,13 @@ pub fn compile_file(
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:.mjs",
-                "./".to_string()
-                    + Path::new(&source.file_path)
-                        .strip_prefix(pkg_path_abs)
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .to_str()
-                        .unwrap(),
+                Path::new(&source.file_path)
+                    .strip_prefix(pkg_path_abs)
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
             ),
         ]
     };
