@@ -12,6 +12,8 @@ fn main() {
 
     let packages = package_tree::make(&project_root);
     let rescript_version = build::get_version(&project_root);
+
+    println!("PARSE___");
     let modules =
         build::parse_and_get_dependencies(rescript_version, &project_root, packages.to_owned());
 
@@ -31,7 +33,7 @@ fn main() {
                 compiled_count += 1;
                 match module.source_type.to_owned() {
                     build::SourceType::MlMap => {
-                        build::compile_mlmap(&module.package, &module_name, &project_root);
+                        // build::compile_mlmap(&module.package, &module_name, &project_root);
                         let _ = compiled_modules.insert(module_name.to_owned());
                     }
                     build::SourceType::SourceFile => {
