@@ -17,6 +17,7 @@ pub struct Package {
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
     pub namespace: Option<String>,
     pub modules: Option<AHashSet<String>>,
+    pub package_dir: String,
 }
 
 impl PartialEq for Package {
@@ -115,8 +116,6 @@ fn build_package<'a>(
      * have this deduplication. From that point on, we can add the source files for every single
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
     map.insert(package_dir.to_owned(), {
-        dbg!("Create package ".to_string() + &bsconfig.name);
-        dbg!(&package_dir);
         let source_folders = match bsconfig.sources.to_owned() {
             bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
             bsconfig::OneOrMore::Multiple(sources) => {
@@ -150,6 +149,7 @@ fn build_package<'a>(
                 },
             },
             modules: None,
+            package_dir: package_dir.to_string(),
         }
     });
 
