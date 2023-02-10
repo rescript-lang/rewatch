@@ -2,7 +2,7 @@ use crate::bsconfig;
 use crate::helpers;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
-use log::{error, info, debug, warn};
+use log::{debug, error};
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
