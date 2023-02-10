@@ -456,22 +456,21 @@ pub fn compile_file(
         .map(|x| vec!["-I".to_string(), get_build_path(root_path, &x)])
         .collect::<Vec<Vec<String>>>();
 
-    //if is_interface {
-    //dbg!(
-    //"Compiling: ".to_string()
-    //+ &file_path_to_module_name(
-    //&source.interface_file_path.as_ref().unwrap(),
-    //source.namespace.to_owned()
-    //)
-    //);
-    //} else {
-    //dbg!(
-    //"Compiling: ".to_string()
-    //+ &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
-    //);
-    //}
-    //dbg!(pkg_path_abs);
-    //dbg!(&source.file_path);
+    // if is_interface {
+    //     dbg!(
+    //         "Compiling: ".to_string()
+    //             + &file_path_to_module_name(
+    //                 &source.interface_file_path.as_ref().unwrap(),
+    //                 source.namespace.to_owned()
+    //             )
+    //     );
+    // } else {
+    //     dbg!(
+    //         "Compiling: ".to_string()
+    //             + &file_path_to_module_name(&source.file_path, source.namespace.to_owned())
+    //     );
+    // }
+    // dbg!(&source.file_path);
     let namespace_args = match source.namespace.to_owned() {
         Some(namespace) => vec!["-bs-ns".to_string(), namespace],
         None => vec![],
@@ -520,7 +519,11 @@ pub fn compile_file(
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
         bsc_flags,
-        vec!["-warn-error".to_string(), "A".to_string()],
+        // vec!["-warn-error".to_string(), "A".to_string()],
+        // ^^ this one fails for bisect-ppx
+        // this is the default
+        // we should probably parse the right ones from the package config
+        vec!["-w".to_string(), "a".to_string()],
         implementation_args,
         // vec![
         //     "-I".to_string(),
@@ -530,12 +533,12 @@ pub fn compile_file(
     ]
     .concat();
 
-    //dbg!(
-    //abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
-    //build_path_abs.to_string(),
-    //&source.deps,
-    //&to_mjs_args
-    //);
+    // dbg!(
+    //     abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
+    //     build_path_abs.to_string(),
+    //     &source.deps,
+    //     &to_mjs_args
+    // );
 
     let to_mjs = Command::new(
         abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
@@ -546,9 +549,12 @@ pub fn compile_file(
 
     match to_mjs {
         Ok(x) => {
-            println!("STDOUT: {}", std::str::from_utf8(&x.stdout).expect(""));
-            println!("STDERR: {}", std::str::from_utf8(&x.stderr).expect(""));
+            if !x.status.success() {
+                println!("{}", std::str::from_utf8(&x.stderr).expect(""));
+            }
         }
-        Err(e) => println!("ERROR, {}, {:?}", e, ast_path),
+        Err(e) => {
+            println!("ERROR, {}, {:?}", e, ast_path);
+        }
     }
 }
