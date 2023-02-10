@@ -11,7 +11,6 @@ fn clean() {}
 
 fn main() {
     let project_root = helpers::get_abs_path("walnut_monorepo");
-
     let packages = package_tree::make(&project_root);
     let rescript_version = build::get_version(&project_root);
 
