@@ -1,6 +1,7 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::helpers;
+use crate::helpers::get_package_path;
 use crate::structure_hashmap;
 use ahash::{AHashMap, AHashSet};
 use convert_case::{Case, Casing};
@@ -11,7 +12,6 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
-    pub parent: Option<String>,
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
     pub source_files: Option<AHashMap<String, fs::Metadata>>,
@@ -67,7 +67,8 @@ fn get_source_dirs(
     if !full_recursive {
         subdirs
             .unwrap_or(vec![])
-            .par_iter()
+            // I don't think we do any io here so par_iter is probably slower than iter
+            .iter()
             .map(|subdir| get_source_dirs(&full_path, subdir.to_owned()))
             .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
             .into_iter()
@@ -77,52 +78,64 @@ fn get_source_dirs(
     source_folders
 }
 
+// fn add_bsconfig_package(
+//     map: &'a mut AHashMap<String, Package>,
+//     bsconfig: bsconfig::T,
+// ) -> (&'a mut AHashMap<String, Package>, Vec(String)) {
+// }
+
+fn get_package_dir(package_name: &str, is_root: bool, project_root: &str) -> String {
+    if is_root {
+        project_root.to_owned()
+    } else {
+        get_package_path(project_root, package_name)
+    }
+}
+
+fn read_bsconfig(package_dir: &str) -> bsconfig::T {
+    bsconfig::read(package_dir.to_string() + "/bsconfig.json")
+}
+
 /// # Make Package
 /// Given a directory that includes a bsconfig file, read it, and recursively find all other
 /// bsconfig files, and turn those into Packages as well.
-fn build_package(
-    is_root: bool,
+fn build_package<'a>(
+    map: &'a mut AHashMap<String, Package>,
+    bsconfig: bsconfig::T,
+    package_dir: &str,
+    // is_root: bool,
     project_root: &str,
-    package_name: &str,
-    parent: Option<String>,
-) -> AHashMap<String, Package> {
-    let mut children: AHashMap<String, Package> = AHashMap::new();
-
-    let package_dir = if is_root {
-        project_root.to_owned()
-    } else {
-        project_root.to_owned() + "/node_modules/" + package_name
-    };
-
-    let bsconfig = bsconfig::read(package_dir.to_string() + "/bsconfig.json");
-
-    let source_folders = match bsconfig.sources.to_owned() {
-        bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
-        bsconfig::OneOrMore::Multiple(sources) => {
-            let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> = AHashSet::new();
-            sources
-                .par_iter()
-                .map(|source| get_source_dirs(&package_dir, source.to_owned()))
-                .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
-                .into_iter()
-                .for_each(|source| source_folders.extend(source));
-            source_folders
-        }
-    };
+    // package_name: &str,
+) -> &'a mut AHashMap<String, Package> {
+    // let (package_dir, bsconfig) = read_bsconfig(package_name, project_root, is_root);
+    let copied_bsconfig = bsconfig.to_owned();
 
     /* At this point in time we may have started encountering elements multiple times as there is
      * no deduplication on the package level so far. Once we return this flat list of packages, do
      * have this deduplication. From that point on, we can add the source files for every single
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
-    // dbg!("PACKAGE____");
-    // dbg!(&bsconfig.name.to_owned());
-    // dbg!(&bsconfig.namespace);
-    children.insert(
-        package_dir.to_owned(),
+    map.insert(package_dir.to_owned(), {
+        dbg!("Create package ".to_string() + &bsconfig.name);
+        dbg!(&package_dir);
+        let source_folders = match bsconfig.sources.to_owned() {
+            bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
+            bsconfig::OneOrMore::Multiple(sources) => {
+                let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> =
+                    AHashSet::new();
+                sources
+                    // I don't think we do any IO here so probably faster to just do iter
+                    .iter()
+                    .map(|source| get_source_dirs(&package_dir, source.to_owned()))
+                    .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
+                    .into_iter()
+                    .for_each(|source| source_folders.extend(source));
+                source_folders
+            }
+        };
+
         Package {
-            name: bsconfig.name.to_owned(),
-            parent,
-            bsconfig: bsconfig.to_owned(),
+            name: copied_bsconfig.name.to_owned(),
+            bsconfig: copied_bsconfig,
             source_folders,
             source_files: None,
             namespace: match bsconfig.namespace {
@@ -137,20 +150,31 @@ fn build_package(
                 },
             },
             modules: None,
-        },
-    );
+        }
+    });
 
     bsconfig
         .bs_dependencies
         .to_owned()
         .unwrap_or(vec![])
+        .iter()
+        .filter_map(|package_name| {
+            let package_dir = get_package_dir(package_name, false, project_root);
+            if !map.contains_key(&package_dir) {
+                Some(package_dir)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<String>>()
+        // read all bsconfig files simultanously instead of blocking
         .par_iter()
-        .map(|dep| build_package(false, &project_root, &dep, Some(package_dir.to_string())))
-        .collect::<Vec<AHashMap<String, Package>>>()
-        .into_iter()
-        .for_each(|child| children.extend(child));
-
-    children
+        .map(|package_dir| (package_dir.to_owned(), read_bsconfig(package_dir)))
+        .collect::<Vec<(String, bsconfig::T)>>()
+        .iter()
+        .fold(map, |map, (package_dir, bsconfig)| {
+            build_package(map, bsconfig.to_owned(), &package_dir, &project_root)
+        })
 }
 
 /// `get_source_files` is essentially a wrapper around `structure_hashmap::read_structure`, which read a
@@ -234,7 +258,10 @@ pub fn make(folder: &str) -> AHashMap<String, Package> {
     /* The build_package get's called recursively. By using extend, we deduplicate all the packages
      * */
     let mut map: AHashMap<String, Package> = AHashMap::new();
-    map.extend(build_package(true, folder, "", None));
+
+    let package_dir = get_package_dir("", true, folder);
+    let bsconfig = read_bsconfig(&package_dir);
+    build_package(&mut map, bsconfig, &package_dir, folder);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     extend_with_children(map)
