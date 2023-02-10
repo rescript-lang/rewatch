@@ -31,7 +31,7 @@ pub fn get_package_path(root: &str, package_name: &str) -> String {
 }
 
 pub fn get_build_path(root: &str, package_name: &str) -> String {
-    format!("{}/node_modules/{}/_build", root, package_name)
+    format!("{}/node_modules/{}/lib/ocaml", root, package_name)
 }
 
 pub fn get_path(root: &str, package_name: &str, file: &str) -> String {
