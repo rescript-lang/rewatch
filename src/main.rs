@@ -7,7 +7,9 @@ pub mod structure_hashmap;
 pub mod watcher;
 use crate::grouplike::*;
 use ahash::AHashSet;
-use log::{error, info, trace, warn};
+use console::{style, Emoji};
+use indicatif::ProgressBar;
+use log::{error, info};
 use rayon::prelude::*;
 
 fn clean() {
@@ -23,17 +25,42 @@ fn clean() {
     })
 }
 
+static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
+static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
+static NUMBERS: Emoji<'_, '_> = Emoji("🔢 ", "");
+static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
+static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
+
 fn build() {
     env_logger::init();
     let project_root = helpers::get_abs_path("walnut_monorepo");
-    let packages = package_tree::make(&project_root);
-    info!("Getting Rescript Version");
+
+    println!(
+        "{} {} Getting Version Number",
+        style("[1/5]").bold().dim(),
+        NUMBERS
+    );
     let rescript_version = build::get_version(&project_root);
 
-    info!("Parsing Packages");
+    println!(
+        "{} {} Building Package Tree...",
+        style("[2/5]").bold().dim(),
+        TREE
+    );
+    let packages = package_tree::make(&project_root);
+
+    println!(
+        "{} {} Finding Source Files...",
+        style("[3/5]").bold().dim(),
+        LOOKING_GLASS
+    );
     let (all_modules, modules) = build::parse(&project_root, packages.to_owned());
 
-    info!("Generating ASTs");
+    println!(
+        "{} {} Generating AST's...",
+        style("[4/5]").bold().dim(),
+        CODE
+    );
     let modules = build::generate_asts(
         rescript_version.to_string(),
         &project_root,
@@ -46,7 +73,9 @@ fn build() {
     //     .map(|key| key.to_owned())
     //     .collect::<AHashSet<String>>();
 
-    info!("Start Compiling");
+    println!("{} {} Compiling...", style("[5/5]").bold().dim(), SWORDS);
+    let pb = ProgressBar::new(modules.len().try_into().unwrap());
+
     let mut compiled_modules = AHashSet::<String>::new();
 
     let mut loop_count = 0;
@@ -107,6 +136,7 @@ fn build() {
             .iter()
             .for_each(|(module_name, stderr)| {
                 module_name.iter().for_each(|name| {
+                    pb.inc(1);
                     files_current_loop_count += 1;
                     compiled_modules.insert(name.to_string());
                 });
@@ -117,6 +147,17 @@ fn build() {
             });
 
         files_total_count += files_current_loop_count;
+    }
+
+    pb.finish_with_message("Finished Compiling...");
+}
+
+fn main() {
+    let command = std::env::args().nth(1).unwrap_or("build".to_string());
+    match command.as_str() {
+        "clean" => clean(),
+        "build" => build(),
+        _ => println!("Not a valid build command"),
     }
 }
 
