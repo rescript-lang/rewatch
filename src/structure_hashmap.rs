@@ -31,13 +31,17 @@ pub fn read_folders(
                 Ok(s) => map.extend(s),
                 Err(e) => println!("Error reading directory: {}", e),
             }
-        } else if path_ext == Some("res") || path_ext == Some("ml") || path_ext == Some("re") {
-            match abs_path {
-                Ok((ref path, _)) => {
-                    map.insert(path.to_owned() + "/" + &name, metadata);
+        }
+        match path_ext {
+            Some("res") | Some("ml") | Some("re") | Some("resi") | Some("rei") | Some("mli") => {
+                match abs_path {
+                    Ok((ref path, _)) => {
+                        map.insert(path.to_owned() + "/" + &name, metadata);
+                    }
+                    Err(ref e) => println!("Error reading directory: {}", e),
                 }
-                Err(ref e) => println!("Error reading directory: {}", e),
             }
+            _ => (),
         }
     }
 

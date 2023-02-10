@@ -31,12 +31,15 @@ fn main() {
                 compiled_count += 1;
                 match module.source_type.to_owned() {
                     build::SourceType::MlMap => {
-                        // build::compile_mlmap(&module.package, module, &project_root)
+                        build::compile_mlmap(&module.package, &module_name, &project_root);
+                        let _ = compiled_modules.insert(module_name.to_owned());
                     }
                     build::SourceType::SourceFile => {
                         // compile interface first
+                        dbg!("Compiling ".to_string() + &module_name);
                         match module.asti_path.to_owned() {
                             Some(asti_path) => {
+                                dbg!("HAS INTERFACE");
                                 build::compile_file(
                                     &get_package_path(&project_root, &module.package.name),
                                     &get_node_modules_path(&project_root),
@@ -45,7 +48,10 @@ fn main() {
                                     true,
                                 );
                             }
-                            _ => (),
+                            _ => {
+                                dbg!("NO INTERFACE");
+                                ();
+                            }
                         }
 
                         build::compile_file(
