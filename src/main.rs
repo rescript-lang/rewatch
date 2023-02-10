@@ -9,7 +9,8 @@ use crate::grouplike::*;
 use ahash::AHashSet;
 use console::{style, Emoji};
 use indicatif::ProgressBar;
-use log::{error, info};
+use log::Level::Info;
+use log::{error, info, log_enabled};
 use rayon::prelude::*;
 
 fn clean() {
@@ -136,7 +137,9 @@ fn build() {
             .iter()
             .for_each(|(module_name, stderr)| {
                 module_name.iter().for_each(|name| {
-                    pb.inc(1);
+                    if !(log_enabled!(Info)) {
+                        pb.inc(1);
+                    }
                     files_current_loop_count += 1;
                     compiled_modules.insert(name.to_string());
                 });
