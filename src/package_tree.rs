@@ -114,6 +114,9 @@ fn build_package(
      * no deduplication on the package level so far. Once we return this flat list of packages, do
      * have this deduplication. From that point on, we can add the source files for every single
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
+    // dbg!("PACKAGE____");
+    // dbg!(&bsconfig.name.to_owned());
+    // dbg!(&bsconfig.namespace);
     children.insert(
         package_dir.to_owned(),
         Package {
@@ -126,11 +129,12 @@ fn build_package(
                 Some(bsconfig::Namespace::Bool(true)) => {
                     Some(namespace_from_package_name(&bsconfig.name))
                 }
+                Some(bsconfig::Namespace::Bool(false)) => None,
+                None => None,
                 Some(bsconfig::Namespace::String(str)) => match str.as_str() {
                     "true" => Some(namespace_from_package_name(&bsconfig.name)),
                     namespace => Some(namespace.to_string()),
                 },
-                _ => None,
             },
             modules: None,
         },

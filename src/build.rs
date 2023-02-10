@@ -68,7 +68,7 @@ fn generate_ast(
             .to_str()
             .unwrap()
         {
-            "resi" => ".iast",
+            "resi" | "rei" | "mli" => ".iast",
             _ => ".ast",
         };
     let abs_node_modules_path = get_node_modules_path(root_path);
@@ -106,8 +106,8 @@ fn generate_ast(
     ]
     .concat();
 
-    // dbg!("ARgs FLAGS:");
-    // dbg!(res_to_ast_args.clone());
+    dbg!("ARgs FLAGS:");
+    dbg!(res_to_ast_args.clone());
     /* Create .ast */
     let res_to_ast =
         Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
@@ -197,6 +197,13 @@ fn get_dep_modules(
         .collect::<AHashSet<String>>();
 }
 
+fn create_build_path(build_path: &str) {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .create(PathBuf::from(build_path.to_string()))
+        .unwrap();
+}
+
 fn gen_mlmap(
     package: &package_tree::Package,
     namespace: &str,
@@ -206,12 +213,7 @@ fn gen_mlmap(
     let build_path_abs = get_build_path(root_path, &package.name);
     let digest = "a".repeat(16) + "\n" + &modules.join("\n");
     let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
-    fs::DirBuilder::new()
-        .recursive(true)
-        .create(PathBuf::from(build_path_abs.to_string()))
-        .unwrap();
     fs::write(&file, digest).expect("Unable to write mlmap");
-
     file.to_string()
 }
 
@@ -228,6 +230,8 @@ pub fn parse_and_get_dependencies(
             Some(package_modules) => all_modules.extend(package_modules),
             None => (),
         }
+        let build_path_abs = get_build_path(project_root, &package.bsconfig.name);
+        create_build_path(&build_path_abs);
 
         package.namespace.iter().for_each(|namespace| {
             // generate the mlmap "AST" file for modules that have a namespace configured
