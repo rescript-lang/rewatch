@@ -36,42 +36,35 @@ fn main() {
                     && !compiled_modules.contains(module_name)
                 {
                     match module.source_type.to_owned() {
-                        build::SourceType::MlMap => {
-                            // build::compile_mlmap(&module.package, &module_name, &project_root);
-                            Some(module_name.to_owned())
-                        }
+                        build::SourceType::MlMap => Some(module_name.to_owned()),
                         build::SourceType::SourceFile => {
                             // compile interface first
-                            dbg!("Compiling ".to_string() + &module_name);
                             match module.asti_path.to_owned() {
                                 Some(asti_path) => {
-                                    dbg!("HAS INTERFACE");
                                     build::compile_file(
-                                        &get_package_path(&project_root, &module.package.name),
-                                        &get_node_modules_path(&project_root),
+                                        &module.package.name,
                                         &asti_path,
                                         module,
+                                        &project_root,
                                         true,
                                     );
                                 }
                                 _ => {
-                                    dbg!("NO INTERFACE");
                                     ();
                                 }
                             }
 
                             build::compile_file(
-                                &get_package_path(&project_root, &module.package.name),
-                                &get_node_modules_path(&project_root),
+                                &module.package.name,
                                 &module.ast_path.to_owned().unwrap(),
                                 module,
+                                &project_root,
                                 false,
                             );
                             Some(module_name.to_owned())
                         }
                     }
                 } else if !compiled_modules.contains(module_name) {
-                    dbg!(format!("Still uncompiled deps for: {}", module_name));
                     None
                 } else {
                     None
