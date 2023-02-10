@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -78,4 +79,20 @@ pub fn file_path_to_module_name(path: &str, namespace: Option<String>) -> String
         Some(namespace) => module_name.to_string() + "-" + &namespace,
         None => module_name,
     }
+}
+
+pub fn contains_ascii_characters(str: &str) -> bool {
+    for chr in str.chars() {
+        if chr.is_ascii_alphanumeric() {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn create_build_path(build_path: &str) {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .create(PathBuf::from(build_path.to_string()))
+        .unwrap();
 }
