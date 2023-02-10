@@ -13,6 +13,8 @@ ahash = "0.8.2"
 convert_case = "0.6.0"
 linked_hash_set = "0.1.4"
 rayon = "1.6.1"
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
+env_logger = "0.10.0"
 
 [profile.release]
 codegen-units = 1
