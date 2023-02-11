@@ -9,9 +9,13 @@ use crate::grouplike::*;
 use ahash::AHashSet;
 use console::{style, Emoji};
 use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use log::Level::Info;
 use log::{error, info, log_enabled};
 use rayon::prelude::*;
+use std::io::stdout;
+use std::io::Write;
+use std::time::{Duration, Instant};
 
 fn clean() {
     let project_root = helpers::get_abs_path("walnut_monorepo");
@@ -28,60 +32,91 @@ fn clean() {
 
 static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
 static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
-static NUMBERS: Emoji<'_, '_> = Emoji("🔢 ", "");
 static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
 static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
+static CHECKMARK: Emoji<'_, '_> = Emoji("️✅  ", "");
+static CROSS: Emoji<'_, '_> = Emoji("️🛑  ", "");
+static LINE_CLEAR: &str = "\x1b[2K";
 
 fn build() {
+    let timing_total = Instant::now();
     env_logger::init();
     let project_root = helpers::get_abs_path("walnut_monorepo");
-
-    println!(
-        "{} {} Getting Version Number",
-        style("[1/5]").bold().dim(),
-        NUMBERS
-    );
     let rescript_version = build::get_version(&project_root);
 
-    println!(
-        "{} {} Building Package Tree...",
-        style("[2/5]").bold().dim(),
+    print!(
+        "{} {} Building package tree...",
+        style("[1/4]").bold().dim(),
         TREE
     );
+    let _ = stdout().flush();
+    let timing_package_tree = Instant::now();
     let packages = package_tree::make(&project_root);
-
+    let timing_package_tree_elapsed = timing_package_tree.elapsed();
     println!(
-        "{} {} Finding Source Files...",
-        style("[3/5]").bold().dim(),
+        "{}\r{} {}Built package tree in {:.2}s",
+        LINE_CLEAR,
+        style("[1/4]").bold().dim(),
+        CHECKMARK,
+        timing_package_tree_elapsed.as_secs_f64()
+    );
+
+    let timing_source_files = Instant::now();
+    print!(
+        "{} {} Finding source files...",
+        style("[2/4]").bold().dim(),
         LOOKING_GLASS
     );
+    let _ = stdout().flush();
     let (all_modules, modules) = build::parse(&project_root, packages.to_owned());
-
+    let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
-        "{} {} Generating AST's...",
-        style("[4/5]").bold().dim(),
+        "{}\r{} {}Found source files in {:.2}s",
+        LINE_CLEAR,
+        style("[2/4]").bold().dim(),
+        CHECKMARK,
+        timing_source_files_elapsed.as_secs_f64()
+    );
+    print!(
+        "{} {} Parsing source files...",
+        style("[3/4]").bold().dim(),
         CODE
     );
+    let _ = stdout().flush();
+
+    let timing_ast = Instant::now();
     let modules = build::generate_asts(
         rescript_version.to_string(),
         &project_root,
         modules,
         all_modules,
     );
+    let timing_ast_elapsed = timing_ast.elapsed();
+    println!(
+        "{}\r{} {}Parsed source files in {:.2}s",
+        LINE_CLEAR,
+        style("[3/4]").bold().dim(),
+        CHECKMARK,
+        timing_ast_elapsed.as_secs_f64()
+    );
 
-    // let all_modules = modules
-    //     .keys()
-    //     .map(|key| key.to_owned())
-    //     .collect::<AHashSet<String>>();
-
-    println!("{} {} Compiling...", style("[5/5]").bold().dim(), SWORDS);
     let pb = ProgressBar::new(modules.len().try_into().unwrap());
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
+            style("[4/4]").bold().dim(),
+            SWORDS
+        ))
+        .unwrap(),
+    );
+    let start_compiling = Instant::now();
 
     let mut compiled_modules = AHashSet::<String>::new();
 
     let mut loop_count = 0;
     let mut files_total_count = 0;
     let mut files_current_loop_count = -1;
+    let mut compile_errors = "".to_string();
 
     while files_current_loop_count != 0 {
         files_current_loop_count = 0;
@@ -93,6 +128,7 @@ fn build() {
             modules.len(),
             loop_count,
         );
+
         modules
             .par_iter()
             .map(|(module_name, module)| {
@@ -145,23 +181,45 @@ fn build() {
                 });
 
                 stderr.iter().for_each(|err| {
-                    error!("Some error were generated compiling this round: \n {}", err);
+                    compile_errors.push_str(err);
+                    // error!("Some error were generated compiling this round: \n {}", err);
                 })
             });
 
+        if files_current_loop_count == 0 {
+            // we probably want to find the cycle(s), and give a helpful error message here
+            compile_errors.push_str("Can't continue... Dependency cycle\n")
+        }
+
+        if compile_errors.len() > 0 {
+            break;
+        };
+
         files_total_count += files_current_loop_count;
     }
+    let compile_duration = start_compiling.elapsed();
 
-    pb.finish_with_message("Finished Compiling...");
-}
-
-fn main() {
-    let command = std::env::args().nth(1).unwrap_or("build".to_string());
-    match command.as_str() {
-        "clean" => clean(),
-        "build" => build(),
-        _ => println!("Not a valid build command"),
+    pb.finish();
+    if compile_errors.len() > 0 {
+        println!(
+            "{}\r{} {}Compiled in {:.2}s",
+            LINE_CLEAR,
+            style("[4/4]").bold().dim(),
+            CROSS,
+            compile_duration.as_secs_f64()
+        );
+        println!("{}", &compile_errors);
+        std::process::exit(1);
     }
+    println!(
+        "{}\r{} {}Compiled in {:.2}s",
+        LINE_CLEAR,
+        style("[4/4]").bold().dim(),
+        CHECKMARK,
+        compile_duration.as_secs_f64()
+    );
+    let timing_total_elapsed = timing_total.elapsed();
+    println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
 }
 
 fn main() {
