@@ -1,6 +1,7 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::helpers;
+use crate::helpers::get_build_path;
 use crate::helpers::get_package_path;
 use crate::structure_hashmap;
 use ahash::{AHashMap, AHashSet};
@@ -8,6 +9,7 @@ use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Package {
@@ -18,6 +20,7 @@ pub struct Package {
     pub namespace: Option<String>,
     pub modules: Option<AHashSet<String>>,
     pub package_dir: String,
+    pub dirs: Option<AHashSet<PathBuf>>,
 }
 
 impl PartialEq for Package {
@@ -150,6 +153,7 @@ fn build_package<'a>(
             },
             modules: None,
             package_dir: package_dir.to_string(),
+            dirs: None,
         }
     });
 
@@ -243,6 +247,16 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
             None => (),
         }
         value.modules = Some(modules);
+        let mut dirs = AHashSet::new();
+        map.keys().for_each(|path| {
+            let dir = std::path::Path::new(&path)
+                .strip_prefix(&value.package_dir)
+                .unwrap()
+                .parent()
+                .unwrap();
+            dirs.insert(dir.to_owned());
+        });
+        value.dirs = Some(dirs);
         value.source_files = Some(map);
     }
     build
@@ -254,15 +268,27 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
 /// 2. Take the (by then deduplicated) packages, and find all the '.re', '.res', '.ml' and
 ///    interface files.
 /// The two step process is there to reduce IO overhead
-pub fn make(folder: &str) -> AHashMap<String, Package> {
+pub fn make(root_folder: &str) -> AHashMap<String, Package> {
     /* The build_package get's called recursively. By using extend, we deduplicate all the packages
      * */
     let mut map: AHashMap<String, Package> = AHashMap::new();
 
-    let package_dir = get_package_dir("", true, folder);
+    let package_dir = get_package_dir("", true, root_folder);
     let bsconfig = read_bsconfig(&package_dir);
-    build_package(&mut map, bsconfig, &package_dir, folder);
+    build_package(&mut map, bsconfig, &package_dir, root_folder);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
-    extend_with_children(map)
+    let result = extend_with_children(map);
+    result
+        .values()
+        .into_iter()
+        .for_each(|package| match &package.dirs {
+            Some(dirs) => dirs.iter().for_each(|dir| {
+                let _ = std::fs::create_dir_all(
+                    std::path::Path::new(&get_build_path(root_folder, &package.name)).join(dir),
+                );
+            }),
+            None => (),
+        });
+    result
 }
