@@ -11,11 +11,11 @@ use console::{style, Emoji};
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use log::Level::Info;
-use log::{error, info, log_enabled};
+use log::{info, log_enabled};
 use rayon::prelude::*;
 use std::io::stdout;
 use std::io::Write;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 fn clean() {
     let project_root = helpers::get_abs_path("walnut_monorepo");
