@@ -32,6 +32,10 @@ pub fn get_package_path(root: &str, package_name: &str) -> String {
 }
 
 pub fn get_build_path(root: &str, package_name: &str) -> String {
+    format!("{}/node_modules/{}/lib/ocaml", root, package_name)
+}
+
+pub fn get_bs_build_path(root: &str, package_name: &str) -> String {
     format!("{}/node_modules/{}/lib/bs", root, package_name)
 }
 

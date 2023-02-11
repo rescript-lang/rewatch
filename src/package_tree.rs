@@ -1,8 +1,6 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::helpers;
-use crate::helpers::get_build_path;
-use crate::helpers::get_package_path;
 use crate::structure_hashmap;
 use ahash::{AHashMap, AHashSet};
 use convert_case::{Case, Casing};
@@ -92,7 +90,7 @@ fn get_package_dir(package_name: &str, is_root: bool, project_root: &str) -> Str
     if is_root {
         project_root.to_owned()
     } else {
-        get_package_path(project_root, package_name)
+        helpers::get_package_path(project_root, package_name)
     }
 }
 
@@ -285,7 +283,8 @@ pub fn make(root_folder: &str) -> AHashMap<String, Package> {
         .for_each(|package| match &package.dirs {
             Some(dirs) => dirs.iter().for_each(|dir| {
                 let _ = std::fs::create_dir_all(
-                    std::path::Path::new(&get_build_path(root_folder, &package.name)).join(dir),
+                    std::path::Path::new(&helpers::get_bs_build_path(root_folder, &package.name))
+                        .join(dir),
                 );
             }),
             None => (),
