@@ -115,10 +115,11 @@ fn build() {
 
     let mut loop_count = 0;
     let mut files_total_count = 0;
-    let mut files_current_loop_count = -1;
+    let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
+    let total_modules = modules.len();
 
-    while files_current_loop_count != 0 {
+    loop {
         files_current_loop_count = 0;
         loop_count += 1;
 
@@ -186,16 +187,18 @@ fn build() {
                 })
             });
 
+        files_total_count += files_current_loop_count;
+
+        if files_total_count == total_modules {
+            break;
+        }
         if files_current_loop_count == 0 {
             // we probably want to find the cycle(s), and give a helpful error message here
             compile_errors.push_str("Can't continue... Dependency cycle\n")
         }
-
         if compile_errors.len() > 0 {
             break;
         };
-
-        files_total_count += files_current_loop_count;
     }
     let compile_duration = start_compiling.elapsed();
 
