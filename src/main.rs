@@ -5,7 +5,6 @@ pub mod helpers;
 pub mod package_tree;
 pub mod structure_hashmap;
 pub mod watcher;
-use crate::grouplike::*;
 use ahash::AHashSet;
 use console::{style, Emoji};
 use indicatif::ProgressBar;
@@ -23,6 +22,10 @@ fn clean() {
 
     packages.iter().for_each(|(_, package)| {
         println!("Cleaning {}...", package.name);
+        let path = std::path::Path::new(&package.package_dir)
+            .join("lib")
+            .join("ocaml");
+        let _ = std::fs::remove_dir_all(path);
         let path = std::path::Path::new(&package.package_dir)
             .join("lib")
             .join("bs");
@@ -133,29 +136,32 @@ fn build() {
         modules
             .par_iter()
             .map(|(module_name, module)| {
-                let mut stderr = None;
+                let mut stderr = "".to_string();
                 if module.deps.is_subset(&compiled_modules)
                     && !compiled_modules.contains(module_name)
                 {
                     match module.source_type.to_owned() {
-                        build::SourceType::MlMap => (Some(module_name.to_owned()), None),
+                        build::SourceType::MlMap => (Some(module_name.to_owned()), stderr),
                         build::SourceType::SourceFile => {
                             // compile interface first
                             match module.asti_path.to_owned() {
                                 Some(asti_path) => {
-                                    let asti_err = build::compile_file(
+                                    let result = build::compile_file(
                                         &module.package.name,
                                         &asti_path,
                                         module,
                                         &project_root,
                                         true,
                                     );
-                                    stderr = stderr.mappend(asti_err);
+                                    match result {
+                                        Err(err) => stderr.push_str(&err),
+                                        Ok(()) => (),
+                                    }
                                 }
                                 _ => (),
                             }
 
-                            let ast_err = build::compile_file(
+                            let result = build::compile_file(
                                 &module.package.name,
                                 &module.ast_path.to_owned().unwrap(),
                                 module,
@@ -163,14 +169,19 @@ fn build() {
                                 false,
                             );
 
-                            (Some(module_name.to_owned()), stderr.mappend(ast_err))
+                            match result {
+                                Err(err) => stderr.push_str(&err),
+                                Ok(()) => (),
+                            }
+
+                            (Some(module_name.to_owned()), stderr)
                         }
                     }
                 } else {
-                    (None, None)
+                    (None, stderr)
                 }
             })
-            .collect::<Vec<(Option<String>, Option<String>)>>()
+            .collect::<Vec<(Option<String>, String)>>()
             .iter()
             .for_each(|(module_name, stderr)| {
                 module_name.iter().for_each(|name| {
@@ -181,10 +192,8 @@ fn build() {
                     compiled_modules.insert(name.to_string());
                 });
 
-                stderr.iter().for_each(|err| {
-                    compile_errors.push_str(err);
-                    // error!("Some error were generated compiling this round: \n {}", err);
-                })
+                compile_errors.push_str(&stderr);
+                // error!("Some error were generated compiling this round: \n {}", err);
             });
 
         files_total_count += files_current_loop_count;

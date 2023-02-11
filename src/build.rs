@@ -1,5 +1,7 @@
 use crate::bsconfig;
 use crate::helpers;
+use crate::helpers::get_bs_build_path;
+use crate::helpers::get_package_path;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
 use log::{debug, error};
@@ -421,16 +423,16 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
 pub fn compile_file(
     package_name: &str,
     ast_path: &str,
-    source: &Module,
+    module: &Module,
     root_path: &str,
     is_interface: bool,
-) -> Option<String> {
+) -> Result<(), String> {
     let build_path_abs = helpers::get_build_path(root_path, package_name);
     let pkg_path_abs = helpers::get_package_path(root_path, package_name);
     let abs_node_modules_path = helpers::get_node_modules_path(root_path);
-    let bsc_flags = bsconfig::flatten_flags(&source.package.bsconfig.bsc_flags);
+    let bsc_flags = bsconfig::flatten_flags(&module.package.bsconfig.bsc_flags);
 
-    let normal_deps = source
+    let normal_deps = module
         .package
         .bsconfig
         .bs_dependencies
@@ -453,12 +455,12 @@ pub fn compile_file(
         .map(|x| vec!["-I".to_string(), helpers::get_build_path(root_path, &x)])
         .collect::<Vec<Vec<String>>>();
 
-    let namespace_args = match source.namespace.to_owned() {
+    let namespace_args = match module.namespace.to_owned() {
         Some(namespace) => vec!["-bs-ns".to_string(), namespace],
         None => vec![],
     };
 
-    let read_cmi_args = match source.asti_path {
+    let read_cmi_args = match module.asti_path {
         Some(_) => {
             if is_interface {
                 vec![]
@@ -469,27 +471,21 @@ pub fn compile_file(
         _ => vec![],
     };
 
+    let module_name =
+        helpers::file_path_to_module_name(&module.file_path, module.namespace.to_owned());
+
     let implementation_args = if is_interface {
-        debug!(
-            "Compiling interface file: {}",
-            &helpers::file_path_to_module_name(
-                &source.interface_file_path.as_ref().unwrap(),
-                source.namespace.to_owned()
-            )
-        );
+        debug!("Compiling interface file: {}", &module_name);
         vec![]
     } else {
-        debug!(
-            "Compiling file: {}",
-            &helpers::file_path_to_module_name(&source.file_path, source.namespace.to_owned())
-        );
+        debug!("Compiling file: {}", &module_name);
         vec![
             "-bs-package-name".to_string(),
-            source.package.bsconfig.name.to_owned(),
+            module.package.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:.mjs",
-                Path::new(&source.file_path)
+                Path::new(&module.file_path)
                     .strip_prefix(pkg_path_abs)
                     .unwrap()
                     .parent()
@@ -528,8 +524,36 @@ pub fn compile_file(
     .output();
 
     match to_mjs {
-        Ok(x) if !x.status.success() => Some(std::str::from_utf8(&x.stderr).expect("").to_string()),
-        Err(e) => Some(format!("ERROR, {}, {:?}", e, ast_path)),
-        Ok(_) => None,
+        Ok(x) if !x.status.success() => Err(std::str::from_utf8(&x.stderr).expect("").to_string()),
+        Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
+        Ok(_) => {
+            if !is_interface {
+                let dir = std::path::Path::new(&module.file_path)
+                    .strip_prefix(get_package_path(root_path, &module.package.name))
+                    .unwrap()
+                    .parent()
+                    .unwrap();
+
+                let _ = std::fs::copy(
+                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
+                    std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmi"),
+                );
+                let _ = std::fs::copy(
+                    build_path_abs.to_string() + "/" + &module_name + ".cmj",
+                    std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmj"),
+                );
+                let _ = std::fs::copy(
+                    build_path_abs.to_string() + "/" + &module_name + ".cmt",
+                    std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmt"),
+                );
+            }
+            Ok(())
+        }
     }
 }
