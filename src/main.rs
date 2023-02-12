@@ -34,6 +34,7 @@ fn clean() {
 }
 
 static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
+static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
 static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
 static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
 static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
@@ -49,7 +50,7 @@ fn build() {
 
     print!(
         "{} {} Building package tree...",
-        style("[1/4]").bold().dim(),
+        style("[1/5]").bold().dim(),
         TREE
     );
     let _ = stdout().flush();
@@ -59,7 +60,7 @@ fn build() {
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
-        style("[1/4]").bold().dim(),
+        style("[1/5]").bold().dim(),
         CHECKMARK,
         timing_package_tree_elapsed.as_secs_f64()
     );
@@ -67,7 +68,7 @@ fn build() {
     let timing_source_files = Instant::now();
     print!(
         "{} {} Finding source files...",
-        style("[2/4]").bold().dim(),
+        style("[2/5]").bold().dim(),
         LOOKING_GLASS
     );
     let _ = stdout().flush();
@@ -76,13 +77,33 @@ fn build() {
     println!(
         "{}\r{} {}Found source files in {:.2}s",
         LINE_CLEAR,
-        style("[2/4]").bold().dim(),
+        style("[2/5]").bold().dim(),
         CHECKMARK,
         timing_source_files_elapsed.as_secs_f64()
     );
+
+    print!(
+        "{} {} Cleaning up previous build...",
+        style("[3/5]").bold().dim(),
+        SWEEP
+    );
+    let timing_cleanup = Instant::now();
+    let (diff_cleanup, total_cleanup) =
+        build::cleanup_previous_build(&packages, &modules, &project_root);
+    let timing_cleanup_elapsed = timing_cleanup.elapsed();
+    println!(
+        "{}\r{} {}Cleant up {}/{} {:.2}s",
+        LINE_CLEAR,
+        style("[3/5]").bold().dim(),
+        CHECKMARK,
+        diff_cleanup,
+        total_cleanup,
+        timing_cleanup_elapsed.as_secs_f64()
+    );
+
     print!(
         "{} {} Parsing source files...",
-        style("[3/4]").bold().dim(),
+        style("[4/5]").bold().dim(),
         CODE
     );
     let _ = stdout().flush();
@@ -98,7 +119,7 @@ fn build() {
     println!(
         "{}\r{} {}Parsed source files in {:.2}s",
         LINE_CLEAR,
-        style("[3/4]").bold().dim(),
+        style("[4/5]").bold().dim(),
         CHECKMARK,
         timing_ast_elapsed.as_secs_f64()
     );
@@ -107,7 +128,7 @@ fn build() {
     pb.set_style(
         ProgressStyle::with_template(&format!(
             "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
-            style("[4/4]").bold().dim(),
+            style("[5/5]").bold().dim(),
             SWORDS
         ))
         .unwrap(),
@@ -216,7 +237,7 @@ fn build() {
         println!(
             "{}\r{} {}Compiled in {:.2}s",
             LINE_CLEAR,
-            style("[4/4]").bold().dim(),
+            style("[5/5]").bold().dim(),
             CROSS,
             compile_duration.as_secs_f64()
         );
@@ -226,7 +247,7 @@ fn build() {
     println!(
         "{}\r{} {}Compiled in {:.2}s",
         LINE_CLEAR,
-        style("[4/4]").bold().dim(),
+        style("[5/5]").bold().dim(),
         CHECKMARK,
         compile_duration.as_secs_f64()
     );
