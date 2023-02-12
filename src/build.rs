@@ -1,8 +1,11 @@
 use crate::bsconfig;
+use crate::bsconfig::OneOrMore;
 use crate::helpers;
 use crate::helpers::get_bs_build_path;
+use crate::helpers::get_build_path;
 use crate::helpers::get_package_path;
 use crate::package_tree;
+use crate::package_tree::Package;
 use ahash::{AHashMap, AHashSet};
 use log::{debug, error};
 use rayon::prelude::*;
@@ -31,9 +34,200 @@ pub struct Module {
     pub package: package_tree::Package,
 }
 
-// Get the rescript version no. relative to project_root + `/node_modules/rescript/rescript`
+fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
+    if let Ok(lines) = read_lines(ast_file.to_string()) {
+        // we skip the first line with is some null characters
+        // the following lines in the AST are the dependency modules
+        // we stop when we hit a line that starts with a "/", this is the path of the file.
+        // this is the point where the dependencies end and the actual AST starts
+        for line in lines.skip(1) {
+            match line {
+                Ok(line) => {
+                    let line = line.trim().to_string();
+                    if line.starts_with('/') {
+                        return Some(line);
+                    }
+                }
+                Err(_) => (),
+            }
+        }
+    }
+    return None;
+}
+
+fn get_compiler_asset(
+    source_file: &str,
+    package_name: &str,
+    namespace: &Option<String>,
+    root_path: &str,
+    extension: &str,
+) -> String {
+    let namespace = match extension {
+        "ast" | "asti" => &None,
+        _ => namespace,
+    };
+
+    get_build_path(root_path, package_name)
+        + "/"
+        + &helpers::file_path_to_compiler_asset_basename(source_file, namespace)
+        + "."
+        + extension
+}
+
+fn get_bs_compiler_asset(
+    source_file: &str,
+    package_name: &str,
+    namespace: &Option<String>,
+    root_path: &str,
+    extension: &str,
+) -> String {
+    let namespace = match extension {
+        "ast" | "iast" => &None,
+        _ => namespace,
+    };
+    let dir = std::path::Path::new(source_file)
+        .strip_prefix(get_package_path(root_path, &package_name))
+        .unwrap()
+        .parent()
+        .unwrap();
+
+    std::path::Path::new(&get_bs_build_path(root_path, &package_name))
+        .join(dir)
+        .join(helpers::file_path_to_compiler_asset_basename(source_file, namespace) + extension)
+        .to_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn remove_compile_assets(
+    source_file: &str,
+    package_name: &str,
+    namespace: &Option<String>,
+    root_path: &str,
+) {
+    let _ = std::fs::remove_file(helpers::change_extension(source_file, "mjs"));
+    // optimization
+    // only issue cmti if htere is an interfacce file
+    for extension in &["cmj", "cmi", "cmt", "cmti", "ast", "iast"] {
+        let _ = std::fs::remove_file(get_compiler_asset(
+            source_file,
+            package_name,
+            namespace,
+            root_path,
+            extension,
+        ));
+        if ["cmj", "cmi", "cmt", "cmti"].contains(&extension) {
+            let _ = std::fs::remove_file(get_bs_compiler_asset(
+                source_file,
+                package_name,
+                namespace,
+                root_path,
+                extension,
+            ));
+        }
+    }
+}
+
+pub fn cleanup_previous_build(
+    packages: &AHashMap<String, Package>,
+    all_modules: &AHashMap<String, Module>,
+    root_path: &str,
+) -> (usize, usize) {
+    let mut ast_modules: AHashMap<String, (String, String, Option<String>)> = AHashMap::new();
+    let mut ast_rescript_file_locations = AHashSet::new();
+
+    let mut rescript_file_locations = all_modules
+        .values()
+        .filter(|module| module.source_type == SourceType::SourceFile)
+        .map(|module| module.file_path.to_owned())
+        .collect::<AHashSet<String>>();
+
+    rescript_file_locations.extend(
+        all_modules
+            .values()
+            .filter(|module| module.source_type == SourceType::SourceFile)
+            .filter_map(|module| module.interface_file_path.to_owned())
+            .collect::<AHashSet<String>>(),
+    );
+
+    // scan all ast files in all packages
+    for package in packages.values() {
+        let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
+            root_path,
+            &package.name,
+        )))
+        .unwrap();
+
+        for entry in read_dir {
+            match entry {
+                Ok(entry) => {
+                    let path = entry.path();
+                    let extension = path.extension().and_then(|e| e.to_str());
+                    match extension {
+                        Some(ext) => match ext {
+                            "iast" | "ast" => {
+                                let module_name = helpers::file_path_to_module_name(
+                                    path.to_str().unwrap(),
+                                    &package.namespace,
+                                );
+
+                                let ast_file_path = path.to_str().unwrap().to_owned();
+                                let res_file_path = get_res_path_from_ast(&ast_file_path);
+                                match res_file_path {
+                                    Some(res_file_path) => {
+                                        let _ = ast_modules.insert(
+                                            res_file_path.to_owned(),
+                                            (
+                                                module_name,
+                                                package.name.to_owned(),
+                                                package.namespace.to_owned(),
+                                            ),
+                                        );
+                                        let _ = ast_rescript_file_locations.insert(res_file_path);
+                                    }
+                                    None => (),
+                                }
+                            }
+                            _ => (),
+                        },
+                        None => (),
+                    }
+                }
+                Err(_) => (),
+            }
+        }
+    }
+
+    // delete the .mjs file which appear in our previous compile assets
+    // but does not exists anymore
+    // delete the compiler assets for which modules we can't find a rescript file
+    // location of rescript file is in the AST
+    // delete the .mjs file for which we DO have a compiler asset, but don't have a
+    // rescript file anymore (path is found in the .ast file)
+    let diff = ast_rescript_file_locations
+        .difference(&rescript_file_locations)
+        .collect::<Vec<&String>>();
+
+    let diff_len = diff.len();
+
+    diff.par_iter().for_each(|res_file_location| {
+        let _ = std::fs::remove_file(helpers::change_extension(res_file_location, "mjs"));
+        let (_module_name, package_name, package_namespace) = ast_modules
+            .get(&res_file_location.to_string())
+            .expect("Could not find module name for ast file");
+        remove_compile_assets(
+            res_file_location,
+            package_name,
+            package_namespace,
+            root_path,
+        );
+    });
+
+    (diff_len, ast_rescript_file_locations.len())
+}
+
 pub fn get_version(project_root: &str) -> String {
-    let version_cmd = Command::new(project_root.to_owned() + "/node_modules/rescript/rescript")
+    let version_cmd = Command::new(helpers::get_bsc(&project_root))
         .args(["-v"])
         .output()
         .expect("failed to find version");
@@ -41,11 +235,25 @@ pub fn get_version(project_root: &str) -> String {
     std::str::from_utf8(&version_cmd.stdout)
         .expect("Could not read version from rescript")
         .replace("\n", "")
+        .replace("ReScript ", "")
 }
 
-// fn get_ast_path(file_path: &str, root_path: &str, package_name: &str) -> String {
-//     return (get_basename(&file_path.to_string()).to_owned()) + ".ast";
-// }
+fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
+    let filter = "bisect";
+    match ppx_flags {
+        Some(flags) => Some(
+            flags
+                .iter()
+                .filter(|flag| match flag {
+                    bsconfig::OneOrMore::Single(str) => !str.contains(filter),
+                    bsconfig::OneOrMore::Multiple(str) => !str.first().unwrap().contains(filter),
+                })
+                .map(|x| x.to_owned())
+                .collect::<Vec<OneOrMore<String>>>(),
+        ),
+        None => None,
+    }
+}
 
 fn generate_ast(
     package: package_tree::Package,
@@ -70,7 +278,7 @@ fn generate_ast(
 
     let ppx_flags = bsconfig::flatten_ppx_flags(
         &abs_node_modules_path,
-        &package.bsconfig.ppx_flags,
+        &filter_ppx_flags(&package.bsconfig.ppx_flags),
         &package.name,
     );
 
@@ -99,12 +307,11 @@ fn generate_ast(
     .concat();
 
     /* Create .ast */
-    let res_to_ast =
-        Command::new(abs_node_modules_path.to_string() + "/rescript/darwinarm64/bsc.exe")
-            .current_dir(build_path_abs.to_string())
-            .args(res_to_ast_args)
-            .output()
-            .expect("Error converting .res to .ast");
+    let res_to_ast = Command::new(helpers::get_bsc(&root_path))
+        .current_dir(build_path_abs.to_string())
+        .args(res_to_ast_args)
+        .output()
+        .expect("Error converting .res to .ast");
 
     let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("");
     if helpers::contains_ascii_characters(stderr) {
@@ -195,6 +402,9 @@ fn gen_mlmap(
     root_path: &str,
 ) -> String {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    // we don't really need to create a digest, because we track if we need to
+    // recompile in a different way but we need to put it in the file for it to
+    // be readable.
     let digest = "randjbuildsystem".to_owned() + "\n" + &modules.join("\n");
     let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
     fs::write(&file, digest).expect("Unable to write mlmap");
@@ -303,7 +513,7 @@ pub fn parse(
 
             let depending_modules = source_files
                 .iter()
-                .map(|path| helpers::file_path_to_module_name(&path, None))
+                .map(|path| helpers::file_path_to_module_name(&path, &None))
                 .collect::<AHashSet<String>>();
 
             let mlmap = gen_mlmap(
@@ -317,11 +527,11 @@ pub fn parse(
 
             let deps = source_files
                 .iter()
-                .map(|path| helpers::file_path_to_module_name(&path, package.namespace.to_owned()))
+                .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
                 .collect::<AHashSet<String>>();
 
             modules.insert(
-                helpers::file_path_to_module_name(&mlmap.to_owned(), None),
+                helpers::file_path_to_module_name(&mlmap.to_owned(), &None),
                 Module {
                     file_path: mlmap.to_owned(),
                     interface_file_path: None,
@@ -348,8 +558,7 @@ pub fn parse(
                     "res" | "ml" | "re" => true,
                     _ => false,
                 };
-                let module_name =
-                    helpers::file_path_to_module_name(&file.to_owned(), namespace.to_owned());
+                let module_name = helpers::file_path_to_module_name(&file.to_owned(), &namespace);
 
                 if is_implementation {
                     modules
@@ -397,9 +606,7 @@ pub fn parse(
 }
 
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
-    let abs_node_modules_path = helpers::get_node_modules_path(root_path);
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
-
     let mlmap_name = format!("{}.mlmap", namespace);
     let args = vec![vec![
         "-w",
@@ -411,13 +618,11 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
     ]]
     .concat();
 
-    let _ = Command::new(
-        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
-    )
-    .current_dir(build_path_abs.to_string())
-    .args(args)
-    .output()
-    .expect("err");
+    let _ = Command::new(helpers::get_bsc(&root_path))
+        .current_dir(build_path_abs.to_string())
+        .args(args)
+        .output()
+        .expect("err");
 }
 
 pub fn compile_file(
@@ -429,7 +634,6 @@ pub fn compile_file(
 ) -> Result<(), String> {
     let build_path_abs = helpers::get_build_path(root_path, package_name);
     let pkg_path_abs = helpers::get_package_path(root_path, package_name);
-    let abs_node_modules_path = helpers::get_node_modules_path(root_path);
     let bsc_flags = bsconfig::flatten_flags(&module.package.bsconfig.bsc_flags);
 
     let normal_deps = module
@@ -471,8 +675,7 @@ pub fn compile_file(
         _ => vec![],
     };
 
-    let module_name =
-        helpers::file_path_to_module_name(&module.file_path, module.namespace.to_owned());
+    let module_name = helpers::file_path_to_module_name(&module.file_path, &module.namespace);
 
     let implementation_args = if is_interface {
         debug!("Compiling interface file: {}", &module_name);
@@ -516,24 +719,21 @@ pub fn compile_file(
     ]
     .concat();
 
-    let to_mjs = Command::new(
-        abs_node_modules_path.to_string() + &"/rescript/darwinarm64/bsc.exe".to_string(),
-    )
-    .current_dir(build_path_abs.to_string())
-    .args(to_mjs_args)
-    .output();
+    let to_mjs = Command::new(helpers::get_bsc(&root_path))
+        .current_dir(build_path_abs.to_string())
+        .args(to_mjs_args)
+        .output();
 
     match to_mjs {
         Ok(x) if !x.status.success() => Err(std::str::from_utf8(&x.stderr).expect("").to_string()),
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
         Ok(_) => {
+            let dir = std::path::Path::new(&module.file_path)
+                .strip_prefix(get_package_path(root_path, &module.package.name))
+                .unwrap()
+                .parent()
+                .unwrap();
             if !is_interface {
-                let dir = std::path::Path::new(&module.file_path)
-                    .strip_prefix(get_package_path(root_path, &module.package.name))
-                    .unwrap()
-                    .parent()
-                    .unwrap();
-
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
                     std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
@@ -551,6 +751,13 @@ pub fn compile_file(
                     std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
                         .join(dir)
                         .join(module_name.to_owned() + ".cmt"),
+                );
+            } else {
+                let _ = std::fs::copy(
+                    build_path_abs.to_string() + "/" + &module_name + ".cmti",
+                    std::path::Path::new(&get_bs_build_path(root_path, &module.package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmti"),
                 );
             }
             Ok(())

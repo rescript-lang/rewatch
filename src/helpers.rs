@@ -68,6 +68,15 @@ pub fn get_basename(path: &str) -> String {
         .to_string();
 }
 
+pub fn change_extension(path: &str, new_extension: &str) -> String {
+    let path_buf = PathBuf::from(path);
+    return path_buf
+        .with_extension(new_extension)
+        .to_str()
+        .expect("Could not change extension")
+        .to_string();
+}
+
 /// Capitalizes the first character in s.
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
@@ -77,12 +86,18 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-pub fn file_path_to_module_name(path: &str, namespace: Option<String>) -> String {
-    let module_name = capitalize(&get_basename(path));
+// this doesn't capitalize the module name! if the rescript name of the file is "foo.res" the
+// compiler assets are foo-Namespace.cmt and foo-Namespace.cmj, but the module name is Foo
+pub fn file_path_to_compiler_asset_basename(path: &str, namespace: &Option<String>) -> String {
+    let base = get_basename(path);
     match namespace {
-        Some(namespace) => module_name.to_string() + "-" + &namespace,
-        None => module_name,
+        Some(namespace) => base.to_string() + "-" + &namespace,
+        None => base,
     }
+}
+
+pub fn file_path_to_module_name(path: &str, namespace: &Option<String>) -> String {
+    capitalize(&file_path_to_compiler_asset_basename(path, namespace))
 }
 
 pub fn contains_ascii_characters(str: &str) -> bool {
@@ -99,4 +114,8 @@ pub fn create_build_path(build_path: &str) {
         .recursive(true)
         .create(PathBuf::from(build_path.to_string()))
         .unwrap();
+}
+
+pub fn get_bsc(root_path: &str) -> String {
+    get_node_modules_path(root_path) + "/rescript/darwinarm64/bsc.exe"
 }

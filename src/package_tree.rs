@@ -236,7 +236,7 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
 
         let mut modules = AHashSet::from_iter(
             map.keys()
-                .map(|key| helpers::file_path_to_module_name(key, value.namespace.to_owned())),
+                .map(|key| helpers::file_path_to_module_name(key, &value.namespace)),
         );
         match value.namespace.to_owned() {
             Some(namespace) => {
