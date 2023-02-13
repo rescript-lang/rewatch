@@ -16,8 +16,8 @@ use std::io::stdout;
 use std::io::Write;
 use std::time::Instant;
 
-fn clean() {
-    let project_root = helpers::get_abs_path("walnut_monorepo");
+fn clean(path: Option<String>) {
+    let project_root = helpers::get_abs_path(&path.unwrap_or("walnut_monorepo".to_string()));
     let packages = package_tree::make(&project_root);
 
     packages.iter().for_each(|(_, package)| {
@@ -42,10 +42,10 @@ static CHECKMARK: Emoji<'_, '_> = Emoji("️✅  ", "");
 static CROSS: Emoji<'_, '_> = Emoji("️🛑  ", "");
 static LINE_CLEAR: &str = "\x1b[2K";
 
-fn build() {
+fn build(path: Option<String>) {
     let timing_total = Instant::now();
     env_logger::init();
-    let project_root = helpers::get_abs_path("walnut_monorepo");
+    let project_root = helpers::get_abs_path(&path.unwrap_or("walnut_monorepo".to_string()));
     let rescript_version = build::get_version(&project_root);
 
     print!(
@@ -258,8 +258,8 @@ fn build() {
 fn main() {
     let command = std::env::args().nth(1).unwrap_or("build".to_string());
     match command.as_str() {
-        "clean" => clean(),
-        "build" => build(),
+        "clean" => clean(std::env::args().nth(2)),
+        "build" => build(std::env::args().nth(2)),
         _ => println!("Not a valid build command"),
     }
 }
