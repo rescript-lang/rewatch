@@ -22,6 +22,7 @@ use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use std::time::SystemTime;
 
 static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
 static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
@@ -49,6 +50,8 @@ pub struct Module {
     pub asti_path: Option<String>,
     pub deps: AHashSet<String>,
     pub package: package_tree::Package,
+    pub last_modified: Option<SystemTime>,
+    pub interface_last_modified: Option<SystemTime>,
 }
 
 fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
@@ -150,7 +153,8 @@ pub fn cleanup_previous_build(
     all_modules: &AHashMap<String, Module>,
     root_path: &str,
 ) -> (usize, usize) {
-    let mut ast_modules: AHashMap<String, (String, String, Option<String>)> = AHashMap::new();
+    let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime)> =
+        AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
 
     let mut rescript_file_locations = all_modules
@@ -198,6 +202,7 @@ pub fn cleanup_previous_build(
                                                 module_name,
                                                 package.name.to_owned(),
                                                 package.namespace.to_owned(),
+                                                entry.metadata().unwrap().modified().unwrap(),
                                             ),
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
@@ -229,7 +234,7 @@ pub fn cleanup_previous_build(
 
     diff.par_iter().for_each(|res_file_location| {
         let _ = std::fs::remove_file(helpers::change_extension(res_file_location, "mjs"));
-        let (_module_name, package_name, package_namespace) = ast_modules
+        let (_module_name, package_name, package_namespace, _last_modified) = ast_modules
             .get(&res_file_location.to_string())
             .expect("Could not find module name for ast file");
         remove_compile_assets(
@@ -559,6 +564,8 @@ pub fn parse(
                     asti_path: None,
                     deps,
                     package: package.to_owned(),
+                    last_modified: Some(SystemTime::now()),
+                    interface_last_modified: Some(SystemTime::now()),
                 },
             );
         });
@@ -566,7 +573,7 @@ pub fn parse(
         debug!("Building source file-tree for package: {}", package.name);
         match &package.source_files {
             None => (),
-            Some(source_files) => source_files.iter().for_each(|(file, _)| {
+            Some(source_files) => source_files.iter().for_each(|(file, metadata)| {
                 let namespace = package.namespace.to_owned();
 
                 let file_buf = PathBuf::from(file);
@@ -583,6 +590,8 @@ pub fn parse(
                         .and_modify(|module| {
                             if module.file_path.len() > 0 {
                                 error!("Duplicate files found for module: {}", &module_name);
+                                error!("file 1: {}", &module.file_path);
+                                error!("file 2: {}", &file);
 
                                 panic!("Unable to continue... See log output above...");
                             }
@@ -598,6 +607,8 @@ pub fn parse(
                             asti_path: None,
                             deps: AHashSet::new(),
                             package: package.to_owned(),
+                            last_modified: Some(metadata.modified().unwrap()),
+                            interface_last_modified: None,
                         });
                 } else {
                     modules
@@ -613,6 +624,8 @@ pub fn parse(
                             asti_path: None,
                             deps: AHashSet::new(),
                             package: package.to_owned(),
+                            last_modified: None,
+                            interface_last_modified: Some(metadata.modified().unwrap()),
                         });
                 }
             }),
