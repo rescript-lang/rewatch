@@ -7,13 +7,30 @@ use crate::helpers::get_package_path;
 use crate::package_tree;
 use crate::package_tree::Package;
 use ahash::{AHashMap, AHashSet};
+use console::{style, Emoji};
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
+use log::Level::Info;
 use log::{debug, error};
+use log::{info, log_enabled};
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
+use std::io::stdout;
+use std::io::Write;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
+
+static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
+static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
+static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
+static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
+static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
+static CHECKMARK: Emoji<'_, '_> = Emoji("️✅  ", "");
+static CROSS: Emoji<'_, '_> = Emoji("️🛑  ", "");
+static LINE_CLEAR: &str = "\x1b[2K";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceType {
@@ -763,4 +780,234 @@ pub fn compile_file(
             Ok(())
         }
     }
+}
+
+pub fn clean(path: &str) {
+    let project_root = helpers::get_abs_path(path);
+    let packages = package_tree::make(&project_root);
+
+    packages.iter().for_each(|(_, package)| {
+        println!("Cleaning {}...", package.name);
+        let path = std::path::Path::new(&package.package_dir)
+            .join("lib")
+            .join("ocaml");
+        let _ = std::fs::remove_dir_all(path);
+        let path = std::path::Path::new(&package.package_dir)
+            .join("lib")
+            .join("bs");
+        let _ = std::fs::remove_dir_all(path);
+    })
+}
+
+pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
+    let timing_total = Instant::now();
+    let project_root = helpers::get_abs_path(path);
+    let rescript_version = get_version(&project_root);
+
+    print!(
+        "{} {} Building package tree...",
+        style("[1/5]").bold().dim(),
+        TREE
+    );
+    let _ = stdout().flush();
+    let timing_package_tree = Instant::now();
+    let packages = package_tree::make(&project_root);
+    let timing_package_tree_elapsed = timing_package_tree.elapsed();
+    println!(
+        "{}\r{} {}Built package tree in {:.2}s",
+        LINE_CLEAR,
+        style("[1/5]").bold().dim(),
+        CHECKMARK,
+        timing_package_tree_elapsed.as_secs_f64()
+    );
+
+    let timing_source_files = Instant::now();
+    print!(
+        "{} {} Finding source files...",
+        style("[2/5]").bold().dim(),
+        LOOKING_GLASS
+    );
+    let _ = stdout().flush();
+    let (all_modules, modules) = parse(&project_root, packages.to_owned());
+    let timing_source_files_elapsed = timing_source_files.elapsed();
+    println!(
+        "{}\r{} {}Found source files in {:.2}s",
+        LINE_CLEAR,
+        style("[2/5]").bold().dim(),
+        CHECKMARK,
+        timing_source_files_elapsed.as_secs_f64()
+    );
+
+    print!(
+        "{} {} Cleaning up previous build...",
+        style("[3/5]").bold().dim(),
+        SWEEP
+    );
+    let timing_cleanup = Instant::now();
+    let (diff_cleanup, total_cleanup) = cleanup_previous_build(&packages, &modules, &project_root);
+    let timing_cleanup_elapsed = timing_cleanup.elapsed();
+    println!(
+        "{}\r{} {}Cleaned {}/{} {:.2}s",
+        LINE_CLEAR,
+        style("[3/5]").bold().dim(),
+        CHECKMARK,
+        diff_cleanup,
+        total_cleanup,
+        timing_cleanup_elapsed.as_secs_f64()
+    );
+
+    print!(
+        "{} {} Parsing source files...",
+        style("[4/5]").bold().dim(),
+        CODE
+    );
+    let _ = stdout().flush();
+
+    let timing_ast = Instant::now();
+    let modules = generate_asts(
+        rescript_version.to_string(),
+        &project_root,
+        modules,
+        all_modules,
+    );
+    let timing_ast_elapsed = timing_ast.elapsed();
+    println!(
+        "{}\r{} {}Parsed source files in {:.2}s",
+        LINE_CLEAR,
+        style("[4/5]").bold().dim(),
+        CHECKMARK,
+        timing_ast_elapsed.as_secs_f64()
+    );
+
+    let pb = ProgressBar::new(modules.len().try_into().unwrap());
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
+            style("[5/5]").bold().dim(),
+            SWORDS
+        ))
+        .unwrap(),
+    );
+    let start_compiling = Instant::now();
+
+    let mut compiled_modules = AHashSet::<String>::new();
+
+    let mut loop_count = 0;
+    let mut files_total_count = 0;
+    let mut files_current_loop_count;
+    let mut compile_errors = "".to_string();
+    let total_modules = modules.len();
+
+    loop {
+        files_current_loop_count = 0;
+        loop_count += 1;
+
+        info!(
+            "Compiled: {} out of {}. Compile loop: {}",
+            files_total_count,
+            modules.len(),
+            loop_count,
+        );
+
+        modules
+            .par_iter()
+            .map(|(module_name, module)| {
+                let mut stderr = "".to_string();
+                if module.deps.is_subset(&compiled_modules)
+                    && !compiled_modules.contains(module_name)
+                {
+                    match module.source_type.to_owned() {
+                        SourceType::MlMap => (Some(module_name.to_owned()), stderr),
+                        SourceType::SourceFile => {
+                            // compile interface first
+                            match module.asti_path.to_owned() {
+                                Some(asti_path) => {
+                                    let result = compile_file(
+                                        &module.package.name,
+                                        &asti_path,
+                                        module,
+                                        &project_root,
+                                        true,
+                                    );
+                                    match result {
+                                        Err(err) => stderr.push_str(&err),
+                                        Ok(()) => (),
+                                    }
+                                }
+                                _ => (),
+                            }
+
+                            let result = compile_file(
+                                &module.package.name,
+                                &module.ast_path.to_owned().unwrap(),
+                                module,
+                                &project_root,
+                                false,
+                            );
+
+                            match result {
+                                Err(err) => stderr.push_str(&err),
+                                Ok(()) => (),
+                            }
+
+                            (Some(module_name.to_owned()), stderr)
+                        }
+                    }
+                } else {
+                    (None, stderr)
+                }
+            })
+            .collect::<Vec<(Option<String>, String)>>()
+            .iter()
+            .for_each(|(module_name, stderr)| {
+                module_name.iter().for_each(|name| {
+                    if !(log_enabled!(Info)) {
+                        pb.inc(1);
+                    }
+                    files_current_loop_count += 1;
+                    compiled_modules.insert(name.to_string());
+                });
+
+                compile_errors.push_str(&stderr);
+                // error!("Some error were generated compiling this round: \n {}", err);
+            });
+
+        files_total_count += files_current_loop_count;
+
+        if files_total_count == total_modules {
+            break;
+        }
+        if files_current_loop_count == 0 {
+            // we probably want to find the cycle(s), and give a helpful error message here
+            compile_errors.push_str("Can't continue... Dependency cycle\n")
+        }
+        if compile_errors.len() > 0 {
+            break;
+        };
+    }
+    let compile_duration = start_compiling.elapsed();
+
+    pb.finish();
+    if compile_errors.len() > 0 {
+        println!(
+            "{}\r{} {}Compiled in {:.2}s",
+            LINE_CLEAR,
+            style("[5/5]").bold().dim(),
+            CROSS,
+            compile_duration.as_secs_f64()
+        );
+        println!("{}", &compile_errors);
+        std::process::exit(1);
+    }
+    println!(
+        "{}\r{} {}Compiled in {:.2}s",
+        LINE_CLEAR,
+        style("[5/5]").bold().dim(),
+        CHECKMARK,
+        compile_duration.as_secs_f64()
+    );
+    let timing_total_elapsed = timing_total.elapsed();
+    println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
+
+    modules
 }
