@@ -17,6 +17,9 @@ fn main() {
         "build" => {
             build::build(&folder);
         }
+        "watch" => {
+            let _modules = build::build(&folder);
+            watcher::start(&folder);
         }
         _ => println!("Not a valid build command"),
     }

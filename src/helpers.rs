@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fs;
 use std::path::Component;
 use std::path::Path;
@@ -118,4 +119,14 @@ pub fn create_build_path(build_path: &str) {
 
 pub fn get_bsc(root_path: &str) -> String {
     get_node_modules_path(root_path) + "/rescript/darwinarm64/bsc.exe"
+}
+
+pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
+    suffixes.iter().any(|&suffix| {
+        s.extension()
+            .unwrap_or(&OsString::new())
+            .to_str()
+            .unwrap_or("")
+            == suffix
+    })
 }
