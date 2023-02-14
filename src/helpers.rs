@@ -130,3 +130,47 @@ pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
             == suffix
     })
 }
+
+pub fn get_compiler_asset(
+    source_file: &str,
+    package_name: &str,
+    namespace: &Option<String>,
+    root_path: &str,
+    extension: &str,
+) -> String {
+    let namespace = match extension {
+        "ast" | "asti" => &None,
+        _ => namespace,
+    };
+
+    get_build_path(root_path, package_name)
+        + "/"
+        + &file_path_to_compiler_asset_basename(source_file, namespace)
+        + "."
+        + extension
+}
+
+pub fn get_bs_compiler_asset(
+    source_file: &str,
+    package_name: &str,
+    namespace: &Option<String>,
+    root_path: &str,
+    extension: &str,
+) -> String {
+    let namespace = match extension {
+        "ast" | "iast" => &None,
+        _ => namespace,
+    };
+    let dir = std::path::Path::new(source_file)
+        .strip_prefix(get_package_path(root_path, &package_name))
+        .unwrap()
+        .parent()
+        .unwrap();
+
+    std::path::Path::new(&get_bs_build_path(root_path, &package_name))
+        .join(dir)
+        .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
+        .to_str()
+        .unwrap()
+        .to_owned()
+}

@@ -2,7 +2,6 @@ use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
 use crate::helpers::get_bs_build_path;
-use crate::helpers::get_build_path;
 use crate::helpers::get_package_path;
 use crate::package_tree;
 use crate::package_tree::Package;
@@ -15,7 +14,6 @@ use log::{debug, error};
 use log::{info, log_enabled};
 use rayon::prelude::*;
 use std::fs;
-use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::io::{self, BufRead};
@@ -54,6 +52,11 @@ pub struct Module {
     pub interface_last_modified: Option<SystemTime>,
 }
 
+fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+    let file = fs::File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
 fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     if let Ok(lines) = read_lines(ast_file.to_string()) {
         // we skip the first line with is some null characters
@@ -75,50 +78,6 @@ fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     return None;
 }
 
-fn get_compiler_asset(
-    source_file: &str,
-    package_name: &str,
-    namespace: &Option<String>,
-    root_path: &str,
-    extension: &str,
-) -> String {
-    let namespace = match extension {
-        "ast" | "asti" => &None,
-        _ => namespace,
-    };
-
-    get_build_path(root_path, package_name)
-        + "/"
-        + &helpers::file_path_to_compiler_asset_basename(source_file, namespace)
-        + "."
-        + extension
-}
-
-fn get_bs_compiler_asset(
-    source_file: &str,
-    package_name: &str,
-    namespace: &Option<String>,
-    root_path: &str,
-    extension: &str,
-) -> String {
-    let namespace = match extension {
-        "ast" | "iast" => &None,
-        _ => namespace,
-    };
-    let dir = std::path::Path::new(source_file)
-        .strip_prefix(get_package_path(root_path, &package_name))
-        .unwrap()
-        .parent()
-        .unwrap();
-
-    std::path::Path::new(&get_bs_build_path(root_path, &package_name))
-        .join(dir)
-        .join(helpers::file_path_to_compiler_asset_basename(source_file, namespace) + extension)
-        .to_str()
-        .unwrap()
-        .to_owned()
-}
-
 fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
@@ -129,7 +88,7 @@ fn remove_compile_assets(
     // optimization
     // only issue cmti if htere is an interfacce file
     for extension in &["cmj", "cmi", "cmt", "cmti", "ast", "iast"] {
-        let _ = std::fs::remove_file(get_compiler_asset(
+        let _ = std::fs::remove_file(helpers::get_compiler_asset(
             source_file,
             package_name,
             namespace,
@@ -137,7 +96,7 @@ fn remove_compile_assets(
             extension,
         ));
         if ["cmj", "cmi", "cmt", "cmti"].contains(&extension) {
-            let _ = std::fs::remove_file(get_bs_compiler_asset(
+            let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
                 source_file,
                 package_name,
                 namespace,
@@ -341,11 +300,6 @@ fn generate_ast(
     }
 
     ast_path
-}
-
-fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<File>>> {
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
 }
 
 // Namespaces work like the following: The build system will generate a file
