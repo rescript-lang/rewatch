@@ -40,6 +40,7 @@ pub enum SourceType {
 #[derive(Debug, Clone)]
 pub struct Module {
     pub dirty: bool,
+    pub interface_dirty: bool,
     pub source_type: SourceType,
     pub namespace: Option<String>,
     pub file_path: String,
@@ -109,10 +110,10 @@ fn remove_compile_assets(
 
 pub fn cleanup_previous_build(
     packages: &AHashMap<String, Package>,
-    all_modules: &AHashMap<String, Module>,
+    all_modules: &mut AHashMap<String, Module>,
     root_path: &str,
 ) -> (usize, usize) {
-    let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime)> =
+    let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime, String)> =
         AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
 
@@ -162,6 +163,7 @@ pub fn cleanup_previous_build(
                                                 package.name.to_owned(),
                                                 package.namespace.to_owned(),
                                                 entry.metadata().unwrap().modified().unwrap(),
+                                                ast_file_path,
                                             ),
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
@@ -193,9 +195,10 @@ pub fn cleanup_previous_build(
 
     diff.par_iter().for_each(|res_file_location| {
         let _ = std::fs::remove_file(helpers::change_extension(res_file_location, "mjs"));
-        let (_module_name, package_name, package_namespace, _last_modified) = ast_modules
-            .get(&res_file_location.to_string())
-            .expect("Could not find module name for ast file");
+        let (_module_name, package_name, package_namespace, _last_modified, _ast_file_path) =
+            ast_modules
+                .get(&res_file_location.to_string())
+                .expect("Could not find module name for ast file");
         remove_compile_assets(
             res_file_location,
             package_name,
@@ -203,6 +206,51 @@ pub fn cleanup_previous_build(
             root_path,
         );
     });
+
+    ast_rescript_file_locations
+        .intersection(&rescript_file_locations)
+        .into_iter()
+        .for_each(|res_file_location| {
+            let (module_name, _package_name, _package_namespace, ast_last_modified, ast_file_path) =
+                ast_modules
+                    .get(res_file_location)
+                    .expect("Could not find module name for ast file");
+
+            let is_interface = match Path::new(ast_file_path)
+                .extension()
+                .map(|s| s.to_str().unwrap())
+            {
+                Some("ast") => false,
+                Some("iast") => true,
+                _ => panic!("Unknown extension"),
+            };
+
+            let module_last_modified = if is_interface {
+                all_modules
+                    .get(module_name)
+                    .expect("Could not find module for ast file")
+                    .interface_last_modified
+                    .expect("Could not find last modified for module")
+            } else {
+                all_modules
+                    .get(module_name)
+                    .expect("Could not find module for ast file")
+                    .last_modified
+                    .expect("Could not find last modified for module")
+            };
+
+            if ast_last_modified > &module_last_modified {
+                if let Some(module) = all_modules.get_mut(module_name) {
+                    if is_interface {
+                        module.interface_dirty = false;
+                        module.asti_path = Some(ast_file_path.to_string());
+                    } else {
+                        module.dirty = false;
+                        module.ast_path = Some(ast_file_path.to_string());
+                    }
+                }
+            }
+        });
 
     (diff_len, ast_rescript_file_locations.len())
 }
@@ -387,14 +435,15 @@ fn gen_mlmap(
     file.to_string()
 }
 
-pub fn generate_asts(
-    version: String,
+pub fn generate_asts<'a>(
+    version: &str,
     project_root: &str,
-    mut modules: AHashMap<String, Module>,
-    all_modules: AHashSet<String>,
-) -> AHashMap<String, Module> {
+    mut modules: &'a mut AHashMap<String, Module>,
+    all_modules: &AHashSet<String>,
+) {
     modules
         .par_iter()
+        .filter(|(_, module)| module.dirty || module.interface_dirty)
         .map(|(module_name, metadata)| {
             debug!("Generating AST for module: {}", module_name);
             match metadata.source_type {
@@ -451,17 +500,15 @@ pub fn generate_asts(
         .collect::<Vec<(String, String, Option<String>, AHashSet<String>)>>()
         .into_iter()
         .for_each(|(module_name, ast_path, asti_path, deps)| {
-            modules.entry(module_name).and_modify(|module| {
+            if let Some(module) = modules.get_mut(&module_name) {
                 module.ast_path = Some(ast_path);
                 module.asti_path = asti_path;
                 module.deps = deps;
-            });
+            }
         });
-
-    modules
 }
 
-pub fn parse(
+pub fn parse_packages(
     project_root: &str,
     packages: AHashMap<String, package_tree::Package>,
 ) -> (AHashSet<String>, AHashMap<String, Module>) {
@@ -511,7 +558,8 @@ pub fn parse(
                 Module {
                     file_path: mlmap.to_owned(),
                     interface_file_path: None,
-                    dirty: true,
+                    dirty: false,
+                    interface_dirty: false,
                     source_type: SourceType::MlMap,
                     namespace: None,
                     ast_path: Some(mlmap.to_owned()),
@@ -550,11 +598,14 @@ pub fn parse(
                                 panic!("Unable to continue... See log output above...");
                             }
                             module.file_path = file.to_owned();
+                            module.last_modified = Some(metadata.modified().unwrap());
+                            module.dirty = true;
                         })
                         .or_insert(Module {
                             file_path: file.to_owned(),
                             interface_file_path: None,
                             dirty: true,
+                            interface_dirty: false,
                             source_type: SourceType::SourceFile,
                             namespace,
                             ast_path: None,
@@ -567,11 +618,16 @@ pub fn parse(
                 } else {
                     modules
                         .entry(module_name.to_string())
-                        .and_modify(|module| module.interface_file_path = Some(file.to_owned()))
+                        .and_modify(|module| {
+                            module.interface_file_path = Some(file.to_owned());
+                            module.interface_last_modified = Some(metadata.modified().unwrap());
+                            module.interface_dirty = true;
+                        })
                         .or_insert(Module {
                             file_path: "".to_string(),
                             interface_file_path: Some(file.to_owned()),
-                            dirty: true,
+                            dirty: false,
+                            interface_dirty: true,
                             source_type: SourceType::SourceFile,
                             namespace,
                             ast_path: None,
@@ -795,7 +851,7 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
         LOOKING_GLASS
     );
     let _ = stdout().flush();
-    let (all_modules, modules) = parse(&project_root, packages.to_owned());
+    let (all_modules, mut modules) = parse_packages(&project_root, packages.to_owned());
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
         "{}\r{} {}Found source files in {:.2}s",
@@ -811,7 +867,8 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
         SWEEP
     );
     let timing_cleanup = Instant::now();
-    let (diff_cleanup, total_cleanup) = cleanup_previous_build(&packages, &modules, &project_root);
+    let (diff_cleanup, total_cleanup) =
+        cleanup_previous_build(&packages, &mut modules, &project_root);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
@@ -831,12 +888,7 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
     let _ = stdout().flush();
 
     let timing_ast = Instant::now();
-    let modules = generate_asts(
-        rescript_version.to_string(),
-        &project_root,
-        modules,
-        all_modules,
-    );
+    let _ = generate_asts(&rescript_version, &project_root, &mut modules, &all_modules);
     let timing_ast_elapsed = timing_ast.elapsed();
     println!(
         "{}\r{} {}Parsed source files in {:.2}s",
@@ -857,10 +909,20 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
     );
     let start_compiling = Instant::now();
 
-    let mut compiled_modules = AHashSet::<String>::new();
+    // let mut compiled_modules = AHashSet::<String>::new();
+    let mut compiled_modules = modules
+        .iter()
+        .filter_map(|(module_name, module)| {
+            if module.dirty || module.interface_dirty {
+                None
+            } else {
+                Some(module_name.to_owned())
+            }
+        })
+        .collect::<AHashSet<String>>();
 
     let mut loop_count = 0;
-    let mut files_total_count = 0;
+    let mut files_total_count = compiled_modules.len();
     let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
     let total_modules = modules.len();
