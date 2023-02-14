@@ -438,7 +438,7 @@ fn gen_mlmap(
 pub fn generate_asts<'a>(
     version: &str,
     project_root: &str,
-    mut modules: &'a mut AHashMap<String, Module>,
+    modules: &'a mut AHashMap<String, Module>,
     all_modules: &AHashSet<String>,
 ) {
     modules
