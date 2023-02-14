@@ -5,7 +5,9 @@ use futures::{
     SinkExt, StreamExt,
 };
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::Path;
+use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 pub static FILE_TYPES: &[&str] = &["re", "res", "ml", "rei", "resi", "mli"];
 
 fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
