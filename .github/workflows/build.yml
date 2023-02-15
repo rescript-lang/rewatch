@@ -1,0 +1,41 @@
+---
+on:
+  release:
+    types:
+      - created
+jobs:
+  cancel-previous-runs:
+    name: Cancel Previous Runs
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.0
+        with:
+          access_token: ${{ github.token }}
+  release:
+    name: release ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+      - name: Install Cargo
+        run: curl https://sh.rustup.rs -sSf | sh
+      - name: Build
+        run: cargo build --release
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/release/rewatch
+          asset_name: rewatch-${{ matrix.os }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
