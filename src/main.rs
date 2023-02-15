@@ -15,7 +15,10 @@ fn main() {
             build::clean(&folder);
         }
         "build" => {
-            build::build(&folder);
+            match build::build(&folder) {
+                Err(()) => std::process::exit(1),
+                Ok(_) => std::process::exit(0),
+            };
         }
         "watch" => {
             let _modules = build::build(&folder);

@@ -51,6 +51,8 @@ pub struct Module {
     pub package: package_tree::Package,
     pub last_modified: Option<SystemTime>,
     pub interface_last_modified: Option<SystemTime>,
+    // TODO introduce failed to compile attribute
+    // pub failed_to_compile: bool,
 }
 
 fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
@@ -79,6 +81,23 @@ fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     return None;
 }
 
+fn remove_asts(source_file: &str, package_name: &str, namespace: &Option<String>, root_path: &str) {
+    let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        source_file,
+        package_name,
+        namespace,
+        root_path,
+        "ast",
+    ));
+    let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        source_file,
+        package_name,
+        namespace,
+        root_path,
+        "iast",
+    ));
+}
+
 fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
@@ -88,7 +107,7 @@ fn remove_compile_assets(
     let _ = std::fs::remove_file(helpers::change_extension(source_file, "mjs"));
     // optimization
     // only issue cmti if htere is an interfacce file
-    for extension in &["cmj", "cmi", "cmt", "cmti", "ast", "iast"] {
+    for extension in &["cmj", "cmi", "cmt", "cmti"] {
         let _ = std::fs::remove_file(helpers::get_compiler_asset(
             source_file,
             package_name,
@@ -96,15 +115,13 @@ fn remove_compile_assets(
             root_path,
             extension,
         ));
-        if ["cmj", "cmi", "cmt", "cmti"].contains(&extension) {
-            let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
-                source_file,
-                package_name,
-                namespace,
-                root_path,
-                extension,
-            ));
-        }
+        let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
+            source_file,
+            package_name,
+            namespace,
+            root_path,
+            extension,
+        ));
     }
 }
 
@@ -112,7 +129,7 @@ pub fn cleanup_previous_build(
     packages: &AHashMap<String, Package>,
     all_modules: &mut AHashMap<String, Module>,
     root_path: &str,
-) -> (usize, usize) {
+) -> (usize, usize, AHashSet<String>) {
     let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime, String)> =
         AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
@@ -199,6 +216,12 @@ pub fn cleanup_previous_build(
             ast_modules
                 .get(&res_file_location.to_string())
                 .expect("Could not find module name for ast file");
+        remove_asts(
+            res_file_location,
+            package_name,
+            package_namespace,
+            root_path,
+        );
         remove_compile_assets(
             res_file_location,
             package_name,
@@ -252,7 +275,32 @@ pub fn cleanup_previous_build(
             }
         });
 
-    (diff_len, ast_rescript_file_locations.len())
+    let ast_module_names = ast_modules
+        .values()
+        .map(|(module_name, _, _, _, _)| module_name)
+        .collect::<AHashSet<&String>>();
+
+    let all_module_names = all_modules
+        .keys()
+        .map(|module_name| module_name)
+        .collect::<AHashSet<&String>>();
+
+    let deleted_module_names = ast_module_names
+        .difference(&all_module_names)
+        .map(|module_name| {
+            // if the module is a namespace, we need to mark the whole namespace as dirty when a module has been deleted
+            if let Some(namespace) = helpers::get_namespace_from_module_name(module_name) {
+                return namespace;
+            }
+            return module_name.to_string();
+        })
+        .collect::<AHashSet<String>>();
+
+    (
+        diff_len,
+        ast_rescript_file_locations.len(),
+        deleted_module_names,
+    )
 }
 
 pub fn get_version(project_root: &str) -> String {
@@ -429,7 +477,9 @@ fn gen_mlmap(
     // we don't really need to create a digest, because we track if we need to
     // recompile in a different way but we need to put it in the file for it to
     // be readable.
-    let digest = "randjbuildsystem".to_owned() + "\n" + &modules.join("\n");
+    let mut sorted_modules = modules.clone();
+    sorted_modules.sort();
+    let digest = "randjbuildsystem".to_owned() + "\n" + &sorted_modules.join("\n");
     let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
     fs::write(&file, digest).expect("Unable to write mlmap");
     file.to_string()
@@ -440,70 +490,125 @@ pub fn generate_asts<'a>(
     project_root: &str,
     modules: &'a mut AHashMap<String, Module>,
     all_modules: &AHashSet<String>,
+    deleted_modules: &AHashSet<String>,
 ) {
     modules
         .par_iter()
-        .filter(|(_, module)| module.dirty || module.interface_dirty)
-        .map(|(module_name, metadata)| {
+        .map(|(module_name, module)| {
             debug!("Generating AST for module: {}", module_name);
-            match metadata.source_type {
-                SourceType::MlMap => (
-                    module_name.to_owned(),
-                    metadata.ast_path.to_owned().unwrap(),
-                    None,
-                    metadata.deps.to_owned(),
-                ),
+            match module.source_type {
+                SourceType::MlMap => {
+                    if module.dirty
+                        || module.interface_dirty
+                        || deleted_modules.contains(module_name)
+                    {
+                        compile_mlmap(&module.package, module_name, &project_root);
+                    }
+                    (
+                        module_name.to_owned(),
+                        module.ast_path.to_owned().unwrap(),
+                        None,
+                        module.deps.to_owned(),
+                        false,
+                    )
+                }
 
                 SourceType::SourceFile => {
-                    let ast_path = generate_ast(
-                        metadata.package.to_owned(),
-                        &metadata.file_path.to_owned(),
-                        &helpers::get_abs_path(project_root),
-                        &version,
-                    );
-
-                    let asti_path = match metadata.interface_file_path.to_owned() {
-                        Some(interface_file_path) => Some(generate_ast(
-                            metadata.package.to_owned(),
-                            &interface_file_path.to_owned(),
+                    let (ast_path, asti_path) = if module.dirty || module.interface_dirty {
+                        let ast_path = generate_ast(
+                            module.package.to_owned(),
+                            &module.file_path.to_owned(),
                             &helpers::get_abs_path(project_root),
                             &version,
-                        )),
-                        _ => None,
+                        );
+
+                        let asti_path = match module.interface_file_path.to_owned() {
+                            Some(interface_file_path) => Some(generate_ast(
+                                module.package.to_owned(),
+                                &interface_file_path.to_owned(),
+                                &helpers::get_abs_path(project_root),
+                                &version,
+                            )),
+                            _ => None,
+                        };
+
+                        (ast_path, asti_path)
+                    } else {
+                        (
+                            module
+                                .ast_path
+                                .to_owned()
+                                .expect("Ast path should be known"),
+                            module.asti_path.to_owned(),
+                        )
                     };
 
                     let build_path =
-                        helpers::get_build_path(project_root, &metadata.package.bsconfig.name);
+                        helpers::get_build_path(project_root, &module.package.bsconfig.name);
 
                     // choose the namespaced dep if that module appears in the package, otherwise global dep
                     let mut deps = get_dep_modules(
                         &(build_path.to_string() + "/" + &ast_path),
-                        metadata.namespace.to_owned(),
-                        &metadata.package.modules.as_ref().unwrap(),
-                        &all_modules,
+                        module.namespace.to_owned(),
+                        &module.package.modules.as_ref().unwrap(),
+                        &all_modules.union(deleted_modules).cloned().collect(),
                     );
+
                     match asti_path.to_owned() {
                         Some(asti_path) => deps.extend(get_dep_modules(
                             &(build_path.to_owned() + "/" + &asti_path),
-                            metadata.namespace.to_owned(),
-                            &metadata.package.modules.as_ref().unwrap(),
-                            &all_modules,
+                            module.namespace.to_owned(),
+                            &module.package.modules.as_ref().unwrap(),
+                            &all_modules.union(deleted_modules).cloned().collect(),
                         )),
                         None => (),
                     }
+
                     deps.remove(module_name);
 
-                    (module_name.to_owned(), ast_path, asti_path, deps)
+                    let has_dirty_namespace = match module.namespace.to_owned() {
+                        Some(namespace) => deleted_modules.contains(&namespace),
+                        None => false,
+                    };
+
+                    let has_dirty_deps = !deps.is_disjoint(deleted_modules) || has_dirty_namespace;
+
+                    (
+                        module_name.to_owned(),
+                        ast_path,
+                        asti_path,
+                        deps,
+                        has_dirty_deps,
+                    )
                 }
             }
         })
-        .collect::<Vec<(String, String, Option<String>, AHashSet<String>)>>()
+        .collect::<Vec<(String, String, Option<String>, AHashSet<String>, bool)>>()
         .into_iter()
-        .for_each(|(module_name, ast_path, asti_path, deps)| {
+        .for_each(|(module_name, ast_path, asti_path, deps, has_dirty_deps)| {
             if let Some(module) = modules.get_mut(&module_name) {
                 module.ast_path = Some(ast_path);
                 module.asti_path = asti_path;
                 module.deps = deps;
+                if has_dirty_deps {
+                    // todo - remove all compile assets when compile fails
+                    // remove_compile_assets(
+                    //     &module.file_path,
+                    //     &module.package.name,
+                    //     &module.namespace,
+                    //     project_root,
+                    // );
+                    // if let Some(interface_file_path) = module.interface_file_path.to_owned() {
+                    //     remove_compile_assets(
+                    //         &interface_file_path,
+                    //         &module.package.name,
+                    //         &module.namespace,
+                    //         project_root,
+                    //     );
+                    // }
+                    module.dirty = true;
+                    module.interface_dirty = true;
+                }
             }
         });
 }
@@ -546,7 +651,8 @@ pub fn parse_packages(
                 project_root,
             );
 
-            compile_mlmap(&package, namespace, &project_root);
+            // mlmap will be compiled in the AST generation step
+            // compile_mlmap(&package, namespace, &project_root);
 
             let deps = source_files
                 .iter()
@@ -558,8 +664,8 @@ pub fn parse_packages(
                 Module {
                     file_path: mlmap.to_owned(),
                     interface_file_path: None,
-                    dirty: false,
-                    interface_dirty: false,
+                    dirty: true,
+                    interface_dirty: true,
                     source_type: SourceType::MlMap,
                     namespace: None,
                     ast_path: Some(mlmap.to_owned()),
@@ -714,7 +820,6 @@ pub fn compile_file(
         }
         _ => vec![],
     };
-
     let module_name = helpers::file_path_to_module_name(&module.file_path, &module.namespace);
 
     let implementation_args = if is_interface {
@@ -765,7 +870,16 @@ pub fn compile_file(
         .output();
 
     match to_mjs {
-        Ok(x) if !x.status.success() => Err(std::str::from_utf8(&x.stderr).expect("").to_string()),
+        Ok(x) if !x.status.success() => Err("Problem compiling file: ".to_string()
+            + if !is_interface {
+                &module.file_path
+            } else {
+                &module.interface_file_path.as_ref().unwrap()
+            }
+            + "\n\n"
+            + &std::str::from_utf8(&x.stderr)
+                .expect("stderr should be non-null")
+                .to_string()),
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
         Ok(_) => {
             let dir = std::path::Path::new(&module.file_path)
@@ -822,7 +936,7 @@ pub fn clean(path: &str) {
     })
 }
 
-pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
+pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
@@ -867,7 +981,7 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
         SWEEP
     );
     let timing_cleanup = Instant::now();
-    let (diff_cleanup, total_cleanup) =
+    let (diff_cleanup, total_cleanup, deleted_module_names) =
         cleanup_previous_build(&packages, &mut modules, &project_root);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
@@ -888,7 +1002,13 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
     let _ = stdout().flush();
 
     let timing_ast = Instant::now();
-    let _ = generate_asts(&rescript_version, &project_root, &mut modules, &all_modules);
+    let _ = generate_asts(
+        &rescript_version,
+        &project_root,
+        &mut modules,
+        &all_modules,
+        &deleted_module_names,
+    );
     let timing_ast_elapsed = timing_ast.elapsed();
     println!(
         "{}\r{} {}Parsed source files in {:.2}s",
@@ -946,7 +1066,14 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
                     && !compiled_modules.contains(module_name)
                 {
                     match module.source_type.to_owned() {
-                        SourceType::MlMap => (Some(module_name.to_owned()), stderr),
+                        SourceType::MlMap => {
+                            // the mlmap needs to be compiled before the files are compiled
+                            // in the same namespace, otherwise we get a compile error
+                            // this is why mlmap is compiled in the AST generation stage
+                            // compile_mlmap(&module.package, module_name, &project_root);
+
+                            (Some(module_name.to_owned()), stderr)
+                        }
                         SourceType::SourceFile => {
                             // compile interface first
                             match module.asti_path.to_owned() {
@@ -1026,7 +1153,7 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
             compile_duration.as_secs_f64()
         );
         println!("{}", &compile_errors);
-        std::process::exit(1);
+        return Err(());
     }
     println!(
         "{}\r{} {}Compiled in {:.2}s",
@@ -1038,5 +1165,5 @@ pub fn build(path: &str) -> AHashMap<std::string::String, Module> {
     let timing_total_elapsed = timing_total.elapsed();
     println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
 
-    modules
+    Ok(modules)
 }

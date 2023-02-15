@@ -43,7 +43,7 @@ pub fn start(folder: &str) {
                     .collect::<Vec<PathBuf>>();
 
                 if paths.len() > 0 {
-                    build::build(&folder);
+                    let _ = build::build(&folder);
                 }
             }
             Err(_) => (),

@@ -174,3 +174,9 @@ pub fn get_bs_compiler_asset(
         .unwrap()
         .to_owned()
 }
+
+pub fn get_namespace_from_module_name(module_name: &str) -> Option<String> {
+    let mut split = module_name.split("-");
+    let _ = split.next();
+    split.next().map(|s| s.to_string())
+}
