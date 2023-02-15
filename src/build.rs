@@ -52,7 +52,7 @@ pub struct Module {
     pub last_modified: Option<SystemTime>,
     pub interface_last_modified: Option<SystemTime>,
     // TODO introduce failed to compile attribute
-    // pub failed_to_compile: bool,
+    pub failed_to_compile: bool,
 }
 
 fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
@@ -674,6 +674,7 @@ pub fn parse_packages(
                     package: package.to_owned(),
                     last_modified: Some(SystemTime::now()),
                     interface_last_modified: Some(SystemTime::now()),
+                    failed_to_compile: false,
                 },
             );
         });
@@ -720,6 +721,7 @@ pub fn parse_packages(
                             package: package.to_owned(),
                             last_modified: Some(metadata.modified().unwrap()),
                             interface_last_modified: None,
+                            failed_to_compile: false,
                         });
                 } else {
                     modules
@@ -742,6 +744,7 @@ pub fn parse_packages(
                             package: package.to_owned(),
                             last_modified: None,
                             interface_last_modified: Some(metadata.modified().unwrap()),
+                            failed_to_compile: false,
                         });
                 }
             }),
@@ -870,16 +873,19 @@ pub fn compile_file(
         .output();
 
     match to_mjs {
-        Ok(x) if !x.status.success() => Err("Problem compiling file: ".to_string()
-            + if !is_interface {
-                &module.file_path
-            } else {
-                &module.interface_file_path.as_ref().unwrap()
-            }
-            + "\n\n"
-            + &std::str::from_utf8(&x.stderr)
+        Ok(x) if !x.status.success() => Err(
+            // "Problem compiling file: ".to_string()
+            // + if !is_interface {
+            //     &module.file_path
+            // } else {
+            //     &module.interface_file_path.as_ref().unwrap()
+            // }
+            // + "\n\n"
+            // +
+            std::str::from_utf8(&x.stderr)
                 .expect("stderr should be non-null")
-                .to_string()),
+                .to_string(),
+        ),
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
         Ok(_) => {
             let dir = std::path::Path::new(&module.file_path)
@@ -1122,6 +1128,10 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                     }
                     files_current_loop_count += 1;
                     compiled_modules.insert(name.to_string());
+                    if stderr.len() > 0 {
+                        let module = modules.get_mut(name).unwrap();
+                        module.failed_to_compile = true;
+                    }
                 });
 
                 compile_errors.push_str(&stderr);
@@ -1144,6 +1154,31 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let compile_duration = start_compiling.elapsed();
 
     pb.finish();
+    let failed_modules = all_modules
+        .difference(&compiled_modules)
+        .collect::<AHashSet<&String>>();
+
+    modules.par_iter().for_each(|(module_name, module)| {
+        if module.failed_to_compile || failed_modules.contains(module_name) {
+            // only retain ast file if it compiled successfully, that's the only thing we check
+            // if we see a AST file, we assume it compiled successfully, so we also need to clean
+            // up the AST file if compile is not successful
+            if module.source_type == SourceType::SourceFile {
+                remove_asts(
+                    &module.file_path,
+                    &module.package.name,
+                    &module.namespace,
+                    &project_root,
+                );
+                remove_compile_assets(
+                    &module.file_path,
+                    &module.package.name,
+                    &module.namespace,
+                    &project_root,
+                );
+            }
+        }
+    });
     if compile_errors.len() > 0 {
         println!(
             "{}\r{} {}Compiled in {:.2}s",
@@ -1154,14 +1189,16 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         );
         println!("{}", &compile_errors);
         return Err(());
+    } else {
+        println!(
+            "{}\r{} {}Compiled in {:.2}s",
+            LINE_CLEAR,
+            style("[5/5]").bold().dim(),
+            CHECKMARK,
+            compile_duration.as_secs_f64()
+        );
     }
-    println!(
-        "{}\r{} {}Compiled in {:.2}s",
-        LINE_CLEAR,
-        style("[5/5]").bold().dim(),
-        CHECKMARK,
-        compile_duration.as_secs_f64()
-    );
+
     let timing_total_elapsed = timing_total.elapsed();
     println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
 
