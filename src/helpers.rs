@@ -180,3 +180,19 @@ pub fn get_namespace_from_module_name(module_name: &str) -> Option<String> {
     let _ = split.next();
     split.next().map(|s| s.to_string())
 }
+
+pub fn is_interface_ast_file(file: &str) -> bool {
+    file.ends_with(".iast")
+}
+
+pub fn get_mlmap_path(root_path: &str, package_name: &str, namespace: &str) -> String {
+    get_build_path(root_path, package_name) + "/" + namespace + ".mlmap"
+}
+
+pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
+    get_compiler_asset(source_file, package_name, &None, root_path, "ast")
+}
+
+pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
+    get_compiler_asset(source_file, package_name, &None, root_path, "iast")
+}
