@@ -19,6 +19,7 @@ pub struct Package {
     pub modules: Option<AHashSet<String>>,
     pub package_dir: String,
     pub dirs: Option<AHashSet<PathBuf>>,
+    pub is_pinned_dep: bool,
 }
 
 impl PartialEq for Package {
@@ -107,6 +108,7 @@ fn build_package<'a>(
     package_dir: &str,
     // is_root: bool,
     project_root: &str,
+    is_pinned_dep: bool,
     // package_name: &str,
 ) -> &'a mut AHashMap<String, Package> {
     // let (package_dir, bsconfig) = read_bsconfig(package_name, project_root, is_root);
@@ -152,6 +154,7 @@ fn build_package<'a>(
             modules: None,
             package_dir: package_dir.to_string(),
             dirs: None,
+            is_pinned_dep: is_pinned_dep,
         }
     });
 
@@ -174,8 +177,18 @@ fn build_package<'a>(
         .map(|package_dir| (package_dir.to_owned(), read_bsconfig(package_dir)))
         .collect::<Vec<(String, bsconfig::T)>>()
         .iter()
-        .fold(map, |map, (package_dir, bsconfig)| {
-            build_package(map, bsconfig.to_owned(), &package_dir, &project_root)
+        .fold(map, |map, (package_dir, child_bsconfig)| {
+            build_package(
+                map,
+                child_bsconfig.to_owned(),
+                &package_dir,
+                &project_root,
+                bsconfig
+                    .pinned_dependencies
+                    .as_ref()
+                    .map(|p| p.contains(&child_bsconfig.name))
+                    .unwrap_or(false),
+            )
         })
 }
 
@@ -273,7 +286,7 @@ pub fn make(root_folder: &str) -> AHashMap<String, Package> {
 
     let package_dir = get_package_dir("", true, root_folder);
     let bsconfig = read_bsconfig(&package_dir);
-    build_package(&mut map, bsconfig, &package_dir, root_folder);
+    build_package(&mut map, bsconfig, &package_dir, root_folder, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(map);

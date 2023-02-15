@@ -678,8 +678,18 @@ pub fn generate_asts<'a>(
                 module.deps = deps;
                 match ast_path {
                     Ok((_path, err)) => {
-                        if let Some(err) = err {
-                            stderr.push_str(&err);
+                        // supress warnings in non-pinned deps
+                        if module.package.is_pinned_dep {
+                            if let Some(err) = err {
+                                match module.source_type {
+                                    SourceType::SourceFile(ref mut source_file) => {
+                                        source_file.implementation.parse_state =
+                                            ParseState::Warning;
+                                    }
+                                    _ => (),
+                                }
+                                stderr.push_str(&err);
+                            }
                         }
                     }
                     Err(err) => {
@@ -689,15 +699,25 @@ pub fn generate_asts<'a>(
                             }
                             _ => (),
                         }
-                        // implementation.parseState = ParseState::ParseError;
                         has_failure = true;
                         stderr.push_str(&err);
                     }
                 };
                 match iast_path {
                     Ok(Some((_path, err))) => {
-                        if let Some(err) = err {
-                            stderr.push_str(&err);
+                        // supress warnings in non-pinned deps
+                        if module.package.is_pinned_dep {
+                            if let Some(err) = err {
+                                match module.source_type {
+                                    SourceType::SourceFile(ref mut source_file) => {
+                                        source_file.interface.as_mut().map(|interface| {
+                                            interface.parse_state = ParseState::ParseError
+                                        });
+                                    }
+                                    _ => (),
+                                }
+                                stderr.push_str(&err);
+                            }
                         }
                     }
                     Ok(None) => (),
@@ -719,10 +739,9 @@ pub fn generate_asts<'a>(
                     match module.source_type {
                         SourceType::SourceFile(ref mut source_file) => {
                             source_file.implementation.dirty = true;
-                            source_file
-                                .interface
-                                .as_mut()
-                                .map(|interface| interface.dirty = true);
+                            source_file.interface.as_mut().map(|interface| {
+                                interface.dirty = true;
+                            });
                         }
                         SourceType::MlMap(ref mut mlmap) => {
                             mlmap.dirty = true;
@@ -1096,7 +1115,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    compile_state: CompileState::Error,
+                    compile_state: CompileState::Error | CompileState::Warning,
                     ..
                 },
             ..
@@ -1104,7 +1123,23 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    compile_state: CompileState::Error,
+                    compile_state: CompileState::Error | CompileState::Warning,
+                    ..
+                }),
+            ..
+        }) => true,
+        SourceType::SourceFile(SourceFile {
+            implementation:
+                Implementation {
+                    parse_state: ParseState::ParseError | ParseState::Warning,
+                    ..
+                },
+            ..
+        }) => true,
+        SourceType::SourceFile(SourceFile {
+            interface:
+                Some(Interface {
+                    parse_state: ParseState::ParseError | ParseState::Warning,
                     ..
                 }),
             ..
