@@ -337,7 +337,7 @@ fn generate_ast(
     filename: &str,
     root_path: &str,
     version: &str,
-) -> String {
+) -> Result<(String, Option<String>), String> {
     let file = &filename.to_string();
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
     let ast_extension = match PathBuf::from(filename)
@@ -390,12 +390,17 @@ fn generate_ast(
         .output()
         .expect("Error converting .res to .ast");
 
-    let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("");
-    if helpers::contains_ascii_characters(stderr) {
-        debug!("Output contained ASCII Characters: {:?}", stderr)
-    }
+    let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("stderr should be non-null");
 
-    ast_path
+    if helpers::contains_ascii_characters(stderr) {
+        if res_to_ast.status.success() {
+            Ok((ast_path, Some(stderr.to_string())))
+        } else {
+            Err(stderr.to_string())
+        }
+    } else {
+        Ok((ast_path, None))
+    }
 }
 
 // Namespaces work like the following: The build system will generate a file
@@ -491,7 +496,10 @@ pub fn generate_asts<'a>(
     modules: &'a mut AHashMap<String, Module>,
     all_modules: &AHashSet<String>,
     deleted_modules: &AHashSet<String>,
-) {
+) -> Result<String, String> {
+    let mut has_failure = false;
+    let mut stderr = "".to_string();
+
     modules
         .par_iter()
         .map(|(module_name, module)| {
@@ -506,8 +514,8 @@ pub fn generate_asts<'a>(
                     }
                     (
                         module_name.to_owned(),
-                        module.ast_path.to_owned().unwrap(),
-                        None,
+                        Ok((module.ast_path.to_owned().unwrap(), None)),
+                        Ok(None),
                         module.deps.to_owned(),
                         false,
                     )
@@ -523,23 +531,27 @@ pub fn generate_asts<'a>(
                         );
 
                         let asti_path = match module.interface_file_path.to_owned() {
-                            Some(interface_file_path) => Some(generate_ast(
+                            Some(interface_file_path) => generate_ast(
                                 module.package.to_owned(),
                                 &interface_file_path.to_owned(),
                                 &helpers::get_abs_path(project_root),
                                 &version,
-                            )),
-                            _ => None,
+                            )
+                            .map(|path| Some(path)),
+                            _ => Ok(None),
                         };
 
                         (ast_path, asti_path)
                     } else {
                         (
-                            module
-                                .ast_path
-                                .to_owned()
-                                .expect("Ast path should be known"),
-                            module.asti_path.to_owned(),
+                            Ok((
+                                module
+                                    .ast_path
+                                    .to_owned()
+                                    .expect("Ast path should be known"),
+                                None,
+                            )),
+                            Ok(module.asti_path.to_owned().map(|path| (path, None))),
                         )
                     };
 
@@ -547,24 +559,31 @@ pub fn generate_asts<'a>(
                         helpers::get_build_path(project_root, &module.package.bsconfig.name);
 
                     // choose the namespaced dep if that module appears in the package, otherwise global dep
-                    let mut deps = get_dep_modules(
-                        &(build_path.to_string() + "/" + &ast_path),
-                        module.namespace.to_owned(),
-                        &module.package.modules.as_ref().unwrap(),
-                        &all_modules.union(deleted_modules).cloned().collect(),
-                    );
-
-                    match asti_path.to_owned() {
-                        Some(asti_path) => deps.extend(get_dep_modules(
-                            &(build_path.to_owned() + "/" + &asti_path),
+                    let deps = if let (Ok((ast_path, _stderr)), Ok(asti_path)) =
+                        (ast_path.to_owned(), asti_path.to_owned())
+                    {
+                        let mut deps = get_dep_modules(
+                            &(build_path.to_string() + "/" + &ast_path),
                             module.namespace.to_owned(),
                             &module.package.modules.as_ref().unwrap(),
                             &all_modules.union(deleted_modules).cloned().collect(),
-                        )),
-                        None => (),
-                    }
+                        );
 
-                    deps.remove(module_name);
+                        match asti_path.to_owned() {
+                            Some((asti_path, _stderr)) => deps.extend(get_dep_modules(
+                                &(build_path.to_owned() + "/" + &asti_path),
+                                module.namespace.to_owned(),
+                                &module.package.modules.as_ref().unwrap(),
+                                &all_modules.union(deleted_modules).cloned().collect(),
+                            )),
+                            None => (),
+                        }
+
+                        deps.remove(module_name);
+                        deps
+                    } else {
+                        AHashSet::new()
+                    };
 
                     let has_dirty_namespace = match module.namespace.to_owned() {
                         Some(namespace) => deleted_modules.contains(&namespace),
@@ -583,34 +602,58 @@ pub fn generate_asts<'a>(
                 }
             }
         })
-        .collect::<Vec<(String, String, Option<String>, AHashSet<String>, bool)>>()
+        .collect::<Vec<(
+            String,
+            Result<(String, Option<String>), String>,
+            Result<Option<(String, Option<String>)>, String>,
+            AHashSet<String>,
+            bool,
+        )>>()
         .into_iter()
         .for_each(|(module_name, ast_path, asti_path, deps, has_dirty_deps)| {
             if let Some(module) = modules.get_mut(&module_name) {
-                module.ast_path = Some(ast_path);
-                module.asti_path = asti_path;
+                module.ast_path = match ast_path {
+                    Ok((path, err)) => {
+                        if let Some(err) = err {
+                            stderr.push_str(&err);
+                        }
+                        Some(path)
+                    }
+                    Err(err) => {
+                        module.failed_to_compile = true;
+                        has_failure = true;
+                        stderr.push_str(&err);
+                        None
+                    }
+                };
+                module.asti_path = match asti_path {
+                    Ok(Some((path, err))) => {
+                        if let Some(err) = err {
+                            stderr.push_str(&err);
+                        }
+                        Some(path)
+                    }
+                    Ok(None) => None,
+                    Err(err) => {
+                        module.failed_to_compile = true;
+                        has_failure = true;
+                        stderr.push_str(&err);
+                        None
+                    }
+                };
                 module.deps = deps;
                 if has_dirty_deps {
-                    // todo - remove all compile assets when compile fails
-                    // remove_compile_assets(
-                    //     &module.file_path,
-                    //     &module.package.name,
-                    //     &module.namespace,
-                    //     project_root,
-                    // );
-                    // if let Some(interface_file_path) = module.interface_file_path.to_owned() {
-                    //     remove_compile_assets(
-                    //         &interface_file_path,
-                    //         &module.package.name,
-                    //         &module.namespace,
-                    //         project_root,
-                    //     );
-                    // }
                     module.dirty = true;
                     module.interface_dirty = true;
                 }
             }
         });
+
+    if has_failure {
+        Err(stderr)
+    } else {
+        Ok(stderr)
+    }
 }
 
 pub fn parse_packages(
@@ -780,7 +823,7 @@ pub fn compile_file(
     module: &Module,
     root_path: &str,
     is_interface: bool,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let build_path_abs = helpers::get_build_path(root_path, package_name);
     let pkg_path_abs = helpers::get_package_path(root_path, package_name);
     let bsc_flags = bsconfig::flatten_flags(&module.package.bsconfig.bsc_flags);
@@ -887,12 +930,14 @@ pub fn compile_file(
                 .to_string(),
         ),
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
-        Ok(_) => {
+        Ok(x) => {
             let dir = std::path::Path::new(&module.file_path)
                 .strip_prefix(get_package_path(root_path, &module.package.name))
                 .unwrap()
                 .parent()
                 .unwrap();
+
+            // perhaps we can do this copying somewhere else
             if !is_interface {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
@@ -920,7 +965,13 @@ pub fn compile_file(
                         .join(module_name.to_owned() + ".cmti"),
                 );
             }
-            Ok(())
+
+            let stderr = std::str::from_utf8(&x.stderr).expect("stderr should be non-null");
+            if helpers::contains_ascii_characters(stderr) {
+                Ok(Some(stderr.to_string()))
+            } else {
+                Ok(None)
+            }
         }
     }
 }
@@ -940,6 +991,39 @@ pub fn clean(path: &str) {
             .join("bs");
         let _ = std::fs::remove_dir_all(path);
     })
+}
+
+fn cleanup_after_build(
+    modules: &AHashMap<String, Module>,
+    compiled_modules: &AHashSet<String>,
+    all_modules: &AHashSet<String>,
+    project_root: &str,
+) {
+    let failed_modules = all_modules
+        .difference(&compiled_modules)
+        .collect::<AHashSet<&String>>();
+
+    modules.par_iter().for_each(|(module_name, module)| {
+        if module.failed_to_compile || failed_modules.contains(module_name) {
+            // only retain ast file if it compiled successfully, that's the only thing we check
+            // if we see a AST file, we assume it compiled successfully, so we also need to clean
+            // up the AST file if compile is not successful
+            if module.source_type == SourceType::SourceFile {
+                remove_asts(
+                    &module.file_path,
+                    &module.package.name,
+                    &module.namespace,
+                    &project_root,
+                );
+                remove_compile_assets(
+                    &module.file_path,
+                    &module.package.name,
+                    &module.namespace,
+                    &project_root,
+                );
+            }
+        }
+    });
 }
 
 pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
@@ -1008,7 +1092,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let _ = stdout().flush();
 
     let timing_ast = Instant::now();
-    let _ = generate_asts(
+    let result_asts = generate_asts(
         &rescript_version,
         &project_root,
         &mut modules,
@@ -1016,13 +1100,31 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         &deleted_module_names,
     );
     let timing_ast_elapsed = timing_ast.elapsed();
-    println!(
-        "{}\r{} {}Parsed source files in {:.2}s",
-        LINE_CLEAR,
-        style("[4/5]").bold().dim(),
-        CHECKMARK,
-        timing_ast_elapsed.as_secs_f64()
-    );
+
+    match result_asts {
+        Ok(err) => {
+            println!(
+                "{}\r{} {}Parsed source files in {:.2}s",
+                LINE_CLEAR,
+                style("[4/5]").bold().dim(),
+                CHECKMARK,
+                timing_ast_elapsed.as_secs_f64()
+            );
+            println!("{}", &err);
+        }
+        Err(err) => {
+            println!(
+                "{}\r{} {}Error parsing source files in {:.2}s",
+                LINE_CLEAR,
+                style("[4/5]").bold().dim(),
+                CROSS,
+                timing_ast_elapsed.as_secs_f64()
+            );
+            println!("{}", &err);
+            cleanup_after_build(&modules, &AHashSet::new(), &all_modules, &project_root);
+            return Err(());
+        }
+    }
 
     let pb = ProgressBar::new(modules.len().try_into().unwrap());
     pb.set_style(
@@ -1093,7 +1195,8 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                     );
                                     match result {
                                         Err(err) => stderr.push_str(&err),
-                                        Ok(()) => (),
+                                        Ok(Some(err)) => stderr.push_str(&err),
+                                        Ok(None) => (),
                                     }
                                 }
                                 _ => (),
@@ -1109,7 +1212,8 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
                             match result {
                                 Err(err) => stderr.push_str(&err),
-                                Ok(()) => (),
+                                Ok(Some(err)) => stderr.push_str(&err),
+                                Ok(None) => (),
                             }
 
                             (Some(module_name.to_owned()), stderr)
@@ -1154,31 +1258,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let compile_duration = start_compiling.elapsed();
 
     pb.finish();
-    let failed_modules = all_modules
-        .difference(&compiled_modules)
-        .collect::<AHashSet<&String>>();
-
-    modules.par_iter().for_each(|(module_name, module)| {
-        if module.failed_to_compile || failed_modules.contains(module_name) {
-            // only retain ast file if it compiled successfully, that's the only thing we check
-            // if we see a AST file, we assume it compiled successfully, so we also need to clean
-            // up the AST file if compile is not successful
-            if module.source_type == SourceType::SourceFile {
-                remove_asts(
-                    &module.file_path,
-                    &module.package.name,
-                    &module.namespace,
-                    &project_root,
-                );
-                remove_compile_assets(
-                    &module.file_path,
-                    &module.package.name,
-                    &module.namespace,
-                    &project_root,
-                );
-            }
-        }
-    });
+    cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
     if compile_errors.len() > 0 {
         println!(
             "{}\r{} {}Compiled in {:.2}s",
