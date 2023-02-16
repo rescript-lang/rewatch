@@ -1014,7 +1014,7 @@ pub fn compile_file(
         // ^^ this one fails for bisect-ppx
         // this is the default
         // we should probably parse the right ones from the package config
-        vec!["-w".to_string(), "a".to_string()],
+        // vec!["-w".to_string(), "a".to_string()],
         implementation_args,
         // vec![
         //     "-I".to_string(),
@@ -1047,6 +1047,10 @@ pub fn compile_file(
         }
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
         Ok(x) => {
+            let err = std::str::from_utf8(&x.stderr)
+                .expect("stdout should be non-null")
+                .to_string();
+
             let dir = std::path::Path::new(implementation_file_path)
                 .strip_prefix(get_package_path(root_path, &module.package.name))
                 .unwrap()
@@ -1082,9 +1086,8 @@ pub fn compile_file(
                 );
             }
 
-            let stderr = std::str::from_utf8(&x.stderr).expect("stderr should be non-null");
-            if helpers::contains_ascii_characters(stderr) {
-                Ok(Some(stderr.to_string()))
+            if helpers::contains_ascii_characters(&err) {
+                Ok(Some(err))
             } else {
                 Ok(None)
             }
@@ -1466,9 +1469,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
     pb.finish();
     cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
-    if helpers::contains_ascii_characters(&compile_warnings) {
-        println!("{}", &compile_warnings);
-    }
     if compile_errors.len() > 0 {
         println!(
             "{}\r{} {}Compiled in {:.2}s",
@@ -1477,6 +1477,9 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             CROSS,
             compile_duration.as_secs_f64()
         );
+        if helpers::contains_ascii_characters(&compile_warnings) {
+            println!("{}", &compile_warnings);
+        }
         println!("{}", &compile_errors);
         return Err(());
     } else {
@@ -1487,6 +1490,9 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             CHECKMARK,
             compile_duration.as_secs_f64()
         );
+        if helpers::contains_ascii_characters(&compile_warnings) {
+            println!("{}", &compile_warnings);
+        }
     }
 
     let timing_total_elapsed = timing_total.elapsed();
