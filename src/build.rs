@@ -1274,6 +1274,24 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     );
     let timing_ast_elapsed = timing_ast.elapsed();
 
+    dbg!(modules
+        .iter()
+        .filter(|(_, m)| match m.source_type {
+            SourceType::SourceFile(SourceFile {
+                implementation: Implementation { dirty: true, .. },
+                ..
+            }) => true,
+            SourceType::SourceFile(SourceFile {
+                interface: Some(Interface { dirty: true, .. }),
+                ..
+            }) => true,
+            SourceType::SourceFile(_) => false,
+            SourceType::MlMap(MlMap { dirty, .. }) => dirty,
+        })
+        .map(|_| ())
+        .collect::<Vec<()>>()
+        .len());
+
     match result_asts {
         Ok(err) => {
             println!(
