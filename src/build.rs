@@ -1114,7 +1114,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    compile_state: CompileState::Error | CompileState::Warning,
+                    compile_state: CompileState::Error, //| CompileState::Warning,
                     ..
                 },
             ..
@@ -1122,7 +1122,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    compile_state: CompileState::Error | CompileState::Warning,
+                    compile_state: CompileState::Error, // | CompileState::Warning,
                     ..
                 }),
             ..
@@ -1130,7 +1130,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    parse_state: ParseState::ParseError | ParseState::Warning,
+                    parse_state: ParseState::ParseError, //| ParseState::Warning,
                     ..
                 },
             ..
@@ -1138,7 +1138,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    parse_state: ParseState::ParseError | ParseState::Warning,
+                    parse_state: ParseState::ParseError, //| ParseState::Warning,
                     ..
                 }),
             ..
