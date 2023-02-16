@@ -290,7 +290,7 @@ pub fn cleanup_previous_build(
                 .expect("Could not find module for ast file");
 
             match &mut module.source_type {
-                SourceType::MlMap(_) => (),
+                SourceType::MlMap(_) => unreachable!("MlMap is not matched with a ReScript file"),
                 SourceType::SourceFile(source_file) => {
                     if helpers::is_interface_ast_file(ast_file_path) {
                         let interface = source_file
@@ -543,10 +543,9 @@ pub fn generate_asts<'a>(
         .map(|(module_name, module)| {
             debug!("Generating AST for module: {}", module_name);
             match &module.source_type {
-                SourceType::MlMap(mlmap) => {
-                    if mlmap.dirty || deleted_modules.contains(module_name) {
-                        compile_mlmap(&module.package, module_name, &project_root);
-                    }
+                SourceType::MlMap(_mlmap) => {
+                    compile_mlmap(&module.package, module_name, &project_root);
+
                     (
                         module_name.to_owned(),
                         Ok((
@@ -884,7 +883,7 @@ pub fn parse_packages(
                                     parse_state: ParseState::Pending,
                                     compile_state: CompileState::Pending,
                                     last_modified: metadata.modified().unwrap(),
-                                    dirty: true,
+                                    dirty: false,
                                 },
                                 interface: Some(Interface {
                                     path: file.to_owned(),
@@ -1173,6 +1172,16 @@ fn cleanup_after_build(
         .difference(&compiled_modules)
         .collect::<AHashSet<&String>>();
 
+    let cleanup = modules
+        .iter()
+        .filter(|(module_name, module)| {
+            failed_to_compile(module) || failed_modules.contains(module_name)
+        })
+        .map(|_| ())
+        .collect::<Vec<()>>()
+        .len();
+    dbg!(cleanup);
+
     modules.par_iter().for_each(|(module_name, module)| {
         if failed_to_compile(module) || failed_modules.contains(module_name) {
             // only retain ast file if it compiled successfully, that's the only thing we check
@@ -1342,6 +1351,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
+    dbg!(&files_total_count);
     let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
     let mut compile_warnings = "".to_string();
