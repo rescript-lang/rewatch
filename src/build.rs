@@ -1087,7 +1087,12 @@ pub fn compile_file(
             }
 
             if helpers::contains_ascii_characters(&err) {
-                Ok(Some(err))
+                if module.package.is_pinned_dep {
+                    // supress warnings of external deps
+                    Ok(Some(err))
+                } else {
+                    Ok(None)
+                }
             } else {
                 Ok(None)
             }
@@ -1117,7 +1122,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    compile_state: CompileState::Error, //| CompileState::Warning,
+                    compile_state: CompileState::Error | CompileState::Warning,
                     ..
                 },
             ..
@@ -1125,7 +1130,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    compile_state: CompileState::Error, // | CompileState::Warning,
+                    compile_state: CompileState::Error | CompileState::Warning,
                     ..
                 }),
             ..
@@ -1133,7 +1138,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    parse_state: ParseState::ParseError, //| ParseState::Warning,
+                    parse_state: ParseState::ParseError | ParseState::Warning,
                     ..
                 },
             ..
@@ -1141,7 +1146,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    parse_state: ParseState::ParseError, //| ParseState::Warning,
+                    parse_state: ParseState::ParseError | ParseState::Warning,
                     ..
                 }),
             ..
@@ -1188,12 +1193,12 @@ fn cleanup_after_build(
                         &module.package.namespace,
                         &project_root,
                     );
-                    remove_compile_assets(
-                        &source_file.implementation.path,
-                        &module.package.name,
-                        &module.package.namespace,
-                        &project_root,
-                    );
+                    // remove_compile_assets(
+                    //     &source_file.implementation.path,
+                    //     &module.package.name,
+                    //     &module.package.namespace,
+                    //     &project_root,
+                    // );
                 }
                 _ => (),
             }
