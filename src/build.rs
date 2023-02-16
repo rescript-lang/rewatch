@@ -1172,16 +1172,6 @@ fn cleanup_after_build(
         .difference(&compiled_modules)
         .collect::<AHashSet<&String>>();
 
-    let cleanup = modules
-        .iter()
-        .filter(|(module_name, module)| {
-            failed_to_compile(module) || failed_modules.contains(module_name)
-        })
-        .map(|_| ())
-        .collect::<Vec<()>>()
-        .len();
-    dbg!(cleanup);
-
     modules.par_iter().for_each(|(module_name, module)| {
         if failed_to_compile(module) || failed_modules.contains(module_name) {
             // only retain ast file if it compiled successfully, that's the only thing we check
@@ -1283,24 +1273,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     );
     let timing_ast_elapsed = timing_ast.elapsed();
 
-    dbg!(modules
-        .iter()
-        .filter(|(_, m)| match m.source_type {
-            SourceType::SourceFile(SourceFile {
-                implementation: Implementation { dirty: true, .. },
-                ..
-            }) => true,
-            SourceType::SourceFile(SourceFile {
-                interface: Some(Interface { dirty: true, .. }),
-                ..
-            }) => true,
-            SourceType::SourceFile(_) => false,
-            SourceType::MlMap(MlMap { dirty, .. }) => dirty,
-        })
-        .map(|_| ())
-        .collect::<Vec<()>>()
-        .len());
-
     match result_asts {
         Ok(err) => {
             println!(
@@ -1351,7 +1323,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
-    dbg!(&files_total_count);
     let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
     let mut compile_warnings = "".to_string();
