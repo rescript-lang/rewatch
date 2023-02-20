@@ -1,8 +1,19 @@
 use std::ffi::OsString;
 use std::fs;
-use std::path::Component;
-use std::path::Path;
-use std::path::PathBuf;
+use std::io::{self, BufRead};
+use std::path::{Component, Path, PathBuf};
+
+pub mod emojis {
+    use console::Emoji;
+    pub static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
+    pub static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
+    pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
+    pub static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
+    pub static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
+    pub static CHECKMARK: Emoji<'_, '_> = Emoji("️✅  ", "");
+    pub static CROSS: Emoji<'_, '_> = Emoji("️🛑  ", "");
+    pub static LINE_CLEAR: &str = "\x1b[2K";
+}
 
 pub trait LexicalAbsolute {
     fn to_lexical_absolute(&self) -> std::io::Result<PathBuf>;
@@ -195,4 +206,9 @@ pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str) -> S
 
 pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
     get_compiler_asset(source_file, package_name, &None, root_path, "iast")
+}
+
+pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+    let file = fs::File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
 }
