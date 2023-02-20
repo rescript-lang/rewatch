@@ -1,5 +1,7 @@
 pub mod bsconfig;
 pub mod build;
+pub mod clean;
+pub mod build_types;
 pub mod grouplike;
 pub mod helpers;
 pub mod package_tree;
