@@ -241,7 +241,7 @@ pub fn generate_asts<'a>(
     let mut has_failure = false;
     let mut stderr = "".to_string();
 
-    modules
+    let results = modules
         .par_iter()
         .map(|(module_name, module)| {
             debug!("Generating AST for module: {}", module_name);
@@ -265,7 +265,7 @@ pub fn generate_asts<'a>(
                         )),
                         Ok(None),
                         module.deps.to_owned(),
-                        false,
+                        None,
                     )
                 }
 
@@ -350,19 +350,12 @@ pub fn generate_asts<'a>(
                         AHashSet::new()
                     };
 
-                    let has_dirty_namespace = match module.package.namespace.to_owned() {
-                        Some(namespace) => deleted_modules.contains(&namespace),
-                        None => false,
-                    };
-
-                    let has_dirty_deps = !deps.is_disjoint(deleted_modules) || has_dirty_namespace;
-
                     (
                         module_name.to_owned(),
                         ast_path,
                         asti_path,
                         deps,
-                        has_dirty_deps,
+                        module.package.namespace.to_owned(),
                     )
                 }
             }
@@ -372,10 +365,51 @@ pub fn generate_asts<'a>(
             Result<(String, Option<String>), String>,
             Result<Option<(String, Option<String>)>, String>,
             AHashSet<String>,
-            bool,
-        )>>()
+            Option<String>,
+        )>>();
+
+    let mut checked_modules = AHashSet::new();
+    let mut dirty_modules = deleted_modules.clone();
+    dirty_modules.extend(
+        modules
+            .iter()
+            .filter_map(|(module_name, module)| {
+                if is_dirty(&module) {
+                    Some(module_name.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<AHashSet<String>>(),
+    );
+
+    loop {
+        let mut num_checked_modules = 0;
+        for (module_name, _ast_path, _iast_path, deps, namespace) in results.iter() {
+            if !checked_modules.contains(module_name) {
+                num_checked_modules += 1;
+                if deps.is_subset(&checked_modules) {
+                    checked_modules.insert(module_name.to_string());
+
+                    let has_dirty_namespace = match namespace {
+                        Some(namespace) => dirty_modules.contains(namespace),
+                        None => false,
+                    };
+
+                    if !deps.is_disjoint(&dirty_modules) || has_dirty_namespace {
+                        dirty_modules.insert(module_name.to_string());
+                    }
+                }
+            }
+        }
+        if num_checked_modules == 0 {
+            break;
+        }
+    }
+
+    results
         .into_iter()
-        .for_each(|(module_name, ast_path, iast_path, deps, has_dirty_deps)| {
+        .for_each(|(module_name, ast_path, iast_path, deps, _namespace)| {
             if let Some(module) = modules.get_mut(&module_name) {
                 module.deps = deps;
                 match ast_path {
@@ -437,13 +471,16 @@ pub fn generate_asts<'a>(
                     }
                 };
 
-                if has_dirty_deps {
+                if dirty_modules.contains(&module_name) {
                     match module.source_type {
                         SourceType::SourceFile(ref mut source_file) => {
                             source_file.implementation.dirty = true;
-                            source_file.interface.as_mut().map(|interface| {
-                                interface.dirty = true;
-                            });
+                            match source_file.interface {
+                                Some(ref mut interface) => {
+                                    interface.dirty = true;
+                                }
+                                None => (),
+                            }
                         }
                         SourceType::MlMap(ref mut mlmap) => {
                             mlmap.dirty = true;
@@ -958,8 +995,8 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     );
     let start_compiling = Instant::now();
 
-    // let mut compiled_modules = AHashSet::<String>::new();
-    let mut compiled_modules = modules
+    let mut compiled_modules = AHashSet::<String>::new();
+    let clean_modules = modules
         .iter()
         .filter_map(|(module_name, module)| {
             if is_dirty(module) {
@@ -969,6 +1006,9 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             }
         })
         .collect::<AHashSet<String>>();
+
+    // always clean build
+    // let clean_modules = AHashSet::<String>::new();
 
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
@@ -994,6 +1034,9 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                 if module.deps.is_subset(&compiled_modules)
                     && !compiled_modules.contains(module_name)
                 {
+                    if clean_modules.contains(module_name) {
+                        return Some((module_name.to_owned(), Ok(None), Some(Ok(None))));
+                    }
                     match module.source_type.to_owned() {
                         SourceType::MlMap(_) => {
                             // the mlmap needs to be compiled before the files are compiled
