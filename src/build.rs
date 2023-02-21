@@ -300,20 +300,23 @@ pub fn generate_asts<'a>(
                     } else {
                         (
                             Ok((
-                                helpers::get_ast_path(
-                                    &source_file.implementation.path,
-                                    &module.package.name,
-                                    &project_root,
-                                ),
+                                helpers::get_basename(&source_file.implementation.path).to_string()
+                                    + ".ast",
+                                // helpers::get_ast_path(
+                                //     &source_file.implementation.path,
+                                //     &module.package.name,
+                                //     &project_root,
+                                // ),
                                 None,
                             )),
                             Ok(source_file.interface.as_ref().map(|i| {
                                 (
-                                    helpers::get_iast_path(
-                                        &i.path,
-                                        &module.package.name,
-                                        &project_root,
-                                    ),
+                                    // helpers::get_iast_path(
+                                    //     &i.path,
+                                    //     &module.package.name,
+                                    //     &project_root,
+                                    // )
+                                    helpers::get_basename(&i.path).to_string() + ".iast",
                                     None,
                                 )
                             })),
@@ -382,6 +385,8 @@ pub fn generate_asts<'a>(
             })
             .collect::<AHashSet<String>>(),
     );
+
+    println!("Dirty modules: {:?}", dirty_modules.len());
 
     loop {
         let mut num_checked_modules = 0;
@@ -546,7 +551,7 @@ pub fn parse_packages(
             modules.insert(
                 helpers::file_path_to_module_name(&mlmap.to_owned(), &None),
                 Module {
-                    source_type: SourceType::MlMap(MlMap { dirty: true }),
+                    source_type: SourceType::MlMap(MlMap { dirty: false }),
                     deps: deps,
                     package: package.to_owned(),
                 },
@@ -996,16 +1001,30 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let start_compiling = Instant::now();
 
     let mut compiled_modules = AHashSet::<String>::new();
+    // println!("Clean modules:");
     let clean_modules = modules
         .iter()
         .filter_map(|(module_name, module)| {
             if is_dirty(module) {
                 None
             } else {
+                // println!("> {}", module_name);
                 Some(module_name.to_owned())
             }
         })
         .collect::<AHashSet<String>>();
+
+    println!(
+        "Clean modules: {} ({})",
+        clean_modules.len(),
+        clean_modules.len() as f64 / modules.len() as f64 * 100.0
+    );
+
+    let mut clean_modules_sorted = clean_modules.iter().collect::<Vec<&String>>();
+    clean_modules_sorted.sort_by(|a, b| a.cmp(b));
+    clean_modules_sorted.iter().for_each(|_module_name| {
+        // println!("> {}", module_name);
+    });
 
     // always clean build
     // let clean_modules = AHashSet::<String>::new();
@@ -1018,6 +1037,9 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let total_modules = modules.len();
 
     loop {
+        let mut sorted_modules = modules.iter().collect::<Vec<(&String, &Module)>>();
+        // sort by module name:
+        sorted_modules.sort_by(|a, b| a.0.cmp(b.0));
         files_current_loop_count = 0;
         loop_count += 1;
 
@@ -1028,14 +1050,15 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             loop_count,
         );
 
-        modules
+        sorted_modules
+            // .iter()
             .par_iter()
             .map(|(module_name, module)| {
                 if module.deps.is_subset(&compiled_modules)
-                    && !compiled_modules.contains(module_name)
+                    && !compiled_modules.contains(*module_name)
                 {
-                    if clean_modules.contains(module_name) {
-                        return Some((module_name.to_owned(), Ok(None), Some(Ok(None))));
+                    if clean_modules.contains(*module_name) {
+                        return Some((module_name.to_string(), Ok(None), Some(Ok(None))));
                     }
                     match module.source_type.to_owned() {
                         SourceType::MlMap(_) => {
@@ -1051,6 +1074,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                         }
                         SourceType::SourceFile(source_file) => {
                             // compile interface first
+                            // println!("Compiling {}...", module_name);
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
@@ -1068,6 +1092,10 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 }
                                 _ => None,
                             };
+                            if let Some(Err(error)) = interface_result.to_owned() {
+                                println!("{}", error);
+                                panic!("Interface compilation error!");
+                            }
 
                             let result = compile_file(
                                 &module.package.name,
@@ -1081,7 +1109,12 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 false,
                             );
 
-                            Some((module_name.to_owned(), result, interface_result))
+                            if let Err(error) = result.to_owned() {
+                                println!("{}", error);
+                                panic!("Implementation compilation error!");
+                            }
+
+                            Some((module_name.to_string(), result, interface_result))
                         }
                     }
                 } else {
