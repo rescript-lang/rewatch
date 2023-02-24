@@ -1,0 +1,33 @@
+---
+name: Tests
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  cancel-previous-runs:
+    name: Cancel Previous Runs
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.0
+        with:
+          access_token: ${{ github.token }}
+  run-tests:
+    name: Run Tests
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Run Test
+        run: echo "Testin"
