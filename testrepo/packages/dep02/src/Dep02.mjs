@@ -2,7 +2,7 @@
 
 
 function log(param) {
-  console.log("Hello, World!");
+  console.log("03");
 }
 
 export {

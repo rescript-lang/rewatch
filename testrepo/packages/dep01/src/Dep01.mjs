@@ -3,7 +3,7 @@
 import * as Dep02 from "@testrepo/dep02/src/Dep02.mjs";
 
 function log(param) {
-  console.log("Dep01");
+  console.log("02");
   Dep02.log(undefined);
 }
 
