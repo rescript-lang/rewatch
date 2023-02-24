@@ -1,0 +1,27 @@
+{
+  "name": "testrepo",
+  "sources": [],
+  "package-specs": [
+    {
+      "module": "es6",
+      "in-source": true
+    }
+  ],
+  "warnings": {
+    "error": false
+  },
+  "suffix": ".mjs",
+  "pinned-dependencies": [
+    "@testrepo/main",
+    "@testrepo/dep01",
+    "@testrepo/dep02"
+  ],
+  "bs-dependencies": [
+    "@testrepo/main",
+    "@testrepo/dep01",
+    "@testrepo/dep02"
+  ],
+  "reason": {
+    "react-jsx": 3
+  }
+}
