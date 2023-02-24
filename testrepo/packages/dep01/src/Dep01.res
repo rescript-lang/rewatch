@@ -1,4 +1,4 @@
 let log = () => {
-Js.log("Dep01")
-Dep02.log()
+        Js.log("02")
+        Dep02.log()
 }
