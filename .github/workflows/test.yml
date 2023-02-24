@@ -30,4 +30,4 @@ jobs:
           command: build
           args: --release
       - name: Run Test
-        run: echo "Testin"
+        run: ./tests/suite.sh
