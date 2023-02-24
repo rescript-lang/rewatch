@@ -29,5 +29,7 @@ jobs:
         with:
           command: build
           args: --release
+      - name: Install Yarn Dependencies
+        run: cd ./testrepo && yarn install
       - name: Run Test
         run: ./tests/suite.sh
