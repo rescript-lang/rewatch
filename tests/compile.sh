@@ -1,24 +1,34 @@
-echo "Base compilation"
+echo "Test: It should compile"
 cd ../testrepo
 
-echo "-- Assert testrepo is clean"
-git diff --exit-code
+if ../target/release/rewatch clean . &> /dev/null;
+then
+  echo "✅ - Repo Cleaned"
+else 
+  echo "❌ - Error Cleaning Repo"
+  exit 1
+fi
 
-echo "-- Clean testrepo"
-../target/release/rewatch build . &> /dev/null
+if ../target/release/rewatch build . &> /dev/null; 
+then
+  echo "✅ - Repo Built"
+else 
+  echo "❌ - Error Building Repo"
+  exit 1
+fi
 
-echo "-- Build testrepo"
-../target/release/rewatch build . &> /dev/null
-
-echo "-- Make sure there are no changes"
-git diff --exit-code
-
-echo "-- Make sure output it still correct"
+if git diff --exit-code ./ &> /dev/null; 
+then
+  echo "✅ - Testrepo has no changes"
+else 
+  echo "❌ - Build has changed"
+  exit 1
+fi
 
 if node ../testrepo/packages/main/src/Main.mjs | grep -z '01\n02\n03' &> /dev/null; 
 then
-  echo "Output is correct"
+  echo "✅ - Output is correct"
 else 
-  echo "Output is incorrect"
+  echo "❌ - Output is incorrect"
   exit 1
 fi
