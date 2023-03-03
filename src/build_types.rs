@@ -57,4 +57,5 @@ pub struct Module {
     pub source_type: SourceType,
     pub deps: AHashSet<String>,
     pub package: package_tree::Package,
+    pub compile_dirty: bool,
 }
