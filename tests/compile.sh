@@ -1,7 +1,7 @@
 echo "Test: It should compile"
 cd ../testrepo
 
-if ../target/release/rewatch clean . &> /dev/null;
+if RUST_BACKTRACE=1 ../target/release/rewatch clean .;
 then
   echo "✅ - Repo Cleaned"
 else 
@@ -9,7 +9,7 @@ else
   exit 1
 fi
 
-if ../target/release/rewatch build . &> /dev/null; 
+if RUST_BACKTRACE=1 ../target/release/rewatch build .; 
 then
   echo "✅ - Repo Built"
 else 
@@ -17,7 +17,8 @@ else
   exit 1
 fi
 
-if git diff --exit-code ./ &> /dev/null; 
+
+if git diff --exit-code ./; 
 then
   echo "✅ - Testrepo has no changes"
 else 
@@ -25,7 +26,9 @@ else
   exit 1
 fi
 
-if node ../testrepo/packages/main/src/Main.mjs | grep -z '01\n02\n03' &> /dev/null; 
+node ./packages/main/src/Main.mjs > ./packages/main/src/output.txt
+
+if git diff --exit-code ./; 
 then
   echo "✅ - Output is correct"
 else 

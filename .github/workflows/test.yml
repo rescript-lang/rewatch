@@ -32,4 +32,4 @@ jobs:
       - name: Install Yarn Dependencies
         run: cd ./testrepo && yarn install
       - name: Run Test
-        run: ./tests/suite.sh
+        run: ./tests/suite-ci.sh

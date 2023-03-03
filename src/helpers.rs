@@ -129,7 +129,15 @@ pub fn create_build_path(build_path: &str) {
 }
 
 pub fn get_bsc(root_path: &str) -> String {
-    get_node_modules_path(root_path) + "/rescript/darwinarm64/bsc.exe"
+    let subfolder = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "darwinarm64",
+        ("macos", _) => "darwin",
+        ("linux", _) => "linux",
+        ("windows", _) => "win32",
+        _ => panic!("Unsupported architecture"),
+    };
+
+    get_node_modules_path(root_path) + "/rescript/" + subfolder + "/bsc.exe"
 }
 
 pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
