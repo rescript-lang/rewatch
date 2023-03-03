@@ -17,6 +17,7 @@ log = { version = "0.4.17", features = ["max_level_debug", "release_max_level_wa
 env_logger = "0.10.0"
 indicatif = "0.17.3"
 console = "0.15.5"
+md5 = "0.7.0"
 notify-debouncer-mini = { version = "0.2.0" }
 
 
