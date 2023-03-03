@@ -1,10 +1,7 @@
-trap "exit" INT TERM ERR
-trap "kill 0" EXIT
-
 echo "Test: It should watch"
 cd ../testrepo
 
-if ../target/release/rewatch clean . &> /dev/null;
+if RUST_BACKTRACE=1 ../target/release/rewatch clean . &> /dev/null;
 then
   echo "✅ - Repo Cleaned"
 else 
@@ -12,14 +9,14 @@ else
   exit 1
 fi
 
-../target/release/rewatch watch . &>/dev/null &
+RUST_BACKTRACE=1 ../target/release/rewatch watch . &>/dev/null &
 echo "✅ - Watcher Started"
 
-echo 'Js.log("added-by-test")' >> packages/main/src/Main.res
+echo 'Js.log("added-by-test")' >> ./packages/main/src/Main.res
 
 sleep 1
 
-if node ../testrepo/packages/main/src/Main.mjs | grep 'added-by-test' &> /dev/null; 
+if node ./packages/main/src/Main.mjs | grep 'added-by-test' &> /dev/null; 
 then
   echo "✅ - Output is correct"
 else 
@@ -29,7 +26,12 @@ fi
 
 sleep 1
 
-sed -i '' '/Js.log("added-by-test")/d' packages/main/src/Main.res;
+if [[ $OSTYPE == 'darwin'* ]]; 
+then
+  sed -i '' '/Js.log("added-by-test")/d' ./packages/main/src/Main.res;
+else 
+  sed -i '/Js.log("added-by-test")/d' ./packages/main/src/Main.res;
+fi
 
 sleep 1
 
