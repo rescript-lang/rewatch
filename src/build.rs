@@ -10,7 +10,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, log_enabled, Level::Info};
 use rayon::prelude::*;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -215,19 +215,28 @@ fn get_dep_modules(
 fn gen_mlmap(
     package: &package_tree::Package,
     namespace: &str,
-    modules: &Vec<String>,
+    depending_modules: AHashSet<String>,
     root_path: &str,
 ) -> String {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
     // we don't really need to create a digest, because we track if we need to
     // recompile in a different way but we need to put it in the file for it to
     // be readable.
-    let mut sorted_modules = modules.clone();
-    sorted_modules.sort();
-    let digest = "randjbuildsystem".to_owned() + "\n" + &sorted_modules.join("\n");
-    let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
-    fs::write(&file, digest).expect("Unable to write mlmap");
-    file.to_string()
+
+    let path = build_path_abs.to_string() + "/" + namespace + ".mlmap";
+    let mut file = File::create(&path).expect("Unable to create mlmap");
+
+    file.write_all(b"randjbuildsystem\n" as &[u8])
+        .expect("Unable to write mlmap");
+
+    let mut modules = Vec::from_iter(depending_modules.to_owned());
+    modules.sort();
+    for module in modules {
+        file.write_all(module.as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+    }
+
+    path.to_string()
 }
 
 pub fn generate_asts<'a>(
@@ -508,7 +517,7 @@ pub fn parse_packages(
             let mlmap = gen_mlmap(
                 &package,
                 namespace,
-                &Vec::from_iter(depending_modules.to_owned()),
+                depending_modules,
                 project_root,
             );
 
