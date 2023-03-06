@@ -31,6 +31,3 @@ criterion = "0.4"
 [[bench]]
 name = "base_bench"
 harness = false
-
-[profile.bench]
-debug = true
