@@ -164,7 +164,7 @@ fn get_dep_modules(
     package_modules: &AHashSet<String>,
     valid_modules: &AHashSet<String>,
 ) -> AHashSet<String> {
-    let mut deps = Vec::new();
+    let mut deps = AHashSet::new();
     if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
         // we skip the first line with is some null characters
         // the following lines in the AST are the dependency modules
@@ -177,7 +177,7 @@ fn get_dep_modules(
                     if line.starts_with('/') {
                         break;
                     } else if !line.is_empty() {
-                        deps.push(line);
+                        deps.insert(line);
                     }
                 }
                 Err(_) => (),
@@ -186,29 +186,28 @@ fn get_dep_modules(
     }
 
     return deps
-        .into_iter()
+        .iter()
         .map(|dep| {
-            dep.split('.')
-                .collect::<Vec<&str>>()
-                .first()
-                .unwrap()
-                .to_string()
-        })
-        .map(|dep| match namespace.to_owned() {
-            Some(namespace) => {
-                let namespaced_name = dep.to_owned() + "-" + &namespace;
-                if package_modules.contains(&namespaced_name) {
-                    return namespaced_name;
-                } else {
-                    return dep;
-                };
+            let dep_first = dep.split('.').next().unwrap();
+
+            match &namespace {
+                Some(namespace) => {
+                    let namespaced_name = dep_first.to_owned() + "-" + &namespace;
+                    if package_modules.contains(&namespaced_name) {
+                        return namespaced_name;
+                    } else {
+                        return dep_first.to_string();
+                    };
+                }
+                None => dep_first.to_string(),
             }
-            None => dep,
         })
-        .filter(|dep| valid_modules.contains(dep))
-        .filter(|dep| match namespace.to_owned() {
-            Some(namespace) => !dep.eq(&namespace),
-            None => true,
+        .filter(|dep| {
+            valid_modules.contains(dep)
+                && match namespace.to_owned() {
+                    Some(namespace) => !dep.eq(&namespace),
+                    None => true,
+                }
         })
         .collect::<AHashSet<String>>();
 }
