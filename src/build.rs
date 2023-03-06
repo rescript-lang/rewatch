@@ -16,27 +16,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
-    if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
-        // we skip the first line with is some null characters
-        // the following lines in the AST are the dependency modules
-        // we stop when we hit a line that starts with a "/", this is the path of the file.
-        // this is the point where the dependencies end and the actual AST starts
-        for line in lines.skip(1) {
-            match line {
-                Ok(line) => {
-                    let line = line.trim().to_string();
-                    if line.starts_with('/') {
-                        return Some(line);
-                    }
-                }
-                Err(_) => (),
-            }
-        }
-    }
-    return None;
-}
-
 pub fn get_interface<'a>(module: &'a Module) -> &'a Option<Interface> {
     match &module.source_type {
         SourceType::SourceFile(source_file) => &source_file.interface,
@@ -514,12 +493,7 @@ pub fn parse_packages(
                 .map(|path| helpers::file_path_to_module_name(&path, &None))
                 .collect::<AHashSet<String>>();
 
-            let mlmap = gen_mlmap(
-                &package,
-                namespace,
-                depending_modules,
-                project_root,
-            );
+            let mlmap = gen_mlmap(&package, namespace, depending_modules, project_root);
 
             // mlmap will be compiled in the AST generation step
             // compile_mlmap(&package, namespace, &project_root);
