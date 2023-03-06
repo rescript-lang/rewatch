@@ -1024,7 +1024,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             break;
         }
         let mut indirectly_dirty_modules = dirty_modules.clone();
-        let mut checked_modules = AHashSet::new();
+        let mut checked_modules = AHashSet::with_capacity(modules.len());
         loop {
             let mut num_checked_modules = 0;
             for (module_name, module) in modules.iter() {
