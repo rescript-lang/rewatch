@@ -865,9 +865,9 @@ fn is_dirty(module: &Module) -> bool {
     }
 }
 
-fn compute_md5(path: &str) -> Option<md5::Digest> {
+fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     match fs::read(path) {
-        Ok(str) => Some(md5::compute(str)),
+        Ok(str) => Some(blake3::hash(&str)),
         Err(_) => None,
     }
 }
@@ -999,13 +999,13 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         })
         .collect::<AHashSet<String>>();
 
-    // for sure clean modules -- after checking the md5 of the cmi
+    // for sure clean modules -- after checking the hash of the cmi
     let mut clean_modules = AHashSet::<String>::new();
 
     // TODO: calculate the real dirty modules from the orginal dirty modules in each iteration
     // taken into account the modules that we know are clean, so they don't propagate through the
     // deps graph
-    // create a hashset of all clean modules form the md5 hashing
+    // create a hashset of all clean modules form the file-hashes
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
     let mut files_current_loop_count;
@@ -1144,7 +1144,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 &project_root,
                                 "cmi",
                             );
-                            let cmi_digest = compute_md5(&cmi_path);
+                            let cmi_digest = compute_file_hash(&cmi_path);
 
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
@@ -1182,7 +1182,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                             //     println!("{}", error);
                             //     panic!("Implementation compilation error!");
                             // }
-                            let cmi_digest_after = compute_md5(&cmi_path);
+                            let cmi_digest_after = compute_file_hash(&cmi_path);
 
                             let is_clean = match (cmi_digest, cmi_digest_after) {
                                 (Some(cmi_digest), Some(cmi_digest_after)) => {
