@@ -29,8 +29,8 @@ impl PartialEq for Package {
 }
 impl Eq for Package {}
 impl Hash for Package {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
+    fn hash<H: Hasher>(&self, _state: &mut H) {
+        blake3::hash(&self.name.as_bytes());
     }
 }
 
@@ -70,8 +70,7 @@ fn get_source_dirs(
     if !full_recursive {
         subdirs
             .unwrap_or(vec![])
-            // I don't think we do any io here so par_iter is probably slower than iter
-            .iter()
+            .par_iter()
             .map(|subdir| get_source_dirs(&full_path, subdir.to_owned()))
             .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
             .into_iter()
@@ -80,12 +79,6 @@ fn get_source_dirs(
 
     source_folders
 }
-
-// fn add_bsconfig_package(
-//     map: &'a mut AHashMap<String, Package>,
-//     bsconfig: bsconfig::T,
-// ) -> (&'a mut AHashMap<String, Package>, Vec(String)) {
-// }
 
 fn get_package_dir(package_name: &str, is_root: bool, project_root: &str) -> String {
     if is_root {
@@ -125,7 +118,6 @@ fn build_package<'a>(
                 let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> =
                     AHashSet::new();
                 sources
-                    // I don't think we do any IO here so probably faster to just do iter
                     .iter()
                     .map(|source| get_source_dirs(&package_dir, source.to_owned()))
                     .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()

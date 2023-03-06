@@ -1,10 +1,22 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rewatch::build;
+use rewatch::package_tree;
+use rewatch::helpers;
 
 use std::fs::File;
 use std::io::prelude::*;
 
 fn criterion_benchmark(c: &mut Criterion) {
+    c.bench_function("build-package-tree", |b| {
+        // Folder for the testrepo
+        let folder = "walnut_monorepo";
+        let project_root = helpers::get_abs_path(folder);
+
+        b.iter(|| {
+            package_tree::make(&project_root);
+        })
+    });
+
     c.bench_function("clean-build-change-build", |b| {
         // Folder for the testrepo
         let folder = "testrepo";
