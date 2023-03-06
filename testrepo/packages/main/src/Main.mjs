@@ -6,7 +6,12 @@ console.log("01");
 
 Dep01.log(undefined);
 
+var $$Array;
+
+var $$String;
+
 export {
-  
+  $$Array ,
+  $$String ,
 }
 /*  Not a pure module */
