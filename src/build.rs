@@ -1017,9 +1017,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         .iter()
         .map(|(module_name, _)| module_name.to_owned())
         .collect::<Vec<String>>();
-    // sort by module name:
-    sorted_modules.sort_by(|a, b| a.cmp(b));
-    let sorted_modules = sorted_modules;
+    sorted_modules.sort();
 
     loop {
         if dirty_modules.len() == 0 {
