@@ -371,7 +371,6 @@ pub fn generate_asts<'a>(
             Option<String>,
         )>>();
 
-    let mut checked_modules = AHashSet::new();
     let mut dirty_modules = deleted_modules.clone();
     dirty_modules.extend(
         modules
@@ -385,32 +384,6 @@ pub fn generate_asts<'a>(
             })
             .collect::<AHashSet<String>>(),
     );
-
-    println!("Dirty modules: {:?}", dirty_modules.len());
-
-    loop {
-        let mut num_checked_modules = 0;
-        for (module_name, _ast_path, _iast_path, deps, namespace) in results.iter() {
-            if !checked_modules.contains(module_name) {
-                num_checked_modules += 1;
-                if deps.is_subset(&checked_modules) {
-                    checked_modules.insert(module_name.to_string());
-
-                    let has_dirty_namespace = match namespace {
-                        Some(namespace) => dirty_modules.contains(namespace),
-                        None => false,
-                    };
-
-                    if !deps.is_disjoint(&dirty_modules) || has_dirty_namespace {
-                        dirty_modules.insert(module_name.to_string());
-                    }
-                }
-            }
-        }
-        if num_checked_modules == 0 {
-            break;
-        }
-    }
 
     results
         .into_iter()
@@ -476,22 +449,22 @@ pub fn generate_asts<'a>(
                     }
                 };
 
-                if dirty_modules.contains(&module_name) {
-                    match module.source_type {
-                        SourceType::SourceFile(ref mut source_file) => {
-                            source_file.implementation.dirty = true;
-                            match source_file.interface {
-                                Some(ref mut interface) => {
-                                    interface.dirty = true;
-                                }
-                                None => (),
-                            }
-                        }
-                        SourceType::MlMap(ref mut mlmap) => {
-                            mlmap.dirty = true;
-                        }
-                    }
-                }
+                // if dirty_modules.contains(&module_name) {
+                //     match module.source_type {
+                //         SourceType::SourceFile(ref mut source_file) => {
+                //             source_file.implementation.dirty = true;
+                //             match source_file.interface {
+                //                 Some(ref mut interface) => {
+                //                     interface.dirty = true;
+                //                 }
+                //                 None => (),
+                //             }
+                //         }
+                //         SourceType::MlMap(ref mut mlmap) => {
+                //             mlmap.dirty = true;
+                //         }
+                //     }
+                // }
             }
         });
 
@@ -554,6 +527,7 @@ pub fn parse_packages(
                     source_type: SourceType::MlMap(MlMap { dirty: false }),
                     deps: deps,
                     package: package.to_owned(),
+                    compile_dirty: false,
                 },
             );
         });
@@ -604,6 +578,7 @@ pub fn parse_packages(
                             }),
                             deps: AHashSet::new(),
                             package: package.to_owned(),
+                            compile_dirty: true,
                         });
                 } else {
                     modules
@@ -640,6 +615,7 @@ pub fn parse_packages(
                             }),
                             deps: AHashSet::new(),
                             package: package.to_owned(),
+                            compile_dirty: true,
                         });
                 }
             }),
@@ -889,6 +865,13 @@ fn is_dirty(module: &Module) -> bool {
     }
 }
 
+fn compute_md5(path: &str) -> Option<md5::Digest> {
+    match fs::read(path) {
+        Ok(str) => Some(md5::compute(str)),
+        Err(_) => None,
+    }
+}
+
 pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
@@ -1002,44 +985,114 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
     let mut compiled_modules = AHashSet::<String>::new();
     // println!("Clean modules:");
-    let clean_modules = modules
+    let dirty_modules = modules
         .iter()
         .filter_map(|(module_name, module)| {
-            if is_dirty(module) {
-                None
-            } else {
+            // if is_dirty(module) {
+            if module.compile_dirty {
                 // println!("> {}", module_name);
                 Some(module_name.to_owned())
+            } else {
+                // println!("> {}", module_name);
+                None
             }
         })
         .collect::<AHashSet<String>>();
 
-    println!(
-        "Clean modules: {} ({})",
-        clean_modules.len(),
-        clean_modules.len() as f64 / modules.len() as f64 * 100.0
-    );
+    // for sure clean modules -- after checking the md5 of the cmi
+    let mut clean_modules = AHashSet::<String>::new();
 
-    let mut clean_modules_sorted = clean_modules.iter().collect::<Vec<&String>>();
-    clean_modules_sorted.sort_by(|a, b| a.cmp(b));
-    clean_modules_sorted.iter().for_each(|_module_name| {
-        // println!("> {}", module_name);
-    });
-
-    // always clean build
-    // let clean_modules = AHashSet::<String>::new();
-
+    // TODO: calculate the real dirty modules from the orginal dirty modules in each iteration
+    // taken into account the modules that we know are clean, so they don't propagate through the
+    // deps graph
+    // create a hashset of all clean modules form the md5 hashing
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
     let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
     let mut compile_warnings = "".to_string();
     let total_modules = modules.len();
+    let mut num_compiled_modules = 0;
+    let mut sorted_modules = modules
+        .iter()
+        .map(|(module_name, _)| module_name.to_owned())
+        .collect::<Vec<String>>();
+    sorted_modules.sort();
 
     loop {
-        let mut sorted_modules = modules.iter().collect::<Vec<(&String, &Module)>>();
-        // sort by module name:
-        sorted_modules.sort_by(|a, b| a.0.cmp(b.0));
+        if dirty_modules.len() == 0 {
+            break;
+        }
+        let mut indirectly_dirty_modules = dirty_modules.clone();
+        let mut checked_modules = AHashSet::with_capacity(modules.len());
+        loop {
+            let mut num_checked_modules = 0;
+            for (module_name, module) in modules.iter() {
+                if !checked_modules.contains(module_name) {
+                    num_checked_modules += 1;
+                    if module.deps.is_subset(&checked_modules) {
+                        checked_modules.insert(module_name.to_string());
+                        let is_dirty = module.deps.iter().any(|dep| {
+                            if clean_modules.contains(dep) {
+                                return false;
+                            }
+                            if indirectly_dirty_modules.contains(dep) {
+                                return true;
+                            }
+                            return false;
+                        });
+                        // if !module.deps.is_disjoint(&indirectly_dirty_modules) {
+                        //     indirectly_dirty_modules.insert(module_name.to_string());
+                        // }
+                        if is_dirty {
+                            indirectly_dirty_modules.insert(module_name.to_string());
+                        }
+                    }
+                }
+            }
+            if num_checked_modules == 0 {
+                break;
+            }
+        }
+        // let to_check_modules: Vec<(&String, &Module)> = modules
+        //     .iter()
+        //     .filter(|(module_name, _)| !checked_modules.contains(*module_name))
+        //     .collect();
+        // to_check_modules.iter().for_each(|(module_name, _)| {
+        //     let _ = checked_modules.insert(module_name.to_string());
+        // });
+        // Parallel version -- much faster in a debug build but slower in a release build...
+        // to_check_modules
+        //     .par_iter()
+        //     .map(|(module_name, module)| {
+        //         if module.deps.is_subset(&checked_modules) {
+        //             // checked_modules.insert(module_name.to_string());
+        //             let is_dirty = module.deps.iter().any(|dep| {
+        //                 if clean_modules.contains(dep) {
+        //                     return false;
+        //                 }
+        //                 if indirectly_dirty_modules.contains(dep) {
+        //                     return true;
+        //                 }
+        //                 return false;
+        //             });
+
+        //             if is_dirty {
+        //                 return Some(module_name);
+        //             }
+        //         }
+        //         return None;
+        //     })
+        //     .filter_map(|x| x)
+        //     .collect::<Vec<&&String>>()
+        //     .iter()
+        //     .for_each(|module_name| {
+        //         indirectly_dirty_modules.insert(module_name.to_string());
+        //     });
+        // if to_check_modules.len() == 0 {
+        //     break;
+        // }
+
         files_current_loop_count = 0;
         loop_count += 1;
 
@@ -1053,13 +1106,22 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         sorted_modules
             // .iter()
             .par_iter()
-            .map(|(module_name, module)| {
+            .map(|module_name| {
+                let module = modules.get(module_name).unwrap();
                 if module.deps.is_subset(&compiled_modules)
-                    && !compiled_modules.contains(*module_name)
+                    && !compiled_modules.contains(module_name)
                 {
-                    if clean_modules.contains(*module_name) {
-                        return Some((module_name.to_string(), Ok(None), Some(Ok(None))));
+                    if !indirectly_dirty_modules.contains(module_name) {
+                        // we are sure we don't have to compile this, so we can mark it as compiled
+                        return Some((
+                            module_name.to_string(),
+                            Ok(None),
+                            Some(Ok(None)),
+                            true,
+                            false,
+                        ));
                     }
+
                     match module.source_type.to_owned() {
                         SourceType::MlMap(_) => {
                             // the mlmap needs to be compiled before the files are compiled
@@ -1070,11 +1132,20 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 module.package.namespace.to_owned().unwrap(),
                                 Ok(None),
                                 Some(Ok(None)),
+                                false,
+                                false,
                             ))
                         }
                         SourceType::SourceFile(source_file) => {
-                            // compile interface first
-                            // println!("Compiling {}...", module_name);
+                            let cmi_path = helpers::get_compiler_asset(
+                                &source_file.implementation.path,
+                                &module.package.name,
+                                &module.package.namespace,
+                                &project_root,
+                                "cmi",
+                            );
+                            let cmi_digest = compute_md5(&cmi_path);
+
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
@@ -1092,11 +1163,10 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 }
                                 _ => None,
                             };
-                            if let Some(Err(error)) = interface_result.to_owned() {
-                                println!("{}", error);
-                                panic!("Interface compilation error!");
-                            }
-
+                            // if let Some(Err(error)) = interface_result.to_owned() {
+                            //     println!("{}", error);
+                            //     panic!("Interface compilation error!");
+                            // }
                             let result = compile_file(
                                 &module.package.name,
                                 &helpers::get_ast_path(
@@ -1108,13 +1178,38 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 &project_root,
                                 false,
                             );
+                            // if let Err(error) = result.to_owned() {
+                            //     println!("{}", error);
+                            //     panic!("Implementation compilation error!");
+                            // }
+                            let cmi_digest_after = compute_md5(&cmi_path);
 
-                            if let Err(error) = result.to_owned() {
-                                println!("{}", error);
-                                panic!("Implementation compilation error!");
-                            }
+                            let is_clean = match (cmi_digest, cmi_digest_after) {
+                                (Some(cmi_digest), Some(cmi_digest_after)) => {
+                                    if cmi_digest.eq(&cmi_digest_after) {
+                                        // println!(
+                                        //     "{} is clean -- {:x} {:x}",
+                                        //     cmi_path, cmi_digest, cmi_digest_after
+                                        // );
+                                        true
+                                    } else {
+                                        // println!(
+                                        //     "{} is dirty -- {:x} {:x}",
+                                        //     cmi_path, cmi_digest, cmi_digest_after
+                                        // );
+                                        false
+                                    }
+                                }
 
-                            Some((module_name.to_string(), result, interface_result))
+                                _ => false,
+                            };
+                            Some((
+                                module_name.to_string(),
+                                result,
+                                interface_result,
+                                is_clean,
+                                true,
+                            ))
                         }
                     }
                 } else {
@@ -1126,16 +1221,26 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                     String,
                     Result<Option<String>, String>,
                     Option<Result<Option<String>, String>>,
+                    bool,
+                    bool,
                 )>,
             >>()
             .iter()
             .for_each(|result| match result {
-                Some((module_name, result, interface_result)) => {
+                Some((module_name, result, interface_result, is_clean, is_compiled)) => {
                     if !(log_enabled!(Info)) {
                         pb.inc(1);
                     }
+                    if *is_compiled {
+                        num_compiled_modules += 1;
+                    }
                     files_current_loop_count += 1;
                     compiled_modules.insert(module_name.to_string());
+
+                    if *is_clean {
+                        // actually add it to a list of clean modules
+                        clean_modules.insert(module_name.to_string());
+                    }
 
                     let module = modules.get_mut(module_name).unwrap();
 
@@ -1193,10 +1298,11 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     clean::cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
     if compile_errors.len() > 0 {
         println!(
-            "{}\r{} {}Compiled in {:.2}s",
+            "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
             style("[5/5]").bold().dim(),
             CROSS,
+            num_compiled_modules,
             compile_duration.as_secs_f64()
         );
         if helpers::contains_ascii_characters(&compile_warnings) {
@@ -1206,10 +1312,11 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         return Err(());
     } else {
         println!(
-            "{}\r{} {}Compiled in {:.2}s",
+            "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
             style("[5/5]").bold().dim(),
             CHECKMARK,
+            num_compiled_modules,
             compile_duration.as_secs_f64()
         );
         if helpers::contains_ascii_characters(&compile_warnings) {
