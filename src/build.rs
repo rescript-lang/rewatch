@@ -375,6 +375,12 @@ pub fn generate_asts<'a>(
     results
         .into_iter()
         .for_each(|(module_name, ast_path, iast_path, deps, _namespace)| {
+            deps.iter().for_each(|dep_name| {
+                if let Some(module) = modules.get_mut(dep_name) {
+                    module.reverse_deps.insert(module_name.to_string());
+                }
+            });
+
             if let Some(module) = modules.get_mut(&module_name) {
                 module.deps = deps;
                 match ast_path {
@@ -508,6 +514,7 @@ pub fn parse_packages(
                 Module {
                     source_type: SourceType::MlMap(MlMap { dirty: false }),
                     deps: deps,
+                    reverse_deps: AHashSet::new(),
                     package: package.to_owned(),
                     compile_dirty: false,
                 },
@@ -559,6 +566,7 @@ pub fn parse_packages(
                                 interface: None,
                             }),
                             deps: AHashSet::new(),
+                            reverse_deps: AHashSet::new(),
                             package: package.to_owned(),
                             compile_dirty: true,
                         });
@@ -596,6 +604,7 @@ pub fn parse_packages(
                                 }),
                             }),
                             deps: AHashSet::new(),
+                            reverse_deps: AHashSet::new(),
                             package: package.to_owned(),
                             compile_dirty: true,
                         });
