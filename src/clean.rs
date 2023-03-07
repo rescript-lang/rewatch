@@ -41,13 +41,16 @@ fn remove_asts(source_file: &str, package_name: &str, namespace: &Option<String>
     ));
 }
 
+fn remove_mjs_file(source_file: &str) {
+    let _ = std::fs::remove_file(helpers::change_extension(source_file, "mjs"));
+}
+
 fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
     namespace: &Option<String>,
     root_path: &str,
 ) {
-    let _ = std::fs::remove_file(helpers::change_extension(source_file, "mjs"));
     // optimization
     // only issue cmti if htere is an interfacce file
     for extension in &["cmj", "cmi", "cmt", "cmti"] {
@@ -192,6 +195,7 @@ pub fn cleanup_previous_build(
             package_namespace,
             root_path,
         );
+        remove_mjs_file(&res_file_location)
     });
 
     ast_rescript_file_locations
