@@ -877,6 +877,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_package_tree = Instant::now();
     let packages = package_tree::make(&project_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
+
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
@@ -963,28 +964,15 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         }
     }
 
-    let pb = ProgressBar::new(modules.len().try_into().unwrap());
-    pb.set_style(
-        ProgressStyle::with_template(&format!(
-            "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
-            style("[5/5]").bold().dim(),
-            SWORDS
-        ))
-        .unwrap(),
-    );
     let start_compiling = Instant::now();
 
     let mut compiled_modules = AHashSet::<String>::new();
-    // println!("Clean modules:");
     let dirty_modules = modules
         .iter()
         .filter_map(|(module_name, module)| {
-            // if is_dirty(module) {
             if module.compile_dirty {
-                // println!("> {}", module_name);
                 Some(module_name.to_owned())
             } else {
-                // println!("> {}", module_name);
                 None
             }
         })
@@ -1002,7 +990,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let mut files_current_loop_count;
     let mut compile_errors = "".to_string();
     let mut compile_warnings = "".to_string();
-    let total_modules = modules.len();
     let mut num_compiled_modules = 0;
     let mut sorted_modules = modules
         .iter()
@@ -1010,100 +997,75 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         .collect::<Vec<String>>();
     sorted_modules.sort();
 
+    // for module in dirty_modules.clone() {
+    //     println!("dirty module: {}", module);
+    // }
+
+    // this is the whole "compile universe" all modules that might be dirty
+    // we get this by traversing from the dirty modules to all the modules that
+    // are dependent on them
+    let mut compile_universe = dirty_modules.clone();
+
+    let mut current_step_modules = dirty_modules.clone();
     loop {
-        if dirty_modules.len() == 0 {
+        let mut reverse_deps: AHashSet<String> = AHashSet::new();
+        for dirty_module in current_step_modules.iter() {
+            reverse_deps.extend(modules.get(dirty_module).unwrap().reverse_deps.clone());
+        }
+        current_step_modules = reverse_deps
+            .difference(&compile_universe)
+            .map(|s| s.to_string())
+            .collect::<AHashSet<String>>();
+        compile_universe.extend(current_step_modules.clone());
+        if current_step_modules.is_empty() {
             break;
         }
-        let mut indirectly_dirty_modules = dirty_modules.clone();
-        let mut checked_modules = AHashSet::with_capacity(modules.len());
-        loop {
-            let mut num_checked_modules = 0;
-            for (module_name, module) in modules.iter() {
-                if !checked_modules.contains(module_name) {
-                    num_checked_modules += 1;
-                    if module.deps.is_subset(&checked_modules) {
-                        checked_modules.insert(module_name.to_string());
-                        let is_dirty = module.deps.iter().any(|dep| {
-                            if clean_modules.contains(dep) {
-                                return false;
-                            }
-                            if indirectly_dirty_modules.contains(dep) {
-                                return true;
-                            }
-                            return false;
-                        });
-                        // if !module.deps.is_disjoint(&indirectly_dirty_modules) {
-                        //     indirectly_dirty_modules.insert(module_name.to_string());
-                        // }
-                        if is_dirty {
-                            indirectly_dirty_modules.insert(module_name.to_string());
-                        }
-                    }
-                }
-            }
-            if num_checked_modules == 0 {
-                break;
-            }
-        }
-        // let to_check_modules: Vec<(&String, &Module)> = modules
-        //     .iter()
-        //     .filter(|(module_name, _)| !checked_modules.contains(*module_name))
-        //     .collect();
-        // to_check_modules.iter().for_each(|(module_name, _)| {
-        //     let _ = checked_modules.insert(module_name.to_string());
-        // });
-        // Parallel version -- much faster in a debug build but slower in a release build...
-        // to_check_modules
-        //     .par_iter()
-        //     .map(|(module_name, module)| {
-        //         if module.deps.is_subset(&checked_modules) {
-        //             // checked_modules.insert(module_name.to_string());
-        //             let is_dirty = module.deps.iter().any(|dep| {
-        //                 if clean_modules.contains(dep) {
-        //                     return false;
-        //                 }
-        //                 if indirectly_dirty_modules.contains(dep) {
-        //                     return true;
-        //                 }
-        //                 return false;
-        //             });
+    }
+    let pb = ProgressBar::new(compile_universe.len().try_into().unwrap());
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
+            style("[5/5]").bold().dim(),
+            SWORDS
+        ))
+        .unwrap(),
+    );
 
-        //             if is_dirty {
-        //                 return Some(module_name);
-        //             }
-        //         }
-        //         return None;
-        //     })
-        //     .filter_map(|x| x)
-        //     .collect::<Vec<&&String>>()
-        //     .iter()
-        //     .for_each(|module_name| {
-        //         indirectly_dirty_modules.insert(module_name.to_string());
-        //     });
-        // if to_check_modules.len() == 0 {
-        //     break;
-        // }
+    // start off with all modules that have no deps in this compile universe
+    let mut in_progress_modules = compile_universe
+        .iter()
+        .filter(|module_name| {
+            let module = modules.get(*module_name).unwrap();
+            module.deps.intersection(&compile_universe).count() == 0
+        })
+        .map(|module_name| module_name.to_string())
+        .collect::<AHashSet<String>>();
 
+    loop {
         files_current_loop_count = 0;
         loop_count += 1;
 
         info!(
             "Compiled: {} out of {}. Compile loop: {}",
             files_total_count,
-            modules.len(),
+            compile_universe.len(),
             loop_count,
         );
 
-        sorted_modules
+        in_progress_modules
+            .clone()
             // .iter()
             .par_iter()
             .map(|module_name| {
                 let module = modules.get(module_name).unwrap();
-                if module.deps.is_subset(&compiled_modules)
-                    && !compiled_modules.contains(module_name)
+                // all dependencies that we care about are compiled
+                if module
+                    .deps
+                    .intersection(&compile_universe)
+                    .all(|dep| compiled_modules.contains(dep))
                 {
-                    if !indirectly_dirty_modules.contains(module_name) {
-                        // we are sure we don't have to compile this, so we can mark it as compiled
+                    if !module.compile_dirty {
+                        // we are sure we don't have to compile this, so we can mark it as compiled and clean
                         return Some((
                             module_name.to_string(),
                             Ok(None),
@@ -1154,10 +1116,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 }
                                 _ => None,
                             };
-                            // if let Some(Err(error)) = interface_result.to_owned() {
-                            //     println!("{}", error);
-                            //     panic!("Interface compilation error!");
-                            // }
                             let result = compile_file(
                                 &module.package.name,
                                 &helpers::get_ast_path(
@@ -1177,19 +1135,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
                             let is_clean = match (cmi_digest, cmi_digest_after) {
                                 (Some(cmi_digest), Some(cmi_digest_after)) => {
-                                    if cmi_digest.eq(&cmi_digest_after) {
-                                        // println!(
-                                        //     "{} is clean -- {:x} {:x}",
-                                        //     cmi_path, cmi_digest, cmi_digest_after
-                                        // );
-                                        true
-                                    } else {
-                                        // println!(
-                                        //     "{} is dirty -- {:x} {:x}",
-                                        //     cmi_path, cmi_digest, cmi_digest_after
-                                        // );
-                                        false
-                                    }
+                                    cmi_digest.eq(&cmi_digest_after)
                                 }
 
                                 _ => false,
@@ -1219,12 +1165,15 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             .iter()
             .for_each(|result| match result {
                 Some((module_name, result, interface_result, is_clean, is_compiled)) => {
+                    in_progress_modules.remove(module_name);
+
                     if !(log_enabled!(Info)) {
                         pb.inc(1);
                     }
                     if *is_compiled {
                         num_compiled_modules += 1;
                     }
+
                     files_current_loop_count += 1;
                     compiled_modules.insert(module_name.to_string());
 
@@ -1233,6 +1182,19 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                         clean_modules.insert(module_name.to_string());
                     }
 
+                    let module_reverse_deps =
+                        modules.get(module_name).unwrap().reverse_deps.clone();
+
+                    for dep in module_reverse_deps.iter() {
+                        let dep_module = modules.get_mut(dep).unwrap();
+                        //  mark the reverse dep as dirty when the source is not clean
+                        if !*is_clean {
+                            dep_module.compile_dirty = true;
+                        }
+                        if !compiled_modules.contains(dep) {
+                            in_progress_modules.insert(dep.to_string());
+                        }
+                    }
                     let module = modules.get_mut(module_name).unwrap();
 
                     match module.source_type {
@@ -1272,12 +1234,15 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
         files_total_count += files_current_loop_count;
 
-        if files_total_count == total_modules {
+        // if files_total_count == total_modules {
+        //     break;
+        // }
+        // if files_current_loop_count == 0 {
+        //     // we probably want to find the cycle(s), and give a helpful error message here
+        //     compile_errors.push_str("Can't continue... Dependency cycle\n")
+        // }
+        if in_progress_modules.len() == 0 {
             break;
-        }
-        if files_current_loop_count == 0 {
-            // we probably want to find the cycle(s), and give a helpful error message here
-            compile_errors.push_str("Can't continue... Dependency cycle\n")
         }
         if compile_errors.len() > 0 {
             break;
@@ -1288,6 +1253,10 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     pb.finish();
     clean::cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
     if compile_errors.len() > 0 {
+        if helpers::contains_ascii_characters(&compile_warnings) {
+            println!("{}", &compile_warnings);
+        }
+        println!("{}", &compile_errors);
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
@@ -1296,12 +1265,11 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             num_compiled_modules,
             compile_duration.as_secs_f64()
         );
+        return Err(());
+    } else {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
         }
-        println!("{}", &compile_errors);
-        return Err(());
-    } else {
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
@@ -1310,9 +1278,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             num_compiled_modules,
             compile_duration.as_secs_f64()
         );
-        if helpers::contains_ascii_characters(&compile_warnings) {
-            println!("{}", &compile_warnings);
-        }
     }
 
     let timing_total_elapsed = timing_total.elapsed();
