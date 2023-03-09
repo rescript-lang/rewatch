@@ -1184,6 +1184,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                     let module_reverse_deps =
                         modules.get(module_name).unwrap().reverse_deps.clone();
 
+                    // if not clean -- compile modules that depend on this module
                     for dep in module_reverse_deps.iter() {
                         let dep_module = modules.get_mut(dep).unwrap();
                         //  mark the reverse dep as dirty when the source is not clean
@@ -1194,6 +1195,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                             in_progress_modules.insert(dep.to_string());
                         }
                     }
+
                     let module = modules.get_mut(module_name).unwrap();
 
                     match module.source_type {
