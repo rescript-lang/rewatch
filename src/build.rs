@@ -1053,7 +1053,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         );
 
         in_progress_modules
-            .into_iter()
+            .clone()
             .par_iter()
             .map(|module_name| {
                 let module = modules.get(module_name).unwrap();
