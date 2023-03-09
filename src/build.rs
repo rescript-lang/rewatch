@@ -224,6 +224,7 @@ pub fn generate_asts<'a>(
     modules: &'a mut AHashMap<String, Module>,
     all_modules: &AHashSet<String>,
     deleted_modules: &AHashSet<String>,
+    pb: &ProgressBar,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -264,6 +265,7 @@ pub fn generate_asts<'a>(
                             .map(|i| i.dirty)
                             .unwrap_or(false)
                     {
+                        pb.inc(1);
                         let ast_result = generate_ast(
                             module.package.to_owned(),
                             &source_file.implementation.path.to_owned(),
@@ -922,12 +924,33 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         timing_cleanup_elapsed.as_secs_f64()
     );
 
-    print!(
-        "{} {} Parsing source files...",
-        style("[4/5]").bold().dim(),
-        CODE
+    let mut num_dirty_modules = 0;
+    for module in modules.values() {
+        match &module.source_type {
+            SourceType::SourceFile(source_file) => {
+                if source_file.implementation.dirty
+                    || source_file
+                        .interface
+                        .as_ref()
+                        .map(|i| i.dirty)
+                        .unwrap_or(false)
+                {
+                    num_dirty_modules += 1
+                }
+            }
+            SourceType::MlMap(_) => (),
+        };
+    }
+
+    let pb = ProgressBar::new(num_dirty_modules);
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {} Parsing... {{spinner}} {{pos}}/{{len}} {{msg}}",
+            style("[4/5]").bold().dim(),
+            CODE
+        ))
+        .unwrap(),
     );
-    let _ = stdout().flush();
 
     let timing_ast = Instant::now();
     let result_asts = generate_asts(
@@ -936,16 +959,18 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         &mut modules,
         &all_modules,
         &deleted_module_names,
+        &pb,
     );
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
         Ok(err) => {
             println!(
-                "{}\r{} {}Parsed source files in {:.2}s",
+                "{}\r{} {}Parsed {} source files in {:.2}s",
                 LINE_CLEAR,
                 style("[4/5]").bold().dim(),
                 CHECKMARK,
+                num_dirty_modules,
                 timing_ast_elapsed.as_secs_f64()
             );
             println!("{}", &err);
@@ -1024,7 +1049,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let pb = ProgressBar::new(compile_universe.len().try_into().unwrap());
     pb.set_style(
         ProgressStyle::with_template(&format!(
-            "{} {} Compiling... {{wide_bar}} {{pos}}/{{len}} {{msg}}",
+            "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
             style("[5/5]").bold().dim(),
             SWORDS
         ))
