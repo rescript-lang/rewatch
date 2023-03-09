@@ -162,6 +162,8 @@ fn get_dep_modules(
                 Err(_) => (),
             }
         }
+    } else {
+        panic!("Could not read file {}", ast_file);
     }
 
     return deps
@@ -218,12 +220,10 @@ fn gen_mlmap(
     path.to_string()
 }
 
-pub fn generate_asts<'a>(
+fn generate_asts(
     version: &str,
     project_root: &str,
-    modules: &'a mut AHashMap<String, Module>,
-    all_modules: &AHashSet<String>,
-    deleted_modules: &AHashSet<String>,
+    modules: &mut AHashMap<String, Module>,
     pb: &ProgressBar,
 ) -> Result<String, String> {
     let mut has_failure = false;
@@ -252,8 +252,6 @@ pub fn generate_asts<'a>(
                             None,
                         )),
                         Ok(None),
-                        module.deps.to_owned(),
-                        None,
                     )
                 }
 
@@ -291,64 +289,15 @@ pub fn generate_asts<'a>(
                             Ok((
                                 helpers::get_basename(&source_file.implementation.path).to_string()
                                     + ".ast",
-                                // helpers::get_ast_path(
-                                //     &source_file.implementation.path,
-                                //     &module.package.name,
-                                //     &project_root,
-                                // ),
                                 None,
                             )),
                             Ok(source_file.interface.as_ref().map(|i| {
-                                (
-                                    // helpers::get_iast_path(
-                                    //     &i.path,
-                                    //     &module.package.name,
-                                    //     &project_root,
-                                    // )
-                                    helpers::get_basename(&i.path).to_string() + ".iast",
-                                    None,
-                                )
+                                (helpers::get_basename(&i.path).to_string() + ".iast", None)
                             })),
                         )
                     };
 
-                    let build_path =
-                        helpers::get_build_path(project_root, &module.package.bsconfig.name);
-
-                    // choose the namespaced dep if that module appears in the package, otherwise global dep
-                    let deps = if let (Ok((ast_path, _stderr)), Ok(asti_path)) =
-                        (ast_path.to_owned(), asti_path.to_owned())
-                    {
-                        let mut deps = get_dep_modules(
-                            &(build_path.to_string() + "/" + &ast_path),
-                            module.package.namespace.to_owned(),
-                            &module.package.modules.as_ref().unwrap(),
-                            &all_modules.union(deleted_modules).cloned().collect(),
-                        );
-
-                        match asti_path.to_owned() {
-                            Some((asti_path, _stderr)) => deps.extend(get_dep_modules(
-                                &(build_path.to_owned() + "/" + &asti_path),
-                                module.package.namespace.to_owned(),
-                                &module.package.modules.as_ref().unwrap(),
-                                &all_modules.union(deleted_modules).cloned().collect(),
-                            )),
-                            None => (),
-                        }
-
-                        deps.remove(module_name);
-                        deps
-                    } else {
-                        AHashSet::new()
-                    };
-
-                    (
-                        module_name.to_owned(),
-                        ast_path,
-                        asti_path,
-                        deps,
-                        module.package.namespace.to_owned(),
-                    )
+                    (module_name.to_owned(), ast_path, asti_path)
                 }
             }
         })
@@ -356,35 +305,12 @@ pub fn generate_asts<'a>(
             String,
             Result<(String, Option<String>), String>,
             Result<Option<(String, Option<String>)>, String>,
-            AHashSet<String>,
-            Option<String>,
         )>>();
-
-    let mut dirty_modules = deleted_modules.clone();
-    dirty_modules.extend(
-        modules
-            .iter()
-            .filter_map(|(module_name, module)| {
-                if is_dirty(&module) {
-                    Some(module_name.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect::<AHashSet<String>>(),
-    );
 
     results
         .into_iter()
-        .for_each(|(module_name, ast_path, iast_path, deps, _namespace)| {
-            deps.iter().for_each(|dep_name| {
-                if let Some(module) = modules.get_mut(dep_name) {
-                    module.reverse_deps.insert(module_name.to_string());
-                }
-            });
-
+        .for_each(|(module_name, ast_path, iast_path)| {
             if let Some(module) = modules.get_mut(&module_name) {
-                module.deps = deps;
                 match ast_path {
                     Ok((_path, err)) => {
                         // supress warnings in non-pinned deps
@@ -443,23 +369,6 @@ pub fn generate_asts<'a>(
                         stderr.push_str(&err);
                     }
                 };
-
-                // if dirty_modules.contains(&module_name) {
-                //     match module.source_type {
-                //         SourceType::SourceFile(ref mut source_file) => {
-                //             source_file.implementation.dirty = true;
-                //             match source_file.interface {
-                //                 Some(ref mut interface) => {
-                //                     interface.dirty = true;
-                //                 }
-                //                 None => (),
-                //             }
-                //         }
-                //         SourceType::MlMap(ref mut mlmap) => {
-                //             mlmap.dirty = true;
-                //         }
-                //     }
-                // }
             }
         });
 
@@ -468,6 +377,66 @@ pub fn generate_asts<'a>(
     } else {
         Ok(stderr)
     }
+}
+
+fn get_deps(
+    project_root: &str,
+    modules: &mut AHashMap<String, Module>,
+    all_modules: &AHashSet<String>,
+    deleted_modules: &AHashSet<String>,
+) {
+    let all_mod = &all_modules.union(deleted_modules).cloned().collect();
+    modules
+        .par_iter()
+        .map(|(module_name, module)| match &module.source_type {
+            SourceType::MlMap(_) => (module_name.to_string(), module.deps.to_owned()),
+            SourceType::SourceFile(source_file) => {
+                let ast_path = helpers::get_ast_path(
+                    &source_file.implementation.path,
+                    &module.package.name,
+                    project_root,
+                );
+
+                let mut deps = get_dep_modules(
+                    &ast_path,
+                    module.package.namespace.to_owned(),
+                    &module.package.modules.as_ref().unwrap(),
+                    all_mod,
+                );
+
+                match &source_file.interface {
+                    Some(interface) => {
+                        let iast_path = helpers::get_iast_path(
+                            &interface.path,
+                            &module.package.name,
+                            project_root,
+                        );
+
+                        deps.extend(get_dep_modules(
+                            &iast_path,
+                            module.package.namespace.to_owned(),
+                            &module.package.modules.as_ref().unwrap(),
+                            all_mod,
+                        ))
+                    }
+                    None => (),
+                }
+                deps.remove(module_name);
+                (module_name.to_string(), deps)
+            }
+        })
+        .collect::<Vec<(String, AHashSet<String>)>>()
+        .into_iter()
+        .for_each(|(module_name, deps)| {
+            if let Some(module) = modules.get_mut(&module_name) {
+                module.deps = deps.clone();
+            }
+            deps.iter().for_each(|dep_name| {
+                if let Some(module) = modules.get_mut(dep_name) {
+                    module.reverse_deps.insert(module_name.to_string());
+                }
+            });
+        });
 }
 
 pub fn parse_packages(
@@ -872,7 +841,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
     print!(
         "{} {} Building package tree...",
-        style("[1/5]").bold().dim(),
+        style("[1/6]").bold().dim(),
         TREE
     );
     let _ = stdout().flush();
@@ -883,7 +852,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
-        style("[1/5]").bold().dim(),
+        style("[1/6]").bold().dim(),
         CHECKMARK,
         timing_package_tree_elapsed.as_secs_f64()
     );
@@ -891,7 +860,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_source_files = Instant::now();
     print!(
         "{} {} Finding source files...",
-        style("[2/5]").bold().dim(),
+        style("[2/6]").bold().dim(),
         LOOKING_GLASS
     );
     let _ = stdout().flush();
@@ -900,14 +869,14 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     println!(
         "{}\r{} {}Found source files in {:.2}s",
         LINE_CLEAR,
-        style("[2/5]").bold().dim(),
+        style("[2/6]").bold().dim(),
         CHECKMARK,
         timing_source_files_elapsed.as_secs_f64()
     );
 
     print!(
         "{} {} Cleaning up previous build...",
-        style("[3/5]").bold().dim(),
+        style("[3/6]").bold().dim(),
         SWEEP
     );
     let timing_cleanup = Instant::now();
@@ -917,50 +886,43 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
         LINE_CLEAR,
-        style("[3/5]").bold().dim(),
+        style("[3/6]").bold().dim(),
         CHECKMARK,
         diff_cleanup,
         total_cleanup,
         timing_cleanup_elapsed.as_secs_f64()
     );
 
-    let mut num_dirty_modules = 0;
-    for module in modules.values() {
-        match &module.source_type {
-            SourceType::SourceFile(source_file) => {
-                if source_file.implementation.dirty
-                    || source_file
-                        .interface
-                        .as_ref()
-                        .map(|i| i.dirty)
-                        .unwrap_or(false)
-                {
-                    num_dirty_modules += 1
-                }
-            }
-            SourceType::MlMap(_) => (),
-        };
-    }
+    let num_dirty_modules = modules.values().filter(|m| is_dirty(m)).count() as u64;
+    // for module in modules.values() {
+    //     match &module.source_type {
+    //         SourceType::SourceFile(source_file) => {
+    //             if source_file.implementation.dirty
+    //                 || source_file
+    //                     .interface
+    //                     .as_ref()
+    //                     .map(|i| i.dirty)
+    //                     .unwrap_or(false)
+    //             {
+    //                 num_dirty_modules += 1
+    //             }
+    //         }
+    //         SourceType::MlMap(_) => (),
+    //     };
+    // }
 
     let pb = ProgressBar::new(num_dirty_modules);
     pb.set_style(
         ProgressStyle::with_template(&format!(
             "{} {} Parsing... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[4/5]").bold().dim(),
+            style("[4/6]").bold().dim(),
             CODE
         ))
         .unwrap(),
     );
 
     let timing_ast = Instant::now();
-    let result_asts = generate_asts(
-        &rescript_version,
-        &project_root,
-        &mut modules,
-        &all_modules,
-        &deleted_module_names,
-        &pb,
-    );
+    let result_asts = generate_asts(&rescript_version, &project_root, &mut modules, &pb);
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
@@ -968,7 +930,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             println!(
                 "{}\r{} {}Parsed {} source files in {:.2}s",
                 LINE_CLEAR,
-                style("[4/5]").bold().dim(),
+                style("[4/6]").bold().dim(),
                 CHECKMARK,
                 num_dirty_modules,
                 timing_ast_elapsed.as_secs_f64()
@@ -979,7 +941,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
-                style("[4/5]").bold().dim(),
+                style("[4/6]").bold().dim(),
                 CROSS,
                 timing_ast_elapsed.as_secs_f64()
             );
@@ -988,6 +950,23 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             return Err(());
         }
     }
+
+    let timing_deps = Instant::now();
+    get_deps(
+        &project_root,
+        &mut modules,
+        &all_modules,
+        &deleted_module_names,
+    );
+    let timing_deps_elapsed = timing_deps.elapsed();
+
+    println!(
+        "{}\r{} {} Collected deps in {:.2}s",
+        LINE_CLEAR,
+        style("[5/6]").bold().dim(),
+        DEPS,
+        timing_deps_elapsed.as_secs_f64()
+    );
 
     let start_compiling = Instant::now();
 
@@ -1050,7 +1029,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     pb.set_style(
         ProgressStyle::with_template(&format!(
             "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[5/5]").bold().dim(),
+            style("[6/6]").bold().dim(),
             SWORDS
         ))
         .unwrap(),
@@ -1286,7 +1265,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[5/5]").bold().dim(),
+            style("[6/6]").bold().dim(),
             CROSS,
             num_compiled_modules,
             compile_duration.as_secs_f64()
@@ -1299,7 +1278,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[5/5]").bold().dim(),
+            style("[6/6]").bold().dim(),
             CHECKMARK,
             num_compiled_modules,
             compile_duration.as_secs_f64()
