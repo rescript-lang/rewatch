@@ -10,32 +10,11 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, log_enabled, Level::Info};
 use rayon::prelude::*;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
-
-pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
-    if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
-        // we skip the first line with is some null characters
-        // the following lines in the AST are the dependency modules
-        // we stop when we hit a line that starts with a "/", this is the path of the file.
-        // this is the point where the dependencies end and the actual AST starts
-        for line in lines.skip(1) {
-            match line {
-                Ok(line) => {
-                    let line = line.trim().to_string();
-                    if line.starts_with('/') {
-                        return Some(line);
-                    }
-                }
-                Err(_) => (),
-            }
-        }
-    }
-    return None;
-}
 
 pub fn get_interface<'a>(module: &'a Module) -> &'a Option<Interface> {
     match &module.source_type {
@@ -164,7 +143,7 @@ fn get_dep_modules(
     package_modules: &AHashSet<String>,
     valid_modules: &AHashSet<String>,
 ) -> AHashSet<String> {
-    let mut deps = Vec::new();
+    let mut deps = AHashSet::new();
     if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
         // we skip the first line with is some null characters
         // the following lines in the AST are the dependency modules
@@ -177,7 +156,7 @@ fn get_dep_modules(
                     if line.starts_with('/') {
                         break;
                     } else if !line.is_empty() {
-                        deps.push(line);
+                        deps.insert(line);
                     }
                 }
                 Err(_) => (),
@@ -186,29 +165,28 @@ fn get_dep_modules(
     }
 
     return deps
-        .into_iter()
+        .iter()
         .map(|dep| {
-            dep.split('.')
-                .collect::<Vec<&str>>()
-                .first()
-                .unwrap()
-                .to_string()
-        })
-        .map(|dep| match namespace.to_owned() {
-            Some(namespace) => {
-                let namespaced_name = dep.to_owned() + "-" + &namespace;
-                if package_modules.contains(&namespaced_name) {
-                    return namespaced_name;
-                } else {
-                    return dep;
-                };
+            let dep_first = dep.split('.').next().unwrap();
+
+            match &namespace {
+                Some(namespace) => {
+                    let namespaced_name = dep_first.to_owned() + "-" + &namespace;
+                    if package_modules.contains(&namespaced_name) {
+                        return namespaced_name;
+                    } else {
+                        return dep_first.to_string();
+                    };
+                }
+                None => dep_first.to_string(),
             }
-            None => dep,
         })
-        .filter(|dep| valid_modules.contains(dep))
-        .filter(|dep| match namespace.to_owned() {
-            Some(namespace) => !dep.eq(&namespace),
-            None => true,
+        .filter(|dep| {
+            valid_modules.contains(dep)
+                && match namespace.to_owned() {
+                    Some(namespace) => !dep.eq(&namespace),
+                    None => true,
+                }
         })
         .collect::<AHashSet<String>>();
 }
@@ -216,19 +194,28 @@ fn get_dep_modules(
 fn gen_mlmap(
     package: &package_tree::Package,
     namespace: &str,
-    modules: &Vec<String>,
+    depending_modules: AHashSet<String>,
     root_path: &str,
 ) -> String {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
     // we don't really need to create a digest, because we track if we need to
     // recompile in a different way but we need to put it in the file for it to
     // be readable.
-    let mut sorted_modules = modules.clone();
-    sorted_modules.sort();
-    let digest = "randjbuildsystem".to_owned() + "\n" + &sorted_modules.join("\n");
-    let file = build_path_abs.to_string() + "/" + namespace + ".mlmap";
-    fs::write(&file, digest).expect("Unable to write mlmap");
-    file.to_string()
+
+    let path = build_path_abs.to_string() + "/" + namespace + ".mlmap";
+    let mut file = File::create(&path).expect("Unable to create mlmap");
+
+    file.write_all(b"randjbuildsystem\n" as &[u8])
+        .expect("Unable to write mlmap");
+
+    let mut modules = Vec::from_iter(depending_modules.to_owned());
+    modules.sort();
+    for module in modules {
+        file.write_all(module.as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+    }
+
+    path.to_string()
 }
 
 pub fn generate_asts<'a>(
@@ -506,12 +493,7 @@ pub fn parse_packages(
                 .map(|path| helpers::file_path_to_module_name(&path, &None))
                 .collect::<AHashSet<String>>();
 
-            let mlmap = gen_mlmap(
-                &package,
-                namespace,
-                &Vec::from_iter(depending_modules.to_owned()),
-                project_root,
-            );
+            let mlmap = gen_mlmap(&package, namespace, depending_modules, project_root);
 
             // mlmap will be compiled in the AST generation step
             // compile_mlmap(&package, namespace, &project_root);
@@ -865,9 +847,9 @@ fn is_dirty(module: &Module) -> bool {
     }
 }
 
-fn compute_md5(path: &str) -> Option<md5::Digest> {
+fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     match fs::read(path) {
-        Ok(str) => Some(md5::compute(str)),
+        Ok(str) => Some(blake3::hash(&str)),
         Err(_) => None,
     }
 }
@@ -999,13 +981,13 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         })
         .collect::<AHashSet<String>>();
 
-    // for sure clean modules -- after checking the md5 of the cmi
+    // for sure clean modules -- after checking the hash of the cmi
     let mut clean_modules = AHashSet::<String>::new();
 
     // TODO: calculate the real dirty modules from the orginal dirty modules in each iteration
     // taken into account the modules that we know are clean, so they don't propagate through the
     // deps graph
-    // create a hashset of all clean modules form the md5 hashing
+    // create a hashset of all clean modules form the file-hashes
     let mut loop_count = 0;
     let mut files_total_count = compiled_modules.len();
     let mut files_current_loop_count;
@@ -1144,7 +1126,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 &project_root,
                                 "cmi",
                             );
-                            let cmi_digest = compute_md5(&cmi_path);
+                            let cmi_digest = compute_file_hash(&cmi_path);
 
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
@@ -1182,7 +1164,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                             //     println!("{}", error);
                             //     panic!("Implementation compilation error!");
                             // }
-                            let cmi_digest_after = compute_md5(&cmi_path);
+                            let cmi_digest_after = compute_file_hash(&cmi_path);
 
                             let is_clean = match (cmi_digest, cmi_digest_after) {
                                 (Some(cmi_digest), Some(cmi_digest_after)) => {

@@ -7,6 +7,23 @@ use rayon::prelude::*;
 use std::fs;
 use std::time::SystemTime;
 
+pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
+    if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
+        // we skip the first line with is some null characters
+        // the following lines in the AST are the dependency modules
+        // we stop when we hit a line that starts with a "/", this is the path of the file.
+        // this is the point where the dependencies end and the actual AST starts
+        for line in lines.skip(1) {
+            match line {
+                Ok(line) if line.trim_start().starts_with('/') => return Some(line),
+                _ => (),
+            }
+        }
+    }
+    return None;
+}
+
+
 fn remove_asts(source_file: &str, package_name: &str, namespace: &Option<String>, root_path: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
@@ -104,7 +121,7 @@ pub fn cleanup_previous_build(
                                 );
 
                                 let ast_file_path = path.to_str().unwrap().to_owned();
-                                let res_file_path = build::get_res_path_from_ast(&ast_file_path);
+                                let res_file_path = get_res_path_from_ast(&ast_file_path);
                                 match res_file_path {
                                     Some(res_file_path) => {
                                         let _ = ast_modules.insert(
