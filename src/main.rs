@@ -1,5 +1,6 @@
 pub mod bsconfig;
 pub mod build;
+pub mod logs;
 pub mod clean;
 pub mod build_types;
 pub mod grouplike;
