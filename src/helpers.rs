@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod emojis {
     use console::Emoji;
@@ -220,4 +221,12 @@ pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str) -> 
 pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
     let file = fs::File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
+}
+
+pub fn get_system_time() -> u128 {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    since_the_epoch.as_millis()
 }

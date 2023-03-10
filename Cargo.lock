@@ -884,6 +884,7 @@ dependencies = [
  "notify",
  "notify-debouncer-mini",
  "rayon",
+ "regex",
  "serde",
  "serde_derive",
  "serde_json",

@@ -4,6 +4,7 @@ use crate::build_types::*;
 use crate::clean;
 use crate::helpers;
 use crate::helpers::emojis::*;
+use crate::logs;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
 use console::style;
@@ -323,6 +324,7 @@ fn generate_asts(
                                     }
                                     _ => (),
                                 }
+                                logs::append(&module.package.package_dir, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -334,6 +336,7 @@ fn generate_asts(
                             }
                             _ => (),
                         }
+                        logs::append(&module.package.package_dir, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -351,6 +354,7 @@ fn generate_asts(
                                     }
                                     _ => (),
                                 }
+                                logs::append(&module.package.package_dir, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -365,6 +369,7 @@ fn generate_asts(
                             }
                             _ => (),
                         }
+                        logs::append(&module.package.package_dir, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -848,6 +853,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_package_tree = Instant::now();
     let packages = package_tree::make(&project_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
+    logs::initialize(&packages);
 
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
@@ -938,6 +944,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
             println!("{}", &err);
         }
         Err(err) => {
+            logs::finalize(&packages);
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
@@ -1209,11 +1216,13 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state =
                                         CompileState::Warning;
+                                    logs::append(&module.package.package_dir, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
+                                    logs::append(&module.package.package_dir, &err);
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -1221,12 +1230,14 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
+                                    logs::append(&module.package.package_dir, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
+                                    logs::append(&module.package.package_dir, &err);
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -1255,6 +1266,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     }
     let compile_duration = start_compiling.elapsed();
 
+    logs::finalize(&packages);
     pb.finish();
     clean::cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
     if compile_errors.len() > 0 {
