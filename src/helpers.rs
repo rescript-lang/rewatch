@@ -170,6 +170,15 @@ pub fn get_compiler_asset(
         + extension
 }
 
+pub fn canonicalize_string_path(path: &str) -> String {
+    return Path::new(path)
+        .canonicalize()
+        .expect("Could not canonicalize")
+        .to_str()
+        .expect("Could not canonicalize")
+        .to_string();
+}
+
 pub fn get_bs_compiler_asset(
     source_file: &str,
     package_name: &str,
@@ -181,8 +190,12 @@ pub fn get_bs_compiler_asset(
         "ast" | "iast" => &None,
         _ => namespace,
     };
-    let dir = std::path::Path::new(source_file)
-        .strip_prefix(get_package_path(root_path, &package_name))
+    let canoncialized_source_file = canonicalize_string_path(source_file);
+    let dir = std::path::Path::new(&canoncialized_source_file)
+        .strip_prefix(canonicalize_string_path(&get_package_path(
+            root_path,
+            &package_name,
+        )))
         .unwrap()
         .parent()
         .unwrap();
