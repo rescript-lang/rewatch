@@ -1048,6 +1048,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         ))
         .unwrap(),
     );
+    let compile_universe_count = compile_universe.len();
 
     // start off with all modules that have no deps in this compile universe
     let mut in_progress_modules = compile_universe
@@ -1257,15 +1258,12 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
 
         files_total_count += files_current_loop_count;
 
-        // if files_total_count == total_modules {
-        //     break;
-        // }
-        // if files_current_loop_count == 0 {
-        //     // we probably want to find the cycle(s), and give a helpful error message here
-        //     compile_errors.push_str("Can't continue... Dependency cycle\n")
-        // }
-        if in_progress_modules.len() == 0 {
+        if files_total_count == compile_universe_count {
             break;
+        }
+        if in_progress_modules.len() == 0 {
+            // we probably want to find the cycle(s), and give a helpful error message here
+            compile_errors.push_str("Can't continue... Dependency cycle\n")
         }
         if compile_errors.len() > 0 {
             break;
