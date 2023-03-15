@@ -1170,6 +1170,12 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                 } else {
                     None
                 }
+                .map(|res| {
+                    if !(log_enabled!(Info)) {
+                        pb.inc(1);
+                    }
+                    res
+                })
             })
             .collect::<Vec<
                 Option<(
@@ -1185,9 +1191,6 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
                 Some((module_name, result, interface_result, is_clean, is_compiled)) => {
                     in_progress_modules.remove(module_name);
 
-                    if !(log_enabled!(Info)) {
-                        pb.inc(1);
-                    }
                     if *is_compiled {
                         num_compiled_modules += 1;
                     }
