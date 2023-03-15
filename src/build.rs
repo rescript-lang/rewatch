@@ -99,14 +99,14 @@ fn generate_ast(
             "-bs-ast".to_string(),
             "-o".to_string(),
             ast_path.to_string(),
-            helpers::canonicalize_string_path(file),
+            helpers::canonicalize_string_path(file).unwrap(),
         ],
     ]
     .concat();
 
     /* Create .ast */
     let res_to_ast = Command::new(helpers::get_bsc(&root_path))
-        .current_dir(helpers::canonicalize_string_path(&build_path_abs))
+        .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
         .args(res_to_ast_args)
         .output()
         .expect("Error converting .res to .ast");
@@ -606,7 +606,7 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
     .concat();
 
     let _ = Command::new(helpers::get_bsc(&root_path))
-        .current_dir(helpers::canonicalize_string_path(&build_path_abs))
+        .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
         .args(args)
         .output()
         .expect("err");
@@ -646,7 +646,7 @@ pub fn compile_file(
         .map(|x| {
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x)),
+                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x)).unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -713,14 +713,12 @@ pub fn compile_file(
         //     "-I".to_string(),
         //     abs_node_modules_path.to_string() + "/rescript/ocaml",
         // ],
-        vec![helpers::canonicalize_string_path(&ast_path.to_owned())],
+        vec![helpers::canonicalize_string_path(&ast_path.to_owned()).unwrap()],
     ]
     .concat();
 
     let to_mjs = Command::new(helpers::get_bsc(&root_path))
-        .current_dir(helpers::canonicalize_string_path(
-            &build_path_abs.to_owned(),
-        ))
+        .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)
         .output();
 

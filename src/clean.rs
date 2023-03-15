@@ -166,7 +166,9 @@ pub fn cleanup_previous_build(
 
     let canonicalized_rescript_file_locations = rescript_file_locations
         .iter()
-        .map(|rescript_file_location| helpers::canonicalize_string_path(rescript_file_location))
+        .map(|rescript_file_location| {
+            helpers::canonicalize_string_path(rescript_file_location).unwrap()
+        })
         .collect::<AHashSet<String>>();
     // delete the .mjs file which appear in our previous compile assets
     // but does not exists anymore
@@ -385,7 +387,8 @@ pub fn cleanup_after_build(
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
                     remove_compile_assets(
-                        &source_file.implementation.path,
+                        &helpers::canonicalize_string_path(&source_file.implementation.path)
+                            .unwrap(),
                         &module.package.name,
                         &module.package.namespace,
                         &project_root,
