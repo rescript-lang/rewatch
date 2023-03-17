@@ -1,7 +1,6 @@
 # Rewatch
 
 [![Release](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml)
-[![Tests](https://github.com/rolandpeelen/rewatch/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/rolandpeelen/rewatch/actions/workflows/test.yml)
 
 ------------------------
 # Info
@@ -10,7 +9,7 @@ Rewatch is an alternative build system for the [Rescript Compiler](https://rescr
 
 
 # Project Status
-- [ ] Compile Monorepo's with multiple packages
+- [x] Compile Monorepo's with multiple packages
 - [ ] Compile Single Package
 - [ ] Configure executables - potentially interop with some [Melange](https://github.com/melange-re/melange) / [Bucklescript / ReasonML](https://reasonml.github.io/) subset
 
