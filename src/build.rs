@@ -82,45 +82,53 @@ fn generate_ast(
 
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
-    let res_to_ast_args = vec![
-        vec!["-bs-v".to_string(), format!("{}", version)],
-        ppx_flags,
-        {
-            package
-                .bsconfig
-                .reason
-                .to_owned()
-                .map(|x| vec!["-bs-jsx".to_string(), format!("{}", x.react_jsx)])
-                .unwrap_or(vec![])
-        },
-        bsc_flags,
+    let res_to_ast_args = |file: String| -> Vec<String> {
         vec![
-            "-absname".to_string(),
-            "-bs-ast".to_string(),
-            "-o".to_string(),
-            ast_path.to_string(),
-            helpers::canonicalize_string_path(file).unwrap(),
-        ],
-    ]
-    .concat();
+            vec!["-bs-v".to_string(), format!("{}", version)],
+            ppx_flags,
+            {
+                package
+                    .bsconfig
+                    .reason
+                    .to_owned()
+                    .map(|x| vec!["-bs-jsx".to_string(), format!("{}", x.react_jsx)])
+                    .unwrap_or(vec![])
+            },
+            bsc_flags,
+            vec![
+                "-absname".to_string(),
+                "-bs-ast".to_string(),
+                "-o".to_string(),
+                ast_path.to_string(),
+                file,
+            ],
+        ]
+        .concat()
+    };
 
     /* Create .ast */
-    let res_to_ast = Command::new(helpers::get_bsc(&root_path))
-        .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
-        .args(res_to_ast_args)
-        .output()
-        .expect("Error converting .res to .ast");
-
-    let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("stderr should be non-null");
-
-    if helpers::contains_ascii_characters(stderr) {
-        if res_to_ast.status.success() {
-            Ok((ast_path, Some(stderr.to_string())))
+    if let Some(res_to_ast) = helpers::canonicalize_string_path(file).map(|file| {
+        Command::new(helpers::get_bsc(&root_path))
+            .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
+            .args(res_to_ast_args(file))
+            .output()
+            .expect("Error converting .res to .ast")
+    }) {
+        let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("Expect StdErr to be non-null");
+        if helpers::contains_ascii_characters(stderr) {
+            if res_to_ast.status.success() {
+                Ok((ast_path, Some(stderr.to_string())))
+            } else {
+                Err(stderr.to_string())
+            }
         } else {
-            Err(stderr.to_string())
+            Ok((ast_path, None))
         }
     } else {
-        Ok((ast_path, None))
+        return Err(format!(
+            "Could not find canonicalize_string_path for file {} in package {}",
+            file, package.name
+        ));
     }
 }
 
@@ -976,7 +984,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
         "{}\r{} {} Collected deps in {:.2}s",
         LINE_CLEAR,
         style("[5/6]").bold().dim(),
-        DEPS,
+        CHECKMARK,
         timing_deps_elapsed.as_secs_f64()
     );
 
