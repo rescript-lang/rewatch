@@ -13,7 +13,7 @@ jobs:
         uses: styfle/cancel-workflow-action@0.9.0
         with:
           access_token: ${{ github.token }}
-  release:
+  build:
     name: Release ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,7 +34,21 @@ jobs:
         with:
           command: build
           args: --release
-      - name: Upload Mac / Linus Binaries to release
+      - name: Upload Mac / Linux Binaries
+        if: ${{ matrix.os != 'windows-latest' }} 
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: target/release/rewatch
+          retention-days: 1
+      - name: Upload Windows Binaries
+        if: ${{ matrix.os == 'windows-latest' }} 
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: target/release/rewatch.exe
+          retention-days: 1
+      - name: Attach Mac / Linux Binaries to release
         if: ${{ matrix.os != 'windows-latest' }} 
         uses: svenstaro/upload-release-action@v2
         with:
@@ -43,8 +57,8 @@ jobs:
           asset_name: rewatch-${{ matrix.os }}
           tag: ${{ github.ref }}
           overwrite: true
-      - name: Upload Windows Binaries to release
-        if: ${{ matrix.os != 'windows-latest' }} 
+      - name: Attach Windows Binaries to release
+        if: ${{ matrix.os == 'windows-latest' }} 
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -52,3 +66,35 @@ jobs:
           asset_name: rewatch-${{ matrix.os }}
           tag: ${{ github.ref }}
           overwrite: true
+
+  npm-release:
+    name: NPM Release
+    runs-on: ubuntu-latest
+    if: github.event.action == 'published'
+    needs: 
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Move / Rename Artifacts
+        run: |
+          mv ubuntu-latest/rewatch ./rewatch-linux
+          mv macos-latest/rewatch ./rewatch-macos
+          mv windows-latest/rewatch.exe ./rewatch-windows.exe
+
+      - uses: actions/setup-node@v1
+        with:
+          always-auth: true
+          registry-url: "https://registry.npmjs.org"
+
+      - env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          yarn publish

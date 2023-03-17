@@ -1,0 +1,12 @@
+{
+  "name": "@rolandpeelen/rewatch",
+  "version": "0.0.4",
+  "license": "BSD-3-Clause",
+  "files": [
+    "/rewatch",
+    "/rewatch.cmd",
+    "/rewatch-linux.exe",
+    "/rewatch-macos.exe",
+    "/rewatch-windows.exe"
+  ]
+}
