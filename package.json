@@ -5,8 +5,8 @@
   "files": [
     "/rewatch",
     "/rewatch.cmd",
-    "/rewatch-linux.exe",
-    "/rewatch-macos.exe",
+    "/rewatch-linux",
+    "/rewatch-macos",
     "/rewatch-windows.exe"
   ]
 }
