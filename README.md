@@ -1,7 +1,6 @@
 # Rewatch
 
-[![Release](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml)
-
+[![Release](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml/badge.svg?branch=master&event=release)](https://github.com/rolandpeelen/rewatch/actions/workflows/build.yml)
 ------------------------
 # Info
 
