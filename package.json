@@ -3,6 +3,7 @@
   "version": "0.0.7",
   "license": "BSD-3-Clause",
   "files": [
+    "/postinstall.js",
     "/rewatch",
     "/rewatch.cmd",
     "/rewatch-linux",

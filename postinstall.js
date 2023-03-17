@@ -9,7 +9,7 @@ const installMacLinuxBinary = (binary) => {
     const target = path.join(__dirname, "rewatch");
     fs.renameSync(source, target);
 
-    // The ppx should be executable in the bundle, but just in case
+    // The binary should be executable in the bundle, but just in case
     fs.chmodSync(target, 0777);
   } else {
     // assume we're in dev mode - nothing will break if the script
@@ -44,7 +44,7 @@ switch (process.platform) {
     installWindowsBinary();
     break;
   default:
-    // This won't break the installation because the `ppx` shell script remains
+    // This won't break the installation because the shell script remains
     // but that script will throw an error in this case anyway
     console.warn(`No release available for "${process.platform}"`);
     process.exit(1);
