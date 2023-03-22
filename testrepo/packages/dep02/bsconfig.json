@@ -1,5 +1,6 @@
 {
   "name": "@testrepo/dep02",
+  "namespace": true,
   "sources": {
     "dir": "src",
     "subdirs": true

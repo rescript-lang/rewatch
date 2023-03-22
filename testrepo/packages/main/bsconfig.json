@@ -1,5 +1,6 @@
 {
   "name": "@testrepo/main",
+  "namespace": true,
   "sources": {
     "dir": "src",
     "subdirs": true
@@ -9,7 +10,5 @@
     "in-source": true
   },
   "suffix": ".bs.js",
-  "bs-dependencies": [
-          "@testrepo/dep01"
-  ]
+  "bs-dependencies": ["@testrepo/dep01"]
 }
