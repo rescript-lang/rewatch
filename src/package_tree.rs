@@ -192,7 +192,7 @@ fn build_package<'a>(
 /// can be marked with the type 'dev'. Which means that they may not be around in the distributed
 /// NPM package. The file reader allows for this, just warns when this happens.
 /// TODO -> Check wether we actually need the `fs::Metadata`
-pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String, fs::Metadata> {
+pub fn get_source_files(filter: &Option<regex::Regex>, dir: &String, source: &PackageSource) -> AHashMap<String, fs::Metadata> {
     let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
 
     let (recurse, type_) = match source {
@@ -206,7 +206,7 @@ pub fn get_source_files(dir: &String, source: &PackageSource) -> AHashMap<String
 
     // don't include dev sources for now
     if type_ != &Some("dev".to_string()) {
-        match structure_hashmap::read_folders(dir, recurse) {
+        match structure_hashmap::read_folders(&filter, dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
                 println!("Could not read folder: {dir}... Probably ok as type is dev")
@@ -228,13 +228,13 @@ pub fn namespace_from_package_name(package_name: &str) -> String {
 
 /// This takes the tree of packages, and finds all the source files for each, adding them to the
 /// respective packages.
-fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String, Package> {
+fn extend_with_children(filter: &Option<regex::Regex>, mut build: AHashMap<String, Package>) -> AHashMap<String, Package> {
     for (_key, value) in build.iter_mut() {
         let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
         value
             .source_folders
             .par_iter()
-            .map(|(dir, source)| get_source_files(dir, source))
+            .map(|(dir, source)| get_source_files(&filter, dir, source))
             .collect::<Vec<AHashMap<String, fs::Metadata>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -271,7 +271,7 @@ fn extend_with_children(mut build: AHashMap<String, Package>) -> AHashMap<String
 /// 2. Take the (by then deduplicated) packages, and find all the '.re', '.res', '.ml' and
 ///    interface files.
 /// The two step process is there to reduce IO overhead
-pub fn make(root_folder: &str) -> AHashMap<String, Package> {
+pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String, Package> {
     /* The build_package get's called recursively. By using extend, we deduplicate all the packages
      * */
     let mut map: AHashMap<String, Package> = AHashMap::new();
@@ -281,7 +281,7 @@ pub fn make(root_folder: &str) -> AHashMap<String, Package> {
     build_package(&mut map, bsconfig, &package_dir, root_folder, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
-    let result = extend_with_children(map);
+    let result = extend_with_children(&filter, map);
     result
         .values()
         .into_iter()

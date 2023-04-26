@@ -815,7 +815,7 @@ pub fn compile_file(
 
 pub fn clean(path: &str) {
     let project_root = helpers::get_abs_path(path);
-    let packages = package_tree::make(&project_root);
+    let packages = package_tree::make(&None, &project_root);
 
     packages.iter().for_each(|(_, package)| {
         println!("Cleaning {}...", package.name);
@@ -852,7 +852,10 @@ fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
-pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
+pub fn build(
+    filter: &Option<regex::Regex>,
+    path: &str,
+) -> Result<AHashMap<std::string::String, Module>, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
@@ -864,7 +867,7 @@ pub fn build(path: &str) -> Result<AHashMap<std::string::String, Module>, ()> {
     );
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
-    let packages = package_tree::make(&project_root);
+    let packages = package_tree::make(&filter, &project_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
     logs::initialize(&packages);
 
