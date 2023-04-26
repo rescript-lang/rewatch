@@ -29,15 +29,24 @@ pub fn start(filter: &Option<regex::Regex>, folder: &str) {
                     .iter()
                     .filter_map(|event| {
                         let path_buf = event.path.to_path_buf();
+                        let name = path_buf
+                            .file_name()
+                            .and_then(|x| x.to_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
                         let extension = path_buf.extension().and_then(|ext| ext.to_str());
-                        if let Some(extension) = extension {
-                            if FILE_EXTENSIONS.contains(&extension) {
+
+                        match extension {
+                            Some(extension)
+                                if filter
+                                    .as_ref()
+                                    .map(|re| !re.is_match(&name))
+                                    .unwrap_or(true)
+                                    && FILE_EXTENSIONS.contains(&extension) =>
+                            {
                                 Some(path_buf)
-                            } else {
-                                None
                             }
-                        } else {
-                            None
+                            _ => None,
                         }
                     })
                     .collect::<Vec<PathBuf>>();
