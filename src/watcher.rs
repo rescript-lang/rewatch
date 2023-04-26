@@ -6,7 +6,7 @@ use std::time::Duration;
 
 pub static FILE_EXTENSIONS: &[&str] = &["re", "res", "ml", "mli", "rei", "resi"];
 
-pub fn start(folder: &str) {
+pub fn start(filter: &Option<regex::Regex>, folder: &str) {
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut debouncer = new_debouncer_opt::<_, notify::RecommendedWatcher>(
@@ -43,7 +43,7 @@ pub fn start(folder: &str) {
                     .collect::<Vec<PathBuf>>();
 
                 if paths.len() > 0 {
-                    let _ = build::build(&folder);
+                    let _ = build::build(&filter, &folder);
                 }
             }
             Err(_) => (),

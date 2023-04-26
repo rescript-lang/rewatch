@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::{error, fs};
 
 pub fn read_folders(
+    filter: &Option<regex::Regex>,
     path: &str,
     recurse: bool,
 ) -> Result<AHashMap<String, fs::Metadata>, Box<dyn error::Error>> {
@@ -27,7 +28,7 @@ pub fn read_folders(
         let path_ext = path_buf.extension().and_then(|x| x.to_str());
 
         if metadata.file_type().is_dir() && recurse {
-            match read_folders(&(path.to_owned() + "/" + &name + "/"), recurse) {
+            match read_folders(&filter, &(path.to_owned() + "/" + &name + "/"), recurse) {
                 Ok(s) => map.extend(s),
                 Err(e) => println!("Error reading directory: {}", e),
             }
@@ -35,9 +36,15 @@ pub fn read_folders(
         match path_ext {
             Some("res") | Some("ml") | Some("re") | Some("resi") | Some("rei") | Some("mli") => {
                 match abs_path {
-                    Ok((ref path, _)) => {
+                    Ok((ref path, _))
+                        if filter
+                            .as_ref()
+                            .map(|re| !re.is_match(&name))
+                            .unwrap_or(true) =>
+                    {
                         map.insert(path.to_owned() + "/" + &name, metadata);
                     }
+                    Ok(_) => println!("Filtered: {:?}", name),
                     Err(ref e) => println!("Error reading directory: {}", e),
                 }
             }
