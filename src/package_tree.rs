@@ -140,6 +140,7 @@ fn build_package<'a>(
                 None => None,
                 Some(bsconfig::Namespace::String(str)) => match str.as_str() {
                     "true" => Some(namespace_from_package_name(&bsconfig.name)),
+                    namespace if namespace.is_case(Case::UpperFlat) => Some(namespace.to_string()),
                     namespace => Some(namespace.to_string().to_case(Case::Pascal)),
                 },
             },
