@@ -7,8 +7,17 @@ use regex::Regex;
 use std::fs::File;
 use std::io::prelude::*;
 
-fn get_log_file_path(name: &str) -> String {
-    name.to_owned() + "/lib/bs/.compiler.log"
+enum Location {
+    Bs,
+    Ocaml,
+}
+
+fn get_log_file_path(subfolder: Location, name: &str) -> String {
+    let subfolder_str = match subfolder {
+        Location::Bs => "bs",
+        Location::Ocaml => "ocaml",
+    };
+    name.to_owned() + "/lib/" + subfolder_str + "/.compiler.log"
 }
 
 fn escape_colours(str: &str) -> String {
@@ -37,7 +46,7 @@ fn write_to_log_file(mut file: File, package_name: &str, content: &str) {
 
 pub fn initialize(packages: &AHashMap<String, Package>) {
     packages.par_iter().for_each(|(name, _)| {
-        let _ = File::create(get_log_file_path(name)).map(|file| {
+        let _ = File::create(get_log_file_path(Location::Bs, name)).map(|file| {
             write_to_log_file(
                 file,
                 &name,
@@ -50,7 +59,7 @@ pub fn initialize(packages: &AHashMap<String, Package>) {
 pub fn append(name: &str, str: &str) {
     let _ = File::options()
         .append(true)
-        .open(get_log_file_path(name))
+        .open(get_log_file_path(Location::Bs, name))
         .map(|file| write_to_log_file(file, &name, str));
 }
 
@@ -58,7 +67,7 @@ pub fn finalize(packages: &AHashMap<String, Package>) {
     packages.par_iter().for_each(|(name, _)| {
         let _ = File::options()
             .append(true)
-            .open(get_log_file_path(name))
+            .open(get_log_file_path(Location::Bs, name))
             .map(|file| {
                 write_to_log_file(
                     file,
@@ -66,5 +75,7 @@ pub fn finalize(packages: &AHashMap<String, Package>) {
                     &format!("#Done({})\n", helpers::get_system_time()),
                 )
             });
+
+        let _ = std::fs::copy(get_log_file_path(Location::Bs, name), get_log_file_path(Location::Ocaml, name));
     })
 }
