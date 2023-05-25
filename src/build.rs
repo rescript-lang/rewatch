@@ -243,25 +243,37 @@ fn generate_asts(
         .map(|(module_name, module)| {
             debug!("Generating AST for module: {}", module_name);
             match &module.source_type {
-                SourceType::MlMap(_mlmap) => {
+                SourceType::MlMap(_) => {
+                    // probably better to do this in a different function
+                    // specific to compiling mlmaps
+                    let path = helpers::get_mlmap_path(
+                        &project_root,
+                        &module.package.name,
+                        &module
+                            .package
+                            .namespace
+                            .as_ref()
+                            .expect("namespace should be set for mlmap module"),
+                    );
+                    let compile_path = helpers::get_mlmap_compile_path(
+                        &project_root,
+                        &module.package.name,
+                        &module
+                            .package
+                            .namespace
+                            .as_ref()
+                            .expect("namespace should be set for mlmap module"),
+                    );
+                    let mlmap_hash = compute_file_hash(&compile_path);
                     compile_mlmap(&module.package, module_name, &project_root);
+                    let mlmap_hash_after = compute_file_hash(&compile_path);
 
-                    (
-                        module_name.to_owned(),
-                        Ok((
-                            helpers::get_mlmap_path(
-                                &project_root,
-                                &module.package.name,
-                                &module
-                                    .package
-                                    .namespace
-                                    .as_ref()
-                                    .expect("namespace should be set for mlmap module"),
-                            ),
-                            None,
-                        )),
-                        Ok(None),
-                    )
+                    let is_dirty = match (mlmap_hash, mlmap_hash_after) {
+                        (Some(digest), Some(digest_after)) => !digest.eq(&digest_after),
+                        _ => true,
+                    };
+
+                    (module_name.to_owned(), Ok((path, None)), Ok(None), is_dirty)
                 }
 
                 SourceType::SourceFile(source_file) => {
@@ -306,7 +318,7 @@ fn generate_asts(
                         )
                     };
 
-                    (module_name.to_owned(), ast_path, asti_path)
+                    (module_name.to_owned(), ast_path, asti_path, true)
                 }
             }
         })
@@ -314,12 +326,19 @@ fn generate_asts(
             String,
             Result<(String, Option<String>), String>,
             Result<Option<(String, Option<String>)>, String>,
+            bool,
         )>>();
 
     results
         .into_iter()
-        .for_each(|(module_name, ast_path, iast_path)| {
+        .for_each(|(module_name, ast_path, iast_path, is_dirty)| {
             if let Some(module) = modules.get_mut(&module_name) {
+                if is_dirty {
+                    match module.source_type {
+                        SourceType::MlMap(_) => module.compile_dirty = true,
+                        _ => (),
+                    }
+                }
                 match ast_path {
                     Ok((_path, err)) => {
                         // supress warnings in non-pinned deps
@@ -1043,6 +1062,7 @@ pub fn build(
             .difference(&compile_universe)
             .map(|s| s.to_string())
             .collect::<AHashSet<String>>();
+
         compile_universe.extend(current_step_modules.clone());
         if current_step_modules.is_empty() {
             break;
@@ -1101,7 +1121,6 @@ pub fn build(
                             false,
                         ));
                     }
-
                     match module.source_type.to_owned() {
                         SourceType::MlMap(_) => {
                             // the mlmap needs to be compiled before the files are compiled
@@ -1124,6 +1143,7 @@ pub fn build(
                                 &project_root,
                                 "cmi",
                             );
+
                             let cmi_digest = compute_file_hash(&cmi_path);
 
                             let interface_result = match source_file.interface.to_owned() {
@@ -1160,18 +1180,23 @@ pub fn build(
                             // }
                             let cmi_digest_after = compute_file_hash(&cmi_path);
 
-                            let is_clean = match (cmi_digest, cmi_digest_after) {
+                            // we want to compare both the hash of interface and the implementation
+                            // compile assets to verify that nothing changed. We also need to checke the interface
+                            // because we can include MyModule, so the modules that depend on this module might
+                            // change when this modules interface does not change, but the implementation does
+                            let is_clean_cmi = match (cmi_digest, cmi_digest_after) {
                                 (Some(cmi_digest), Some(cmi_digest_after)) => {
                                     cmi_digest.eq(&cmi_digest_after)
                                 }
 
                                 _ => false,
                             };
+
                             Some((
                                 module_name.to_string(),
                                 result,
                                 interface_result,
-                                is_clean,
+                                is_clean_cmi,
                                 true,
                             ))
                         }
