@@ -1,6 +1,7 @@
 use crate::build;
 use crate::build_types::*;
 use crate::helpers;
+use crate::helpers::get_mlmap_path;
 use crate::package_tree::Package;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
@@ -347,7 +348,12 @@ fn failed_to_parse(module: &Module) -> bool {
     }
 }
 
-fn failed_to_compile(module: &Module) -> bool {
+fn failed_to_compile(module: &Module, no_errors: bool) -> bool {
+    // also clean up dirty modules when the compile failed
+    if !no_errors && module.compile_dirty {
+        return true;
+    };
+
     match &module.source_type {
         SourceType::SourceFile(SourceFile {
             implementation:
@@ -374,6 +380,7 @@ pub fn cleanup_after_build(
     _compiled_modules: &AHashSet<String>,
     _all_modules: &AHashSet<String>,
     project_root: &str,
+    no_errors: bool,
 ) {
     // let failed_modules = all_modules
     //     .difference(&compiled_modules)
@@ -393,7 +400,7 @@ pub fn cleanup_after_build(
                 _ => (),
             }
         }
-        if failed_to_compile(module) {
+        if failed_to_compile(module, no_errors) {
             // only retain ast file if it compiled successfully, that's the only thing we check
             // if we see a AST file, we assume it compiled successfully, so we also need to clean
             // up the AST file if compile is not successful
@@ -407,7 +414,17 @@ pub fn cleanup_after_build(
                         &project_root,
                     );
                 }
-                _ => (),
+                SourceType::MlMap(_) => remove_compile_assets(
+                    &helpers::canonicalize_string_path(&get_mlmap_path(
+                        &project_root,
+                        &module.package.name,
+                        &module.package.namespace.as_ref().unwrap(),
+                    ))
+                    .unwrap(),
+                    &module.package.name,
+                    &None,
+                    &project_root,
+                ),
             }
         }
     });

@@ -193,7 +193,11 @@ fn build_package<'a>(
 /// can be marked with the type 'dev'. Which means that they may not be around in the distributed
 /// NPM package. The file reader allows for this, just warns when this happens.
 /// TODO -> Check wether we actually need the `fs::Metadata`
-pub fn get_source_files(filter: &Option<regex::Regex>, dir: &String, source: &PackageSource) -> AHashMap<String, fs::Metadata> {
+pub fn get_source_files(
+    filter: &Option<regex::Regex>,
+    dir: &String,
+    source: &PackageSource,
+) -> AHashMap<String, fs::Metadata> {
     let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
 
     let (recurse, type_) = match source {
@@ -229,7 +233,10 @@ pub fn namespace_from_package_name(package_name: &str) -> String {
 
 /// This takes the tree of packages, and finds all the source files for each, adding them to the
 /// respective packages.
-fn extend_with_children(filter: &Option<regex::Regex>, mut build: AHashMap<String, Package>) -> AHashMap<String, Package> {
+fn extend_with_children(
+    filter: &Option<regex::Regex>,
+    mut build: AHashMap<String, Package>,
+) -> AHashMap<String, Package> {
     for (_key, value) in build.iter_mut() {
         let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
         value

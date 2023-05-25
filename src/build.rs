@@ -905,7 +905,7 @@ fn is_dirty(module: &Module) -> bool {
             ..
         }) => true,
         SourceType::SourceFile(_) => false,
-        SourceType::MlMap(MlMap { dirty, .. }) => dirty,
+        SourceType::MlMap(MlMap { dirty, .. }) => module.compile_dirty || dirty,
     }
 }
 
@@ -980,22 +980,6 @@ pub fn build(
     );
 
     let num_dirty_modules = modules.values().filter(|m| is_dirty(m)).count() as u64;
-    // for module in modules.values() {
-    //     match &module.source_type {
-    //         SourceType::SourceFile(source_file) => {
-    //             if source_file.implementation.dirty
-    //                 || source_file
-    //                     .interface
-    //                     .as_ref()
-    //                     .map(|i| i.dirty)
-    //                     .unwrap_or(false)
-    //             {
-    //                 num_dirty_modules += 1
-    //             }
-    //         }
-    //         SourceType::MlMap(_) => (),
-    //     };
-    // }
 
     let pb = ProgressBar::new(num_dirty_modules);
     pb.set_style(
@@ -1033,7 +1017,13 @@ pub fn build(
                 timing_ast_elapsed.as_secs_f64()
             );
             println!("{}", &err);
-            clean::cleanup_after_build(&modules, &AHashSet::new(), &all_modules, &project_root);
+            clean::cleanup_after_build(
+                &modules,
+                &AHashSet::new(),
+                &all_modules,
+                &project_root,
+                false,
+            );
             return Err(());
         }
     }
@@ -1355,7 +1345,13 @@ pub fn build(
 
     logs::finalize(&packages);
     pb.finish();
-    clean::cleanup_after_build(&modules, &compiled_modules, &all_modules, &project_root);
+    clean::cleanup_after_build(
+        &modules,
+        &compiled_modules,
+        &all_modules,
+        &project_root,
+        compile_errors.len() == 0,
+    );
     if compile_errors.len() > 0 {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
