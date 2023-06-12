@@ -179,14 +179,21 @@ fn get_dep_modules(
         .iter()
         .map(|dep| {
             let dep_first = dep.split('.').next().unwrap();
-
+            let dep_second = dep.split('.').nth(1);
             match &namespace {
                 Some(namespace) => {
-                    let namespaced_name = dep_first.to_owned() + "-" + &namespace;
+                    // if the module is in the own namespace, take the submodule -- so:
+                    // if the module is TeamwalnutApp.MyModule inside of the namespace TeamwalnutApp
+                    // we need the dependency to be MyModule in the same namespace
+                    let dep = match dep_second {
+                        Some(dep_second) if dep_first == namespace => dep_second,
+                        _ => dep_first,
+                    };
+                    let namespaced_name = dep.to_owned() + "-" + &namespace;
                     if package_modules.contains(&namespaced_name) {
                         return namespaced_name;
                     } else {
-                        return dep_first.to_string();
+                        return dep.to_string();
                     };
                 }
                 None => dep_first.to_string(),
