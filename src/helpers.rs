@@ -160,7 +160,7 @@ pub fn get_compiler_asset(
     extension: &str,
 ) -> String {
     let namespace = match extension {
-        "ast" | "asti" => &None,
+        "ast" | "iast" => &None,
         _ => namespace,
     };
 
