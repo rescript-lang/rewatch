@@ -278,7 +278,7 @@ fn generate_asts(
                 }
 
                 SourceType::SourceFile(source_file) => {
-                    let (ast_path, asti_path) = if source_file.implementation.dirty
+                    let (ast_path, iast_path) = if source_file.implementation.dirty
                         || source_file
                             .interface
                             .as_ref()
@@ -293,7 +293,7 @@ fn generate_asts(
                             &version,
                         );
 
-                        let asti_result =
+                        let iast_result =
                             match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
                                 Some(interface_file_path) => generate_ast(
                                     module.package.to_owned(),
@@ -305,7 +305,7 @@ fn generate_asts(
                                 _ => Ok(None),
                             };
 
-                        (ast_result, asti_result)
+                        (ast_result, iast_result)
                     } else {
                         (
                             Ok((
@@ -319,7 +319,7 @@ fn generate_asts(
                         )
                     };
 
-                    (module_name.to_owned(), ast_path, asti_path, true)
+                    (module_name.to_owned(), ast_path, iast_path, true)
                 }
             }
         })
