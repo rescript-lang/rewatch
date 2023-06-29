@@ -2,6 +2,7 @@ use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::build_types::*;
 use crate::clean;
+use crate::clean::clean_mjs_files;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use crate::logs;
@@ -836,8 +837,23 @@ pub fn clean(path: &str) {
     let project_root = helpers::get_abs_path(path);
     let packages = package_tree::make(&None, &project_root);
 
+    let timing_clean_compiler_assets = Instant::now();
+    print!(
+        "{} {} Cleaning compiler assets...",
+        style("[1/2]").bold().dim(),
+        SWEEP
+    );
+    std::io::stdout().flush().unwrap();
     packages.iter().for_each(|(_, package)| {
-        println!("Cleaning {}...", package.name);
+        print!(
+            "{}\r{} {} Cleaning {}...",
+            LINE_CLEAR,
+            style("[1/2]").bold().dim(),
+            SWEEP,
+            package.name
+        );
+        std::io::stdout().flush().unwrap();
+
         let path = std::path::Path::new(&package.package_dir)
             .join("lib")
             .join("ocaml");
@@ -846,7 +862,36 @@ pub fn clean(path: &str) {
             .join("lib")
             .join("bs");
         let _ = std::fs::remove_dir_all(path);
-    })
+    });
+    let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
+
+    println!(
+        "{}\r{} {}Cleant compiler assets in {:.2}s",
+        LINE_CLEAR,
+        style("[1/2]").bold().dim(),
+        CHECKMARK,
+        timing_clean_compiler_assets_elapsed.as_secs_f64()
+    );
+    std::io::stdout().flush().unwrap();
+
+    let timing_clean_mjs = Instant::now();
+    print!(
+        "{} {} Clearing mjs files...",
+        style("[2/2]").bold().dim(),
+        SWEEP
+    );
+    std::io::stdout().flush().unwrap();
+    let (_, modules) = parse_packages(&project_root, packages.to_owned());
+    clean_mjs_files(&modules);
+    let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
+    println!(
+        "{}\r{} {}Cleant mjs in {:.2}s",
+        LINE_CLEAR,
+        style("[2/2]").bold().dim(),
+        CHECKMARK,
+        timing_clean_mjs_elapsed.as_secs_f64()
+    );
+    std::io::stdout().flush().unwrap();
 }
 
 fn is_dirty(module: &Module) -> bool {
@@ -1003,7 +1048,7 @@ pub fn build(
     let timing_deps_elapsed = timing_deps.elapsed();
 
     println!(
-        "{}\r{} {} Collected deps in {:.2}s",
+        "{}\r{} {}Collected deps in {:.2}s",
         LINE_CLEAR,
         style("[5/6]").bold().dim(),
         CHECKMARK,

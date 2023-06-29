@@ -70,6 +70,23 @@ fn remove_compile_assets(
     }
 }
 
+pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
+    // get all rescript file locations
+    let rescript_file_locations = all_modules
+        .values()
+        .filter_map(|module| match &module.source_type {
+            SourceType::SourceFile(source_file) => {
+                Some(source_file.implementation.path.to_string())
+            }
+            _ => None,
+        })
+        .collect::<AHashSet<String>>();
+
+    rescript_file_locations
+        .par_iter()
+        .for_each(|rescript_file_location| remove_mjs_file(&rescript_file_location));
+}
+
 pub fn cleanup_previous_build(
     packages: &AHashMap<String, Package>,
     all_modules: &mut AHashMap<String, Module>,
@@ -183,10 +200,6 @@ pub fn cleanup_previous_build(
     let diff_len = diff.len();
 
     diff.par_iter().for_each(|canonicalized_res_file_location| {
-        let _ = std::fs::remove_file(helpers::change_extension(
-            canonicalized_res_file_location,
-            "mjs",
-        ));
         let (_module_name, package_name, package_namespace, _last_modified, _ast_file_path) =
             ast_modules
                 .get(&canonicalized_res_file_location.to_string())
