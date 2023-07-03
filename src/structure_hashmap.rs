@@ -1,4 +1,4 @@
-use crate::helpers::LexicalAbsolute;
+use crate::helpers::{is_source_file, LexicalAbsolute};
 use ahash::AHashMap;
 use std::path::PathBuf;
 use std::{error, fs};
@@ -34,20 +34,18 @@ pub fn read_folders(
             }
         }
         match path_ext {
-            Some("res") | Some("ml") | Some("re") | Some("resi") | Some("rei") | Some("mli") => {
-                match abs_path {
-                    Ok((ref path, _))
-                        if filter
-                            .as_ref()
-                            .map(|re| !re.is_match(&name))
-                            .unwrap_or(true) =>
-                    {
-                        map.insert(path.to_owned() + "/" + &name, metadata);
-                    }
-                    Ok(_) => println!("Filtered: {:?}", name),
-                    Err(ref e) => println!("Error reading directory: {}", e),
+            Some(extension) if is_source_file(extension) => match abs_path {
+                Ok((ref path, _))
+                    if filter
+                        .as_ref()
+                        .map(|re| !re.is_match(&name))
+                        .unwrap_or(true) =>
+                {
+                    map.insert(path.to_owned() + "/" + &name, metadata);
                 }
-            }
+                Ok(_) => println!("Filtered: {:?}", name),
+                Err(ref e) => println!("Error reading directory: {}", e),
+            },
             _ => (),
         }
     }

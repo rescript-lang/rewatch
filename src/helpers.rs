@@ -263,3 +263,10 @@ pub fn get_system_time() -> u128 {
         .expect("Time went backwards");
     since_the_epoch.as_millis()
 }
+
+pub fn is_source_file(extension: &str) -> bool {
+    match extension {
+        "res" | "resi" | "ml" | "mli" | "re" | "rei" => true,
+        _ => false,
+    }
+}
