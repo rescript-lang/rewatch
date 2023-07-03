@@ -178,6 +178,24 @@ pub fn canonicalize_string_path(path: &str) -> Option<String> {
         .map(|path| path.to_str().expect("Could not canonicalize").to_string());
 }
 
+// sometimes we only want to canonicalize the parent path, if we potentially want to
+// canonicalize file paths that might not exist anymore BUT the parent path does
+pub fn canonicalize_parent_string_path(path: &str) -> Option<String> {
+    return Path::new(path)
+        .parent()
+        .unwrap()
+        .canonicalize()
+        .ok()
+        .map(|dir| {
+            let filename = Path::new(path)
+                .file_name()
+                .expect("There should always be a filename");
+            // add back file
+            let path = dir.join(filename);
+            return path.to_str().expect("Could not canonicalize").to_string();
+        });
+}
+
 pub fn get_bs_compiler_asset(
     source_file: &str,
     package_name: &str,
