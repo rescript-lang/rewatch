@@ -189,11 +189,11 @@ pub fn get_bs_compiler_asset(
         "ast" | "iast" => &None,
         _ => namespace,
     };
-    let canoncialized_source_file = source_file;
+    let canonicalized_source_file = source_file;
     let canonicalized_path =
         canonicalize_string_path(&get_package_path(root_path, &package_name)).unwrap();
 
-    let dir = std::path::Path::new(&canoncialized_source_file)
+    let dir = std::path::Path::new(&canonicalized_source_file)
         .strip_prefix(canonicalized_path)
         .unwrap()
         .parent()
