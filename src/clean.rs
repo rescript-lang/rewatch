@@ -407,7 +407,7 @@ pub fn cleanup_after_build(
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
                     remove_compile_assets(
-                        &helpers::canonicalize_string_path(&source_file.implementation.path)
+                        &helpers::canonicalize_parent_string_path(&source_file.implementation.path)
                             .unwrap(),
                         &module.package.name,
                         &module.package.namespace,
