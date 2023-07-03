@@ -264,9 +264,20 @@ pub fn get_system_time() -> u128 {
     since_the_epoch.as_millis()
 }
 
-pub fn is_source_file(extension: &str) -> bool {
+pub fn is_interface_file(extension: &str) -> bool {
     match extension {
-        "res" | "resi" | "ml" | "mli" | "re" | "rei" => true,
+        "resi" | "mli" | "rei" => true,
         _ => false,
     }
+}
+
+pub fn is_implementation_file(extension: &str) -> bool {
+    match extension {
+        "res" | "ml" | "re" => true,
+        _ => false,
+    }
+}
+
+pub fn is_source_file(extension: &str) -> bool {
+    is_interface_file(extension) || is_implementation_file(extension)
 }

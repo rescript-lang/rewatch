@@ -1,10 +1,9 @@
 use crate::build;
+use crate::helpers;
 use notify::{Config, RecursiveMode};
 use notify_debouncer_mini::new_debouncer_opt;
 use std::path::PathBuf;
 use std::time::Duration;
-
-pub static FILE_EXTENSIONS: &[&str] = &["re", "res", "ml", "mli", "rei", "resi"];
 
 pub fn start(filter: &Option<regex::Regex>, folder: &str) {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -42,7 +41,8 @@ pub fn start(filter: &Option<regex::Regex>, folder: &str) {
                                     .as_ref()
                                     .map(|re| !re.is_match(&name))
                                     .unwrap_or(true)
-                                    && FILE_EXTENSIONS.contains(&extension) =>
+                                    && (helpers::is_implementation_file(&extension)
+                                        || helpers::is_interface_file(&extension)) =>
                             {
                                 Some(path_buf)
                             }
