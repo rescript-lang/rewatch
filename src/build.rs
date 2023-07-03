@@ -5,6 +5,7 @@ use crate::clean;
 use crate::clean::clean_mjs_files;
 use crate::helpers;
 use crate::helpers::emojis::*;
+use crate::helpers::is_interface_ast_file;
 use crate::logs;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
@@ -54,6 +55,15 @@ fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<On
     }
 }
 
+fn path_to_ast_extension(path: &Path) -> &str {
+    let extension = path.extension().unwrap().to_str().unwrap();
+    return if is_interface_ast_file(extension) {
+        ".iast"
+    } else {
+        ".ast"
+    };
+}
+
 fn generate_ast(
     package: package_tree::Package,
     filename: &str,
@@ -62,15 +72,8 @@ fn generate_ast(
 ) -> Result<(String, Option<String>), String> {
     let file = &filename.to_string();
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
-    let ast_extension = match PathBuf::from(filename)
-        .extension()
-        .unwrap()
-        .to_str()
-        .unwrap()
-    {
-        "resi" | "rei" | "mli" => ".iast",
-        _ => ".ast",
-    };
+    let path = PathBuf::from(filename);
+    let ast_extension = path_to_ast_extension(&path);
 
     let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
     let abs_node_modules_path = helpers::get_node_modules_path(root_path);
