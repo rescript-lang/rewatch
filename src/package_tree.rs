@@ -7,14 +7,20 @@ use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::{error, fs};
 
+#[derive(Debug, Clone)]
+pub struct SourceFileMeta {
+    pub modified: SystemTime,
+}
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
     pub bsconfig: bsconfig::T,
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
-    pub source_files: Option<AHashMap<String, fs::Metadata>>,
+    // these are the relative file paths (relative to the package root)
+    pub source_files: Option<AHashMap<String, SourceFileMeta>>,
     pub namespace: Option<String>,
     pub modules: Option<AHashSet<String>>,
     pub package_dir: String,
@@ -45,14 +51,21 @@ pub fn read_folders(
     filter: &Option<regex::Regex>,
     path: &Path,
     recurse: bool,
-) -> Result<AHashMap<String, fs::Metadata>, Box<dyn error::Error>> {
-    let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
+) -> Result<AHashMap<String, SourceFileMeta>, Box<dyn error::Error>> {
+    let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
     let path_buf = PathBuf::from(path);
 
-    let path_with_meta = &path_buf
-        .to_lexical_absolute()
-        .map(|x| x.to_str().map(|y| y.to_string()).unwrap_or("".to_string()))
-        .and_then(|x| fs::metadata(x.to_owned()).map(|m| (x.to_owned(), m)));
+    let path_lex_abs = &path_buf.to_lexical_absolute().unwrap();
+
+    let meta = fs::metadata(path_lex_abs);
+    let path_with_meta = meta.map(|meta| {
+        (
+            path_lex_abs.to_str().unwrap().to_string(),
+            SourceFileMeta {
+                modified: meta.modified().unwrap(),
+            },
+        )
+    });
 
     for entry in fs::read_dir(&path_buf)? {
         let entry_path_buf = entry.map(|entry| entry.path())?;
@@ -76,7 +89,12 @@ pub fn read_folders(
         match path_ext {
             Some(extension) if is_source_file(extension) => match path_with_meta {
                 Ok((ref path, _)) if matches_filter(filter, &name) => {
-                    map.insert(path.to_owned() + "/" + &name, metadata);
+                    map.insert(
+                        path.to_owned() + "/" + &name,
+                        SourceFileMeta {
+                            modified: metadata.modified().unwrap(),
+                        },
+                    );
                 }
 
                 Ok(_) => println!("Filtered: {:?}", name),
@@ -252,8 +270,8 @@ pub fn get_source_files(
     filter: &Option<regex::Regex>,
     dir: &String,
     source: &PackageSource,
-) -> AHashMap<String, fs::Metadata> {
-    let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
+) -> AHashMap<String, SourceFileMeta> {
+    let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
 
     let (recurse, type_) = match source {
         PackageSource {
@@ -294,12 +312,12 @@ fn extend_with_children(
     mut build: AHashMap<String, Package>,
 ) -> AHashMap<String, Package> {
     for (_key, value) in build.iter_mut() {
-        let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
+        let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
         value
             .source_folders
             .par_iter()
             .map(|(dir, source)| get_source_files(&filter, dir, source))
-            .collect::<Vec<AHashMap<String, fs::Metadata>>>()
+            .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
 
