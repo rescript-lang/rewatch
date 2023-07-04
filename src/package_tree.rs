@@ -9,6 +9,31 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::{error, fs};
 
+#[derive(Debug, Clone)]
+pub struct Package {
+    pub name: String,
+    pub bsconfig: bsconfig::T,
+    pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
+    pub source_files: Option<AHashMap<String, fs::Metadata>>,
+    pub namespace: Option<String>,
+    pub modules: Option<AHashSet<String>>,
+    pub package_dir: String,
+    pub dirs: Option<AHashSet<PathBuf>>,
+    pub is_pinned_dep: bool,
+}
+
+impl PartialEq for Package {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+impl Eq for Package {}
+impl Hash for Package {
+    fn hash<H: Hasher>(&self, _state: &mut H) {
+        blake3::hash(&self.name.as_bytes());
+    }
+}
+
 fn matches_filter(filter: &Option<regex::Regex>, path: &str) -> bool {
     match filter {
         Some(filter) => filter.is_match(path),
@@ -62,30 +87,6 @@ pub fn read_folders(
     }
 
     Ok(map)
-}
-#[derive(Debug, Clone)]
-pub struct Package {
-    pub name: String,
-    pub bsconfig: bsconfig::T,
-    pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
-    pub source_files: Option<AHashMap<String, fs::Metadata>>,
-    pub namespace: Option<String>,
-    pub modules: Option<AHashSet<String>>,
-    pub package_dir: String,
-    pub dirs: Option<AHashSet<PathBuf>>,
-    pub is_pinned_dep: bool,
-}
-
-impl PartialEq for Package {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-impl Eq for Package {}
-impl Hash for Package {
-    fn hash<H: Hasher>(&self, _state: &mut H) {
-        blake3::hash(&self.name.as_bytes());
-    }
 }
 
 /// Given a projects' root folder and a `bsconfig::Source`, this recursively creates all the
