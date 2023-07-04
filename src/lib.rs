@@ -1,10 +1,9 @@
 pub mod bsconfig;
 pub mod build;
-pub mod clean;
-pub mod logs;
 pub mod build_types;
+pub mod clean;
 pub mod grouplike;
 pub mod helpers;
+pub mod logs;
 pub mod package_tree;
-pub mod structure_hashmap;
 pub mod watcher;
