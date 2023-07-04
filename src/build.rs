@@ -562,8 +562,7 @@ pub fn parse_packages(
                                     panic!("Unable to continue... See log output above...");
                                 }
                                 source_file.implementation.path = file.to_owned();
-                                source_file.implementation.last_modified =
-                                    metadata.modified().unwrap();
+                                source_file.implementation.last_modified = metadata.modified;
                                 source_file.implementation.dirty = true;
                             }
                             _ => (),
@@ -574,7 +573,7 @@ pub fn parse_packages(
                                     path: file.to_owned(),
                                     parse_state: ParseState::Pending,
                                     compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified().unwrap(),
+                                    last_modified: metadata.modified,
                                     dirty: true,
                                 },
                                 interface: None,
@@ -593,7 +592,7 @@ pub fn parse_packages(
                                     path: file.to_owned(),
                                     parse_state: ParseState::Pending,
                                     compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified().unwrap(),
+                                    last_modified: metadata.modified,
                                     dirty: true,
                                 });
                             }
@@ -606,14 +605,14 @@ pub fn parse_packages(
                                     path: "".to_string(),
                                     parse_state: ParseState::Pending,
                                     compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified().unwrap(),
+                                    last_modified: metadata.modified,
                                     dirty: false,
                                 },
                                 interface: Some(Interface {
                                     path: file.to_owned(),
                                     parse_state: ParseState::Pending,
                                     compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified().unwrap(),
+                                    last_modified: metadata.modified,
                                     dirty: true,
                                 }),
                             }),
