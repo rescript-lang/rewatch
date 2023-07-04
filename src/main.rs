@@ -7,7 +7,6 @@ pub mod grouplike;
 pub mod helpers;
 pub mod logs;
 pub mod package_tree;
-pub mod structure_hashmap;
 pub mod watcher;
 
 fn main() {

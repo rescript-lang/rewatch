@@ -1,14 +1,68 @@
 use crate::bsconfig;
 use crate::bsconfig::*;
 use crate::helpers;
-use crate::structure_hashmap;
+use crate::helpers::{is_source_file, LexicalAbsolute};
 use ahash::{AHashMap, AHashSet};
 use convert_case::{Case, Casing};
 use rayon::prelude::*;
-use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::{error, fs};
 
+fn matches_filter(filter: &Option<regex::Regex>, path: &str) -> bool {
+    match filter {
+        Some(filter) => filter.is_match(path),
+        None => true,
+    }
+}
+
+pub fn read_folders(
+    filter: &Option<regex::Regex>,
+    path: &Path,
+    recurse: bool,
+) -> Result<AHashMap<String, fs::Metadata>, Box<dyn error::Error>> {
+    let mut map: AHashMap<String, fs::Metadata> = AHashMap::new();
+    let path_buf = PathBuf::from(path);
+
+    let path_with_meta = &path_buf
+        .to_lexical_absolute()
+        .map(|x| x.to_str().map(|y| y.to_string()).unwrap_or("".to_string()))
+        .and_then(|x| fs::metadata(x.to_owned()).map(|m| (x.to_owned(), m)));
+
+    for entry in fs::read_dir(&path_buf)? {
+        let entry_path_buf = entry.map(|entry| entry.path())?;
+        let metadata = fs::metadata(&entry_path_buf)?;
+        let name = entry_path_buf
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let path_ext = entry_path_buf.extension().and_then(|x| x.to_str());
+        let new_path = path_buf.join(&name);
+        if metadata.file_type().is_dir() && recurse {
+            match read_folders(&filter, &new_path, recurse) {
+                Ok(s) => map.extend(s),
+                Err(e) => println!("Error reading directory: {}", e),
+            }
+        }
+
+        match path_ext {
+            Some(extension) if is_source_file(extension) => match path_with_meta {
+                Ok((ref path, _)) if matches_filter(filter, &name) => {
+                    map.insert(path.to_owned() + "/" + &name, metadata);
+                }
+
+                Ok(_) => println!("Filtered: {:?}", name),
+                Err(ref e) => println!("Error reading directory: {}", e),
+            },
+            _ => (),
+        }
+    }
+
+    Ok(map)
+}
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
@@ -185,7 +239,7 @@ fn build_package<'a>(
         })
 }
 
-/// `get_source_files` is essentially a wrapper around `structure_hashmap::read_structure`, which read a
+/// `get_source_files` is essentially a wrapper around `read_structure`, which read a
 /// list of files in a folder to a hashmap of `string` / `fs::Metadata` (file metadata). Reason for
 /// this wrapper is the recursiveness of the `bsconfig.json` subfolders. Some sources in bsconfig
 /// can be specified as being fully recursive (`{ subdirs: true }`). This wrapper pulls out that
@@ -209,9 +263,10 @@ pub fn get_source_files(
         PackageSource { type_, .. } => (false, type_),
     };
 
+    let path_dir = Path::new(dir);
     // don't include dev sources for now
     if type_ != &Some("dev".to_string()) {
-        match structure_hashmap::read_folders(&filter, dir, recurse) {
+        match read_folders(&filter, path_dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
                 println!("Could not read folder: {dir}... Probably ok as type is dev")
