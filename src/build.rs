@@ -759,19 +759,9 @@ pub fn compile_file(
 
     match to_mjs {
         Ok(x) if !x.status.success() => {
-            Err(
-                // "Problem compiling file: ".to_string()
-                // + if !is_interface {
-                //     &module.file_path
-                // } else {
-                //     &module.interface_file_path.as_ref().unwrap()
-                // }
-                // + "\n\n"
-                // +
-                std::str::from_utf8(&x.stderr)
-                    .expect("stderr should be non-null")
-                    .to_string(),
-            )
+            let stderr = String::from_utf8_lossy(&x.stderr);
+            let stdout = String::from_utf8_lossy(&x.stdout);
+            Err(stderr.to_string() + &stdout)
         }
         Err(e) => Err(format!("ERROR, {}, {:?}", e, ast_path)),
         Ok(x) => {
