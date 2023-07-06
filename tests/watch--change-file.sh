@@ -35,7 +35,7 @@ fi
 
 sleep 1
 
-if git diff --exit-code ./ &> /dev/null; 
+if git diff --exit-code ./  
 then
   echo "✅ - Adding and removing changes nothing"
 else 

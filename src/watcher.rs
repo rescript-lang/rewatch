@@ -1,61 +1,79 @@
 use crate::build;
 use crate::helpers;
-use notify::{Config, RecursiveMode};
-use notify_debouncer_mini::new_debouncer_opt;
-use std::path::PathBuf;
+use futures::{
+    channel::mpsc::{channel, Receiver},
+    SinkExt, StreamExt,
+};
+use futures_timer::Delay;
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::time::Duration;
 
-pub fn start(filter: &Option<regex::Regex>, folder: &str) {
-    let (tx, rx) = std::sync::mpsc::channel();
+fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
+    // set the buffer large enough so that we don't trigger unecessary rebuilds
+    let (mut tx, rx) = channel(100000);
 
-    let mut debouncer = new_debouncer_opt::<_, notify::RecommendedWatcher>(
-        Duration::from_millis(200),
-        None,
-        tx,
+    // Automatically select the best implementation for your platform.
+    // You can also access each implementation directly e.g. INotifyWatcher.
+    let watcher = RecommendedWatcher::new(
+        move |res| {
+            futures::executor::block_on(async {
+                tx.send(res).await.unwrap();
+            })
+        },
         Config::default(),
-    )
-    .unwrap();
+    )?;
 
-    debouncer
-        .watcher()
-        .watch(folder.as_ref(), RecursiveMode::Recursive)
-        .unwrap();
+    Ok((watcher, rx))
+}
 
-    for events in rx {
-        match events {
-            Ok(events) => {
-                let paths = events
-                    .iter()
-                    .filter_map(|event| {
-                        let path_buf = event.path.to_path_buf();
-                        let name = path_buf
-                            .file_name()
-                            .and_then(|x| x.to_str())
-                            .unwrap_or("Unknown")
-                            .to_string();
-                        let extension = path_buf.extension().and_then(|ext| ext.to_str());
+async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Result<()> {
+    let (mut watcher, rx) = async_watcher()?;
+    watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
+    let mut ready_chunks = rx.ready_chunks(100000);
 
-                        match extension {
-                            Some(extension)
-                                if filter
-                                    .as_ref()
-                                    .map(|re| !re.is_match(&name))
-                                    .unwrap_or(true)
-                                    && (helpers::is_implementation_file(&extension)
-                                        || helpers::is_interface_file(&extension)) =>
-                            {
-                                Some(path_buf)
-                            }
-                            _ => None,
-                        }
-                    })
-                    .collect::<Vec<PathBuf>>();
+    loop {
+        let events = ready_chunks.next().await.unwrap();
+        let needs_compile = events.iter().any(|event| match event {
+            Ok(event) => event.paths.iter().any(|path| {
+                let path_buf = path.to_path_buf();
+                let name = path_buf
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
 
-                if paths.len() > 0 {
-                    let _ = build::build(&filter, &folder);
+                let extension = path_buf.extension().and_then(|ext| ext.to_str());
+                match extension {
+                    Some(extension) => {
+                        (helpers::is_implementation_file(&extension)
+                            || helpers::is_interface_file(&extension))
+                            && filter
+                                .as_ref()
+                                .map(|re| !re.is_match(&name))
+                                .unwrap_or(true)
+                    }
+
+                    _ => false,
                 }
-            }
-            Err(_) => (),
+            }),
+            Err(_) => false,
+        });
+
+        if needs_compile {
+            // we wait for a bit before starting the compile as a debouncer
+            let delay = Duration::from_millis(200);
+            Delay::new(delay).await;
+            // we drain the channel to avoid triggering multiple compiles
+            let _ = ready_chunks.next().await;
+            let _ = build::build(filter, path);
         }
     }
+}
+
+pub fn start(filter: &Option<regex::Regex>, folder: &str) {
+    futures::executor::block_on(async {
+        if let Err(e) = async_watch(folder, filter).await {
+            println!("error: {:?}", e)
+        }
+    });
 }
