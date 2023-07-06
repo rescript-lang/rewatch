@@ -33,7 +33,7 @@ else
   sed -i '/Js.log("added-by-test")/d' ./packages/main/src/Main.res;
 fi
 
-sleep 2
+sleep 1
 
 if git diff --exit-code ./ &> /dev/null; 
 then
