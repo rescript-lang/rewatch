@@ -184,7 +184,7 @@ fn build_package<'a>(
      * no deduplication on the package level so far. Once we return this flat list of packages, do
      * have this deduplication. From that point on, we can add the source files for every single
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
-    map.insert(package_dir.to_owned(), {
+    map.insert(copied_bsconfig.name.to_owned(), {
         let source_folders = match bsconfig.sources.to_owned() {
             bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
             bsconfig::OneOrMore::Multiple(sources) => {
@@ -231,7 +231,7 @@ fn build_package<'a>(
         .iter()
         .filter_map(|package_name| {
             let package_dir = get_package_dir(package_name, false, project_root);
-            if !map.contains_key(&package_dir) {
+            if !map.contains_key(package_name) {
                 Some(package_dir)
             } else {
                 None

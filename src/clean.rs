@@ -89,8 +89,7 @@ pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
 }
 
 pub fn cleanup_previous_build(
-    packages: &AHashMap<String, Package>,
-    all_modules: &mut AHashMap<String, Module>,
+    build_state: &mut BuildState,
     root_path: &str,
 ) -> (usize, usize, AHashSet<String>) {
     let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime, String)> =
@@ -98,7 +97,8 @@ pub fn cleanup_previous_build(
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
 
-    let mut rescript_file_locations = all_modules
+    let mut rescript_file_locations = build_state
+        .modules
         .values()
         .filter_map(|module| match &module.source_type {
             SourceType::SourceFile(source_file) => {
@@ -109,7 +109,8 @@ pub fn cleanup_previous_build(
         .collect::<AHashSet<String>>();
 
     rescript_file_locations.extend(
-        all_modules
+        build_state
+            .modules
             .values()
             .filter_map(|module| {
                 build::get_interface(module)
@@ -120,7 +121,7 @@ pub fn cleanup_previous_build(
     );
 
     // scan all ast files in all packages
-    for package in packages.values() {
+    for package in build_state.packages.values() {
         let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
             root_path,
             &package.name,
@@ -160,7 +161,6 @@ pub fn cleanup_previous_build(
                                 }
                             }
                             "cmi" => {
-                                // println!("cmi: {:?}", path);
                                 let module_name = helpers::file_path_to_module_name(
                                     path.to_str().unwrap(),
                                     &package.namespace,
@@ -229,7 +229,8 @@ pub fn cleanup_previous_build(
                 ast_modules
                     .get(canonicalized_res_file_location)
                     .expect("Could not find module name for ast file");
-            let module = all_modules
+            let module = build_state
+                .modules
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
             let full_module_name = module_name.to_string()
@@ -303,7 +304,8 @@ pub fn cleanup_previous_build(
         .map(|(module_name, _, _, _, _)| module_name)
         .collect::<AHashSet<&String>>();
 
-    let all_module_names = all_modules
+    let all_module_names = build_state
+        .modules
         .keys()
         .map(|module_name| module_name)
         .collect::<AHashSet<&String>>();
@@ -375,57 +377,57 @@ fn failed_to_compile(module: &Module, no_errors: bool) -> bool {
     }
 }
 
-pub fn cleanup_after_build(
-    modules: &AHashMap<String, Module>,
-    _compiled_modules: &AHashSet<String>,
-    _all_modules: &AHashSet<String>,
-    project_root: &str,
-    no_errors: bool,
-) {
+pub fn cleanup_after_build(build_state: &BuildState, project_root: &str, no_errors: bool) {
     // let failed_modules = all_modules
     //     .difference(&compiled_modules)
     //     .collect::<AHashSet<&String>>();
 
-    modules.par_iter().for_each(|(_module_name, module)| {
-        if failed_to_parse(module) {
-            match &module.source_type {
-                SourceType::SourceFile(source_file) => {
-                    remove_asts(
-                        &source_file.implementation.path,
-                        &module.package.name,
-                        &module.package.namespace,
-                        &project_root,
-                    );
+    build_state
+        .modules
+        .par_iter()
+        .for_each(|(_module_name, module)| {
+            let package = build_state.get_package(&module.package_name).unwrap();
+            if failed_to_parse(module) {
+                match &module.source_type {
+                    SourceType::SourceFile(source_file) => {
+                        remove_asts(
+                            &source_file.implementation.path,
+                            &module.package_name,
+                            &package.namespace,
+                            &project_root,
+                        );
+                    }
+                    _ => (),
                 }
-                _ => (),
             }
-        }
-        if failed_to_compile(module, no_errors) {
-            // only retain ast file if it compiled successfully, that's the only thing we check
-            // if we see a AST file, we assume it compiled successfully, so we also need to clean
-            // up the AST file if compile is not successful
-            match &module.source_type {
-                SourceType::SourceFile(source_file) => {
-                    remove_compile_assets(
-                        &helpers::canonicalize_parent_string_path(&source_file.implementation.path)
+            if failed_to_compile(module, no_errors) {
+                // only retain ast file if it compiled successfully, that's the only thing we check
+                // if we see a AST file, we assume it compiled successfully, so we also need to clean
+                // up the AST file if compile is not successful
+                match &module.source_type {
+                    SourceType::SourceFile(source_file) => {
+                        remove_compile_assets(
+                            &helpers::canonicalize_parent_string_path(
+                                &source_file.implementation.path,
+                            )
                             .unwrap(),
-                        &module.package.name,
-                        &module.package.namespace,
+                            &module.package_name,
+                            &package.namespace,
+                            &project_root,
+                        );
+                    }
+                    SourceType::MlMap(_) => remove_compile_assets(
+                        &helpers::canonicalize_string_path(&get_mlmap_path(
+                            &project_root,
+                            &module.package_name,
+                            &package.namespace.as_ref().unwrap(),
+                        ))
+                        .unwrap(),
+                        &module.package_name,
+                        &None,
                         &project_root,
-                    );
+                    ),
                 }
-                SourceType::MlMap(_) => remove_compile_assets(
-                    &helpers::canonicalize_string_path(&get_mlmap_path(
-                        &project_root,
-                        &module.package.name,
-                        &module.package.namespace.as_ref().unwrap(),
-                    ))
-                    .unwrap(),
-                    &module.package.name,
-                    &None,
-                    &project_root,
-                ),
             }
-        }
-    });
+        });
 }
