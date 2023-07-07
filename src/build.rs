@@ -243,40 +243,43 @@ fn gen_mlmap(
 fn generate_asts(
     version: &str,
     project_root: &str,
-    modules: &mut AHashMap<String, Module>,
+    build_state: &mut BuildState,
     pb: &ProgressBar,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
 
-    let results = modules
+    let results = build_state
+        .modules
         .par_iter()
         .map(|(module_name, module)| {
             debug!("Generating AST for module: {}", module_name);
+
+            let package = build_state
+                .get_package(&module.package_name)
+                .expect("Package not found");
             match &module.source_type {
                 SourceType::MlMap(_) => {
                     // probably better to do this in a different function
                     // specific to compiling mlmaps
                     let path = helpers::get_mlmap_path(
                         &project_root,
-                        &module.package.name,
-                        &module
-                            .package
+                        &module.package_name,
+                        &package
                             .namespace
                             .as_ref()
                             .expect("namespace should be set for mlmap module"),
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
                         &project_root,
-                        &module.package.name,
-                        &module
-                            .package
+                        &module.package_name,
+                        &package
                             .namespace
                             .as_ref()
                             .expect("namespace should be set for mlmap module"),
                     );
                     let mlmap_hash = compute_file_hash(&compile_path);
-                    compile_mlmap(&module.package, module_name, &project_root);
+                    compile_mlmap(&package, module_name, &project_root);
                     let mlmap_hash_after = compute_file_hash(&compile_path);
 
                     let is_dirty = match (mlmap_hash, mlmap_hash_after) {
@@ -297,7 +300,7 @@ fn generate_asts(
                     {
                         pb.inc(1);
                         let ast_result = generate_ast(
-                            module.package.to_owned(),
+                            package.to_owned(),
                             &source_file.implementation.path.to_owned(),
                             &project_root,
                             &version,
@@ -306,7 +309,7 @@ fn generate_asts(
                         let iast_result =
                             match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
                                 Some(interface_file_path) => generate_ast(
-                                    module.package.to_owned(),
+                                    package.to_owned(),
                                     &interface_file_path.to_owned(),
                                     &project_root,
                                     &version,
@@ -343,7 +346,11 @@ fn generate_asts(
     results
         .into_iter()
         .for_each(|(module_name, ast_path, iast_path, is_dirty)| {
-            if let Some(module) = modules.get_mut(&module_name) {
+            if let Some(module) = build_state.modules.get_mut(&module_name) {
+                let package = build_state
+                    .packages
+                    .get(&module.package_name)
+                    .expect("Package not found");
                 if is_dirty {
                     match module.source_type {
                         SourceType::MlMap(_) => module.compile_dirty = true,
@@ -353,7 +360,7 @@ fn generate_asts(
                 match ast_path {
                     Ok((_path, err)) => {
                         // supress warnings in non-pinned deps
-                        if module.package.is_pinned_dep {
+                        if package.is_pinned_dep {
                             if let Some(err) = err {
                                 match module.source_type {
                                     SourceType::SourceFile(ref mut source_file) => {
@@ -362,7 +369,7 @@ fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&module.package.package_dir, &err);
+                                logs::append(&package.package_dir, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -374,7 +381,7 @@ fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&module.package.package_dir, &err);
+                        logs::append(&package.package_dir, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -382,7 +389,7 @@ fn generate_asts(
                 match iast_path {
                     Ok(Some((_path, err))) => {
                         // supress warnings in non-pinned deps
-                        if module.package.is_pinned_dep {
+                        if package.is_pinned_dep {
                             if let Some(err) = err {
                                 match module.source_type {
                                     SourceType::SourceFile(ref mut source_file) => {
@@ -392,7 +399,7 @@ fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&module.package.package_dir, &err);
+                                logs::append(&package.package_dir, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -407,7 +414,7 @@ fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&module.package.package_dir, &err);
+                        logs::append(&package.package_dir, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -422,28 +429,31 @@ fn generate_asts(
     }
 }
 
-fn get_deps(
-    project_root: &str,
-    modules: &mut AHashMap<String, Module>,
-    all_modules: &AHashSet<String>,
-    deleted_modules: &AHashSet<String>,
-) {
-    let all_mod = &all_modules.union(deleted_modules).cloned().collect();
-    modules
+fn get_deps(project_root: &str, build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
+    let all_mod = &build_state
+        .module_names
+        .union(deleted_modules)
+        .cloned()
+        .collect();
+    build_state
+        .modules
         .par_iter()
         .map(|(module_name, module)| match &module.source_type {
             SourceType::MlMap(_) => (module_name.to_string(), module.deps.to_owned()),
             SourceType::SourceFile(source_file) => {
+                let package = build_state
+                    .get_package(&module.package_name)
+                    .expect("Package not found");
                 let ast_path = helpers::get_ast_path(
                     &source_file.implementation.path,
-                    &module.package.name,
+                    &module.package_name,
                     project_root,
                 );
 
                 let mut deps = get_dep_modules(
                     &ast_path,
-                    module.package.namespace.to_owned(),
-                    &module.package.modules.as_ref().unwrap(),
+                    package.namespace.to_owned(),
+                    &package.modules.as_ref().unwrap(),
                     all_mod,
                 );
 
@@ -451,14 +461,14 @@ fn get_deps(
                     Some(interface) => {
                         let iast_path = helpers::get_iast_path(
                             &interface.path,
-                            &module.package.name,
+                            &module.package_name,
                             project_root,
                         );
 
                         deps.extend(get_dep_modules(
                             &iast_path,
-                            module.package.namespace.to_owned(),
-                            &module.package.modules.as_ref().unwrap(),
+                            package.namespace.to_owned(),
+                            &package.modules.as_ref().unwrap(),
                             all_mod,
                         ))
                     }
@@ -471,162 +481,164 @@ fn get_deps(
         .collect::<Vec<(String, AHashSet<String>)>>()
         .into_iter()
         .for_each(|(module_name, deps)| {
-            if let Some(module) = modules.get_mut(&module_name) {
+            if let Some(module) = build_state.modules.get_mut(&module_name) {
                 module.deps = deps.clone();
             }
             deps.iter().for_each(|dep_name| {
-                if let Some(module) = modules.get_mut(dep_name) {
+                if let Some(module) = build_state.modules.get_mut(dep_name) {
                     module.reverse_deps.insert(module_name.to_string());
                 }
             });
         });
 }
 
-pub fn parse_packages(
-    project_root: &str,
-    packages: AHashMap<String, package_tree::Package>,
-) -> (AHashSet<String>, AHashMap<String, Module>) {
-    let mut modules: AHashMap<String, Module> = AHashMap::new();
-    let mut all_modules: AHashSet<String> = AHashSet::new();
+pub fn parse_packages(project_root: &str, build_state: &mut BuildState) {
+    // let mut all_modules: AHashSet<String> = AHashSet::new();
+    // let packages = &build_state.packages;
+    // let modules = &mut build_state.modules;
 
-    packages.iter().for_each(|(package_name, package)| {
-        debug!("Parsing package: {}", package_name);
-        match package.modules.to_owned() {
-            Some(package_modules) => all_modules.extend(package_modules),
-            None => (),
-        }
-        let build_path_abs = helpers::get_build_path(project_root, &package.bsconfig.name);
-        helpers::create_build_path(&build_path_abs);
+    build_state
+        .packages
+        .clone()
+        .iter()
+        .for_each(|(package_name, package)| {
+            debug!("Parsing package: {}", package_name);
+            match package.modules.to_owned() {
+                Some(package_modules) => build_state.module_names.extend(package_modules),
+                None => (),
+            }
+            let build_path_abs = helpers::get_build_path(project_root, &package.bsconfig.name);
+            helpers::create_build_path(&build_path_abs);
 
-        package.namespace.iter().for_each(|namespace| {
-            // generate the mlmap "AST" file for modules that have a namespace configured
-            let source_files = match package.source_files.to_owned() {
-                Some(source_files) => source_files
-                    .keys()
-                    .map(|key| key.to_owned())
-                    .collect::<Vec<String>>(),
-                None => unreachable!(),
-            };
-
-            let depending_modules = source_files
-                .iter()
-                .map(|path| helpers::file_path_to_module_name(&path, &None))
-                .collect::<AHashSet<String>>();
-
-            let mlmap = gen_mlmap(&package, namespace, depending_modules, project_root);
-
-            // mlmap will be compiled in the AST generation step
-            // compile_mlmap(&package, namespace, &project_root);
-
-            let deps = source_files
-                .iter()
-                .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
-                .collect::<AHashSet<String>>();
-
-            modules.insert(
-                helpers::file_path_to_module_name(&mlmap.to_owned(), &None),
-                Module {
-                    source_type: SourceType::MlMap(MlMap { dirty: false }),
-                    deps: deps,
-                    reverse_deps: AHashSet::new(),
-                    package: package.to_owned(),
-                    compile_dirty: false,
-                },
-            );
-        });
-
-        debug!("Building source file-tree for package: {}", package.name);
-        match &package.source_files {
-            None => (),
-            Some(source_files) => source_files.iter().for_each(|(file, metadata)| {
-                let namespace = package.namespace.to_owned();
-
-                let file_buf = PathBuf::from(file);
-                let extension = file_buf.extension().unwrap().to_str().unwrap();
-                let is_implementation = match extension {
-                    "res" | "ml" | "re" => true,
-                    _ => false,
+            package.namespace.iter().for_each(|namespace| {
+                // generate the mlmap "AST" file for modules that have a namespace configured
+                let source_files = match package.source_files.to_owned() {
+                    Some(source_files) => source_files
+                        .keys()
+                        .map(|key| key.to_owned())
+                        .collect::<Vec<String>>(),
+                    None => unreachable!(),
                 };
-                let module_name = helpers::file_path_to_module_name(&file.to_owned(), &namespace);
 
-                if is_implementation {
-                    modules
-                        .entry(module_name.to_string())
-                        .and_modify(|module| match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                if source_file.implementation.path.len() > 0 {
-                                    error!("Duplicate files found for module: {}", &module_name);
-                                    error!("file 1: {}", &source_file.implementation.path);
-                                    error!("file 2: {}", &file);
+                let depending_modules = source_files
+                    .iter()
+                    .map(|path| helpers::file_path_to_module_name(&path, &None))
+                    .collect::<AHashSet<String>>();
 
-                                    panic!("Unable to continue... See log output above...");
+                let mlmap = gen_mlmap(&package, namespace, depending_modules, project_root);
+
+                // mlmap will be compiled in the AST generation step
+                // compile_mlmap(&package, namespace, &project_root);
+
+                let deps = source_files
+                    .iter()
+                    .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
+                    .collect::<AHashSet<String>>();
+
+                build_state.insert_module(
+                    &helpers::file_path_to_module_name(&mlmap.to_owned(), &None),
+                    Module {
+                        source_type: SourceType::MlMap(MlMap { dirty: false }),
+                        deps: deps,
+                        reverse_deps: AHashSet::new(),
+                        package_name: package.name.to_owned(),
+                        compile_dirty: false,
+                    },
+                );
+            });
+
+            debug!("Building source file-tree for package: {}", package.name);
+            match &package.source_files {
+                None => (),
+                Some(source_files) => source_files.iter().for_each(|(file, metadata)| {
+                    let namespace = package.namespace.to_owned();
+
+                    let file_buf = PathBuf::from(file);
+                    let extension = file_buf.extension().unwrap().to_str().unwrap();
+                    let module_name =
+                        helpers::file_path_to_module_name(&file.to_owned(), &namespace);
+
+                    if helpers::is_implementation_file(extension) {
+                        build_state
+                            .modules
+                            .entry(module_name.to_string())
+                            .and_modify(|module| match module.source_type {
+                                SourceType::SourceFile(ref mut source_file) => {
+                                    if source_file.implementation.path.len() > 0 {
+                                        error!(
+                                            "Duplicate files found for module: {}",
+                                            &module_name
+                                        );
+                                        error!("file 1: {}", &source_file.implementation.path);
+                                        error!("file 2: {}", &file);
+
+                                        panic!("Unable to continue... See log output above...");
+                                    }
+                                    source_file.implementation.path = file.to_owned();
+                                    source_file.implementation.last_modified = metadata.modified;
+                                    source_file.implementation.dirty = true;
                                 }
-                                source_file.implementation.path = file.to_owned();
-                                source_file.implementation.last_modified = metadata.modified;
-                                source_file.implementation.dirty = true;
-                            }
-                            _ => (),
-                        })
-                        .or_insert(Module {
-                            source_type: SourceType::SourceFile(SourceFile {
-                                implementation: Implementation {
-                                    path: file.to_owned(),
-                                    parse_state: ParseState::Pending,
-                                    compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified,
-                                    dirty: true,
-                                },
-                                interface: None,
-                            }),
-                            deps: AHashSet::new(),
-                            reverse_deps: AHashSet::new(),
-                            package: package.to_owned(),
-                            compile_dirty: true,
-                        });
-                } else {
-                    modules
-                        .entry(module_name.to_string())
-                        .and_modify(|module| match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                source_file.interface = Some(Interface {
-                                    path: file.to_owned(),
-                                    parse_state: ParseState::Pending,
-                                    compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified,
-                                    dirty: true,
-                                });
-                            }
-                            _ => (),
-                        })
-                        .or_insert(Module {
-                            source_type: SourceType::SourceFile(SourceFile {
-                                // this will be overwritten later
-                                implementation: Implementation {
-                                    path: "".to_string(),
-                                    parse_state: ParseState::Pending,
-                                    compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified,
-                                    dirty: false,
-                                },
-                                interface: Some(Interface {
-                                    path: file.to_owned(),
-                                    parse_state: ParseState::Pending,
-                                    compile_state: CompileState::Pending,
-                                    last_modified: metadata.modified,
-                                    dirty: true,
+                                _ => (),
+                            })
+                            .or_insert(Module {
+                                source_type: SourceType::SourceFile(SourceFile {
+                                    implementation: Implementation {
+                                        path: file.to_owned(),
+                                        parse_state: ParseState::Pending,
+                                        compile_state: CompileState::Pending,
+                                        last_modified: metadata.modified,
+                                        dirty: true,
+                                    },
+                                    interface: None,
                                 }),
-                            }),
-                            deps: AHashSet::new(),
-                            reverse_deps: AHashSet::new(),
-                            package: package.to_owned(),
-                            compile_dirty: true,
-                        });
-                }
-            }),
-        }
-    });
-
-    (all_modules, modules)
+                                deps: AHashSet::new(),
+                                reverse_deps: AHashSet::new(),
+                                package_name: package.name.to_owned(),
+                                compile_dirty: true,
+                            });
+                    } else {
+                        build_state
+                            .modules
+                            .entry(module_name.to_string())
+                            .and_modify(|module| match module.source_type {
+                                SourceType::SourceFile(ref mut source_file) => {
+                                    source_file.interface = Some(Interface {
+                                        path: file.to_owned(),
+                                        parse_state: ParseState::Pending,
+                                        compile_state: CompileState::Pending,
+                                        last_modified: metadata.modified,
+                                        dirty: true,
+                                    });
+                                }
+                                _ => (),
+                            })
+                            .or_insert(Module {
+                                source_type: SourceType::SourceFile(SourceFile {
+                                    // this will be overwritten later
+                                    implementation: Implementation {
+                                        path: "".to_string(),
+                                        parse_state: ParseState::Pending,
+                                        compile_state: CompileState::Pending,
+                                        last_modified: metadata.modified,
+                                        dirty: false,
+                                    },
+                                    interface: Some(Interface {
+                                        path: file.to_owned(),
+                                        parse_state: ParseState::Pending,
+                                        compile_state: CompileState::Pending,
+                                        last_modified: metadata.modified,
+                                        dirty: true,
+                                    }),
+                                }),
+                                deps: AHashSet::new(),
+                                reverse_deps: AHashSet::new(),
+                                package_name: package.name.to_owned(),
+                                compile_dirty: true,
+                            });
+                    }
+                }),
+            }
+        });
 }
 
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
@@ -650,18 +662,17 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
 }
 
 pub fn compile_file(
-    package_name: &str,
+    package: &package_tree::Package,
     ast_path: &str,
     module: &Module,
     root_path: &str,
     is_interface: bool,
 ) -> Result<Option<String>, String> {
-    let build_path_abs = helpers::get_build_path(root_path, package_name);
-    let pkg_path_abs = helpers::get_package_path(root_path, package_name);
-    let bsc_flags = bsconfig::flatten_flags(&module.package.bsconfig.bsc_flags);
+    let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    let pkg_path_abs = helpers::get_package_path(root_path, &package.name);
+    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
-    let normal_deps = module
-        .package
+    let normal_deps = package
         .bsconfig
         .bs_dependencies
         .as_ref()
@@ -688,7 +699,7 @@ pub fn compile_file(
         })
         .collect::<Vec<Vec<String>>>();
 
-    let namespace_args = match module.package.namespace.to_owned() {
+    let namespace_args = match package.namespace.to_owned() {
         Some(namespace) => vec!["-bs-ns".to_string(), namespace],
         None => vec![],
     };
@@ -710,7 +721,7 @@ pub fn compile_file(
     };
 
     let module_name =
-        helpers::file_path_to_module_name(implementation_file_path, &module.package.namespace);
+        helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
 
     let implementation_args = if is_interface {
         debug!("Compiling interface file: {}", &module_name);
@@ -719,7 +730,7 @@ pub fn compile_file(
         debug!("Compiling file: {}", &module_name);
         vec![
             "-bs-package-name".to_string(),
-            module.package.bsconfig.name.to_owned(),
+            package.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:.mjs",
@@ -772,7 +783,7 @@ pub fn compile_file(
                 .to_string();
 
             let dir = std::path::Path::new(implementation_file_path)
-                .strip_prefix(helpers::get_package_path(root_path, &module.package.name))
+                .strip_prefix(helpers::get_package_path(root_path, &package.name))
                 .unwrap()
                 .parent()
                 .unwrap();
@@ -781,45 +792,33 @@ pub fn compile_file(
             if !is_interface {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &module.package.name,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmi"),
+                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &module.package.name,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmj"),
+                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmj"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &module.package.name,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmt"),
+                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &module.package.name,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmti"),
+                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmti"),
                 );
             }
 
             if helpers::contains_ascii_characters(&err) {
-                if module.package.is_pinned_dep {
+                if package.is_pinned_dep {
                     // supress warnings of external deps
                     Ok(Some(err))
                 } else {
@@ -880,8 +879,9 @@ pub fn clean(path: &str) {
         SWEEP
     );
     std::io::stdout().flush().unwrap();
-    let (_, modules) = parse_packages(&project_root, packages.to_owned());
-    clean_mjs_files(&modules);
+    let mut build_state = BuildState::new(packages);
+    parse_packages(&project_root, &mut build_state);
+    clean_mjs_files(&build_state.modules);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
         "{}\r{} {}Cleant mjs in {:.2}s",
@@ -915,10 +915,7 @@ fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
-pub fn build(
-    filter: &Option<regex::Regex>,
-    path: &str,
-) -> Result<AHashMap<std::string::String, Module>, ()> {
+pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
@@ -949,7 +946,8 @@ pub fn build(
         LOOKING_GLASS
     );
     let _ = stdout().flush();
-    let (all_modules, mut modules) = parse_packages(&project_root, packages.to_owned());
+    let mut build_state = BuildState::new(packages);
+    parse_packages(&project_root, &mut build_state);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
         "{}\r{} {}Found source files in {:.2}s",
@@ -966,7 +964,7 @@ pub fn build(
     );
     let timing_cleanup = Instant::now();
     let (diff_cleanup, total_cleanup, deleted_module_names) =
-        clean::cleanup_previous_build(&packages, &mut modules, &project_root);
+        clean::cleanup_previous_build(&mut build_state, &project_root);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
@@ -978,7 +976,7 @@ pub fn build(
         timing_cleanup_elapsed.as_secs_f64()
     );
 
-    let num_dirty_modules = modules.values().filter(|m| is_dirty(m)).count() as u64;
+    let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
 
     let pb = ProgressBar::new(num_dirty_modules);
     pb.set_style(
@@ -991,7 +989,7 @@ pub fn build(
     );
 
     let timing_ast = Instant::now();
-    let result_asts = generate_asts(&rescript_version, &project_root, &mut modules, &pb);
+    let result_asts = generate_asts(&rescript_version, &project_root, &mut build_state, &pb);
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
@@ -1007,7 +1005,7 @@ pub fn build(
             println!("{}", &err);
         }
         Err(err) => {
-            logs::finalize(&packages);
+            logs::finalize(&build_state.packages);
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
@@ -1016,24 +1014,13 @@ pub fn build(
                 timing_ast_elapsed.as_secs_f64()
             );
             println!("{}", &err);
-            clean::cleanup_after_build(
-                &modules,
-                &AHashSet::new(),
-                &all_modules,
-                &project_root,
-                false,
-            );
+            clean::cleanup_after_build(&build_state, &project_root, false);
             return Err(());
         }
     }
 
     let timing_deps = Instant::now();
-    get_deps(
-        &project_root,
-        &mut modules,
-        &all_modules,
-        &deleted_module_names,
-    );
+    get_deps(&project_root, &mut build_state, &deleted_module_names);
     let timing_deps_elapsed = timing_deps.elapsed();
 
     println!(
@@ -1047,7 +1034,8 @@ pub fn build(
     let start_compiling = Instant::now();
 
     let mut compiled_modules = AHashSet::<String>::new();
-    let dirty_modules = modules
+    let dirty_modules = build_state
+        .modules
         .iter()
         .filter_map(|(module_name, module)| {
             if module.compile_dirty {
@@ -1071,10 +1059,7 @@ pub fn build(
     let mut compile_errors = "".to_string();
     let mut compile_warnings = "".to_string();
     let mut num_compiled_modules = 0;
-    let mut sorted_modules = modules
-        .iter()
-        .map(|(module_name, _)| module_name.to_owned())
-        .collect::<Vec<String>>();
+    let mut sorted_modules = build_state.module_names.iter().collect::<Vec<&String>>();
     sorted_modules.sort();
 
     // for module in dirty_modules.clone() {
@@ -1090,7 +1075,13 @@ pub fn build(
     loop {
         let mut reverse_deps: AHashSet<String> = AHashSet::new();
         for dirty_module in current_step_modules.iter() {
-            reverse_deps.extend(modules.get(dirty_module).unwrap().reverse_deps.clone());
+            reverse_deps.extend(
+                build_state
+                    .get_module(dirty_module)
+                    .unwrap()
+                    .reverse_deps
+                    .clone(),
+            );
         }
         current_step_modules = reverse_deps
             .difference(&compile_universe)
@@ -1117,7 +1108,7 @@ pub fn build(
     let mut in_progress_modules = compile_universe
         .iter()
         .filter(|module_name| {
-            let module = modules.get(*module_name).unwrap();
+            let module = build_state.get_module(*module_name).unwrap();
             module.deps.intersection(&compile_universe).count() == 0
         })
         .map(|module_name| module_name.to_string())
@@ -1138,7 +1129,10 @@ pub fn build(
             .clone()
             .par_iter()
             .map(|module_name| {
-                let module = modules.get(module_name).unwrap();
+                let module = build_state.get_module(module_name).unwrap();
+                let package = build_state
+                    .get_package(&module.package_name)
+                    .expect("Package not found");
                 // all dependencies that we care about are compiled
                 if module
                     .deps
@@ -1162,7 +1156,7 @@ pub fn build(
                             // this is why mlmap is compiled in the AST generation stage
                             // compile_mlmap(&module.package, module_name, &project_root);
                             Some((
-                                module.package.namespace.to_owned().unwrap(),
+                                package.namespace.to_owned().unwrap(),
                                 Ok(None),
                                 Some(Ok(None)),
                                 false,
@@ -1172,21 +1166,24 @@ pub fn build(
                         SourceType::SourceFile(source_file) => {
                             let cmi_path = helpers::get_compiler_asset(
                                 &source_file.implementation.path,
-                                &module.package.name,
-                                &module.package.namespace,
+                                &module.package_name,
+                                &package.namespace,
                                 &project_root,
                                 "cmi",
                             );
 
                             let cmi_digest = compute_file_hash(&cmi_path);
 
+                            let package = build_state
+                                .get_package(&module.package_name)
+                                .expect("Package not found");
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
-                                        &module.package.name,
+                                        &package,
                                         &helpers::get_iast_path(
                                             &path,
-                                            &module.package.name,
+                                            &package.name,
                                             &project_root,
                                         ),
                                         module,
@@ -1198,10 +1195,10 @@ pub fn build(
                                 _ => None,
                             };
                             let result = compile_file(
-                                &module.package.name,
+                                &package,
                                 &helpers::get_ast_path(
                                     &source_file.implementation.path,
-                                    &module.package.name,
+                                    &package.name,
                                     &project_root,
                                 ),
                                 module,
@@ -1271,12 +1268,15 @@ pub fn build(
                         clean_modules.insert(module_name.to_string());
                     }
 
-                    let module_reverse_deps =
-                        modules.get(module_name).unwrap().reverse_deps.clone();
+                    let module_reverse_deps = build_state
+                        .get_module(module_name)
+                        .unwrap()
+                        .reverse_deps
+                        .clone();
 
                     // if not clean -- compile modules that depend on this module
                     for dep in module_reverse_deps.iter() {
-                        let dep_module = modules.get_mut(dep).unwrap();
+                        let dep_module = build_state.modules.get_mut(dep).unwrap();
                         //  mark the reverse dep as dirty when the source is not clean
                         if !*is_clean {
                             dep_module.compile_dirty = true;
@@ -1286,8 +1286,11 @@ pub fn build(
                         }
                     }
 
-                    let module = modules.get_mut(module_name).unwrap();
-
+                    let module = build_state.modules.get_mut(module_name).unwrap();
+                    let package = build_state
+                        .packages
+                        .get(&module.package_name)
+                        .expect("Package not found");
                     match module.source_type {
                         SourceType::MlMap(_) => (),
                         SourceType::SourceFile(ref mut source_file) => {
@@ -1295,13 +1298,13 @@ pub fn build(
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state =
                                         CompileState::Warning;
-                                    logs::append(&module.package.package_dir, &err);
+                                    logs::append(&package.package_dir, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(&module.package.package_dir, &err);
+                                    logs::append(&package.package_dir, &err);
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -1309,14 +1312,14 @@ pub fn build(
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(&module.package.package_dir, &err);
+                                    logs::append(&package.package_dir, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(&module.package.package_dir, &err);
+                                    logs::append(&package.package_dir, &err);
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -1342,15 +1345,9 @@ pub fn build(
     }
     let compile_duration = start_compiling.elapsed();
 
-    logs::finalize(&packages);
+    logs::finalize(&build_state.packages);
     pb.finish();
-    clean::cleanup_after_build(
-        &modules,
-        &compiled_modules,
-        &all_modules,
-        &project_root,
-        compile_errors.len() == 0,
-    );
+    clean::cleanup_after_build(&build_state, &project_root, compile_errors.len() == 0);
     if compile_errors.len() > 0 {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
@@ -1382,5 +1379,5 @@ pub fn build(
     let timing_total_elapsed = timing_total.elapsed();
     println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
 
-    Ok(modules)
+    Ok(build_state)
 }

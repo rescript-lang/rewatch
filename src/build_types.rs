@@ -1,5 +1,5 @@
-use crate::package_tree;
-use ahash::AHashSet;
+use crate::package_tree::Package;
+use ahash::{AHashMap, AHashSet};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +57,34 @@ pub struct Module {
     pub source_type: SourceType,
     pub deps: AHashSet<String>,
     pub reverse_deps: AHashSet<String>,
-    pub package: package_tree::Package,
+    pub package_name: String,
     pub compile_dirty: bool,
+}
+
+#[derive(Debug)]
+pub struct BuildState {
+    pub modules: AHashMap<String, Module>,
+    pub packages: AHashMap<String, Package>,
+    pub module_names: AHashSet<String>,
+}
+
+impl BuildState {
+    pub fn get_package(&self, package_name: &str) -> Option<&Package> {
+        self.packages.get(package_name)
+    }
+
+    pub fn get_module(&self, module_name: &str) -> Option<&Module> {
+        self.modules.get(module_name)
+    }
+    pub fn new(packages: AHashMap<String, Package>) -> Self {
+        Self {
+            module_names: AHashSet::new(),
+            modules: AHashMap::new(),
+            packages: packages,
+        }
+    }
+    pub fn insert_module(&mut self, module_name: &str, module: Module) {
+        self.modules.insert(module_name.to_owned(), module);
+        self.module_names.insert(module_name.to_owned());
+    }
 }
