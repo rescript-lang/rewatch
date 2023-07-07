@@ -2,8 +2,10 @@ use crate::build;
 use crate::helpers;
 use crate::queue::FifoQueue;
 use crate::queue::*;
+use futures_timer::Delay;
 use notify::{Config, Error, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::sync::Arc;
+use std::time::Duration;
 
 fn async_watcher(q: Arc<FifoQueue<Result<Event, Error>>>) -> notify::Result<RecommendedWatcher> {
     // Automatically select the best implementation for your platform.
@@ -56,6 +58,9 @@ async fn async_watch(
         });
 
         if needs_compile {
+            // Wait for events to settle
+            Delay::new(Duration::from_millis(200)).await;
+
             // Flush any remaining events that came in before
             while !q.is_empty() {
                 let _ = q.pop();
