@@ -4,8 +4,8 @@ use futures::{
     channel::mpsc::{channel, Receiver},
     SinkExt, StreamExt,
 };
+use futures_timer::Delay;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::thread;
 use std::time::Duration;
 
 fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
@@ -62,7 +62,7 @@ async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Resul
         if needs_compile {
             // we wait for a bit before starting the compile as a debouncer
             let delay = Duration::from_millis(200);
-            thread::sleep(delay);
+            Delay::new(delay).await;
             // we drain the channel to avoid triggering multiple compiles
             let _ = ready_chunks.next().await;
             let _ = build::build(filter, path);
