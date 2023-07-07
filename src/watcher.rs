@@ -59,13 +59,15 @@ async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Resul
             Err(_) => false,
         });
 
+        // we wait for a bit before starting the compile as a debouncer
+        let delay = Duration::from_millis(200);
         if needs_compile {
-            // we wait for a bit before starting the compile as a debouncer
-            let delay = Duration::from_millis(200);
             thread::sleep(delay);
             // we drain the channel to avoid triggering multiple compiles
             let _ = ready_chunks.next().await;
             let _ = build::build(filter, path);
+        } else {
+            thread::sleep(delay);
         }
     }
 }
