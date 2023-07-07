@@ -1,40 +1,37 @@
 use crate::build;
 use crate::helpers;
-use futures::{
-    channel::mpsc::{channel, Receiver},
-    SinkExt, StreamExt,
-};
-use futures_timer::Delay;
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::time::Duration;
+use crate::queue::FifoQueue;
+use crate::queue::*;
+use notify::{Config, Error, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use std::sync::Arc;
 
-fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
-    // set the buffer large enough so that we don't trigger unecessary rebuilds
-    let (mut tx, rx) = channel(100000);
-
+fn async_watcher(q: Arc<FifoQueue<Result<Event, Error>>>) -> notify::Result<RecommendedWatcher> {
     // Automatically select the best implementation for your platform.
     // You can also access each implementation directly e.g. INotifyWatcher.
     let watcher = RecommendedWatcher::new(
-        move |res| {
-            futures::executor::block_on(async {
-                tx.send(res).await.unwrap();
-            })
-        },
+        move |res| futures::executor::block_on(async { q.push(res) }),
         Config::default(),
     )?;
 
-    Ok((watcher, rx))
+    Ok(watcher)
 }
 
-async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Result<()> {
-    let (mut watcher, rx) = async_watcher()?;
-    watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
-    let mut ready_chunks = rx.ready_chunks(100000);
-
+async fn async_watch(
+    q: Arc<FifoQueue<Result<Event, Error>>>,
+    path: &str,
+    filter: &Option<regex::Regex>,
+) -> notify::Result<()> {
     loop {
-        let events = ready_chunks.next().await.unwrap();
-        let needs_compile = events.iter().any(|event| match event {
-            Ok(event) => event.paths.iter().any(|path| {
+        let mut events: Vec<Event> = vec![];
+        while !q.is_empty() {
+            match q.pop() {
+                Ok(event) => events.push(event),
+                Err(_) => (),
+            }
+        }
+
+        let needs_compile = events.iter().any(|event| {
+            event.paths.iter().any(|path| {
                 let path_buf = path.to_path_buf();
                 let name = path_buf
                     .file_name()
@@ -55,16 +52,15 @@ async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Resul
 
                     _ => false,
                 }
-            }),
-            Err(_) => false,
+            })
         });
 
         if needs_compile {
-            // we wait for a bit before starting the compile as a debouncer
-            let delay = Duration::from_millis(200);
-            Delay::new(delay).await;
-            // we drain the channel to avoid triggering multiple compiles
-            let _ = ready_chunks.next().await;
+            // Flush any remaining events that came in before
+            while !q.is_empty() {
+                let _ = q.pop();
+            }
+
             let _ = build::build(filter, path);
         }
     }
@@ -72,8 +68,17 @@ async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Resul
 
 pub fn start(filter: &Option<regex::Regex>, folder: &str) {
     futures::executor::block_on(async {
-        if let Err(e) = async_watch(folder, filter).await {
+        let queue = Arc::new(FifoQueue::<Result<Event, Error>>::new());
+        let producer = queue.clone();
+        let consumer = queue.clone();
+
+        let mut watcher = async_watcher(producer).expect("Could not create watcher");
+        watcher
+            .watch(folder.as_ref(), RecursiveMode::Recursive)
+            .expect("Could not start watcher");
+
+        if let Err(e) = async_watch(consumer, folder, filter).await {
             println!("error: {:?}", e)
         }
-    });
+    })
 }
