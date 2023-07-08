@@ -7,17 +7,6 @@ use notify::{Config, Error, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::sync::Arc;
 use std::time::Duration;
 
-fn async_watcher(q: Arc<FifoQueue<Result<Event, Error>>>) -> notify::Result<RecommendedWatcher> {
-    // Automatically select the best implementation for your platform.
-    // You can also access each implementation directly e.g. INotifyWatcher.
-    let watcher = RecommendedWatcher::new(
-        move |res| futures::executor::block_on(async { q.push(res) }),
-        Config::default(),
-    )?;
-
-    Ok(watcher)
-}
-
 async fn async_watch(
     q: Arc<FifoQueue<Result<Event, Error>>>,
     path: &str,
@@ -59,7 +48,7 @@ async fn async_watch(
 
         if needs_compile {
             // Wait for events to settle
-            Delay::new(Duration::from_millis(200)).await;
+            Delay::new(Duration::from_millis(300)).await;
 
             // Flush any remaining events that came in before
             while !q.is_empty() {
@@ -77,7 +66,8 @@ pub fn start(filter: &Option<regex::Regex>, folder: &str) {
         let producer = queue.clone();
         let consumer = queue.clone();
 
-        let mut watcher = async_watcher(producer).expect("Could not create watcher");
+        let mut watcher = RecommendedWatcher::new(move |res| producer.push(res), Config::default())
+            .expect("Could not create watcher");
         watcher
             .watch(folder.as_ref(), RecursiveMode::Recursive)
             .expect("Could not start watcher");
