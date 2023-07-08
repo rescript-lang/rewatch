@@ -2,7 +2,6 @@ use crate::build;
 use crate::build_types::*;
 use crate::helpers;
 use crate::helpers::get_mlmap_path;
-use crate::package_tree::Package;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::fs;
@@ -88,10 +87,7 @@ pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
         .for_each(|rescript_file_location| remove_mjs_file(&rescript_file_location));
 }
 
-pub fn cleanup_previous_build(
-    build_state: &mut BuildState,
-    root_path: &str,
-) -> (usize, usize, AHashSet<String>) {
+pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
     let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime, String)> =
         AHashMap::new();
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
@@ -123,7 +119,7 @@ pub fn cleanup_previous_build(
     // scan all ast files in all packages
     for package in build_state.packages.values() {
         let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
-            root_path,
+            &build_state.project_root,
             &package.name,
         )))
         .unwrap();
@@ -210,13 +206,13 @@ pub fn cleanup_previous_build(
             canonicalized_res_file_location,
             package_name,
             package_namespace,
-            root_path,
+            &build_state.project_root,
         );
         remove_compile_assets(
             canonicalized_res_file_location,
             package_name,
             package_namespace,
-            root_path,
+            &build_state.project_root,
         );
         remove_mjs_file(&canonicalized_res_file_location)
     });
@@ -377,7 +373,7 @@ fn failed_to_compile(module: &Module, no_errors: bool) -> bool {
     }
 }
 
-pub fn cleanup_after_build(build_state: &BuildState, project_root: &str, no_errors: bool) {
+pub fn cleanup_after_build(build_state: &BuildState, no_errors: bool) {
     // let failed_modules = all_modules
     //     .difference(&compiled_modules)
     //     .collect::<AHashSet<&String>>();
@@ -394,7 +390,7 @@ pub fn cleanup_after_build(build_state: &BuildState, project_root: &str, no_erro
                             &source_file.implementation.path,
                             &module.package_name,
                             &package.namespace,
-                            &project_root,
+                            &build_state.project_root,
                         );
                     }
                     _ => (),
@@ -413,19 +409,19 @@ pub fn cleanup_after_build(build_state: &BuildState, project_root: &str, no_erro
                             .unwrap(),
                             &module.package_name,
                             &package.namespace,
-                            &project_root,
+                            &build_state.project_root,
                         );
                     }
                     SourceType::MlMap(_) => remove_compile_assets(
                         &helpers::canonicalize_string_path(&get_mlmap_path(
-                            &project_root,
+                            &build_state.project_root,
                             &module.package_name,
                             &package.namespace.as_ref().unwrap(),
                         ))
                         .unwrap(),
                         &module.package_name,
                         &None,
-                        &project_root,
+                        &build_state.project_root,
                     ),
                 }
             }

@@ -8,7 +8,7 @@ use crate::helpers::emojis::*;
 use crate::helpers::is_interface_ast_file;
 use crate::logs;
 use crate::package_tree;
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, log_enabled, Level::Info};
@@ -242,7 +242,6 @@ fn gen_mlmap(
 
 fn generate_asts(
     version: &str,
-    project_root: &str,
     build_state: &mut BuildState,
     pb: &ProgressBar,
 ) -> Result<String, String> {
@@ -263,7 +262,7 @@ fn generate_asts(
                     // probably better to do this in a different function
                     // specific to compiling mlmaps
                     let path = helpers::get_mlmap_path(
-                        &project_root,
+                        &build_state.project_root,
                         &module.package_name,
                         &package
                             .namespace
@@ -271,7 +270,7 @@ fn generate_asts(
                             .expect("namespace should be set for mlmap module"),
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
-                        &project_root,
+                        &build_state.project_root,
                         &module.package_name,
                         &package
                             .namespace
@@ -279,7 +278,7 @@ fn generate_asts(
                             .expect("namespace should be set for mlmap module"),
                     );
                     let mlmap_hash = compute_file_hash(&compile_path);
-                    compile_mlmap(&package, module_name, &project_root);
+                    compile_mlmap(&package, module_name, &build_state.project_root);
                     let mlmap_hash_after = compute_file_hash(&compile_path);
 
                     let is_dirty = match (mlmap_hash, mlmap_hash_after) {
@@ -302,7 +301,7 @@ fn generate_asts(
                         let ast_result = generate_ast(
                             package.to_owned(),
                             &source_file.implementation.path.to_owned(),
-                            &project_root,
+                            &build_state.project_root,
                             &version,
                         );
 
@@ -311,7 +310,7 @@ fn generate_asts(
                                 Some(interface_file_path) => generate_ast(
                                     package.to_owned(),
                                     &interface_file_path.to_owned(),
-                                    &project_root,
+                                    &build_state.project_root,
                                     &version,
                                 )
                                 .map(|result| Some(result)),
@@ -429,7 +428,7 @@ fn generate_asts(
     }
 }
 
-fn get_deps(project_root: &str, build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
+fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
     let all_mod = &build_state
         .module_names
         .union(deleted_modules)
@@ -447,7 +446,7 @@ fn get_deps(project_root: &str, build_state: &mut BuildState, deleted_modules: &
                 let ast_path = helpers::get_ast_path(
                     &source_file.implementation.path,
                     &module.package_name,
-                    project_root,
+                    &build_state.project_root,
                 );
 
                 let mut deps = get_dep_modules(
@@ -462,7 +461,7 @@ fn get_deps(project_root: &str, build_state: &mut BuildState, deleted_modules: &
                         let iast_path = helpers::get_iast_path(
                             &interface.path,
                             &module.package_name,
-                            project_root,
+                            &build_state.project_root,
                         );
 
                         deps.extend(get_dep_modules(
@@ -492,7 +491,7 @@ fn get_deps(project_root: &str, build_state: &mut BuildState, deleted_modules: &
         });
 }
 
-pub fn parse_packages(project_root: &str, build_state: &mut BuildState) {
+pub fn parse_packages(build_state: &mut BuildState) {
     // let mut all_modules: AHashSet<String> = AHashSet::new();
     // let packages = &build_state.packages;
     // let modules = &mut build_state.modules;
@@ -507,7 +506,8 @@ pub fn parse_packages(project_root: &str, build_state: &mut BuildState) {
                 Some(package_modules) => build_state.module_names.extend(package_modules),
                 None => (),
             }
-            let build_path_abs = helpers::get_build_path(project_root, &package.bsconfig.name);
+            let build_path_abs =
+                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name);
             helpers::create_build_path(&build_path_abs);
 
             package.namespace.iter().for_each(|namespace| {
@@ -525,7 +525,12 @@ pub fn parse_packages(project_root: &str, build_state: &mut BuildState) {
                     .map(|path| helpers::file_path_to_module_name(&path, &None))
                     .collect::<AHashSet<String>>();
 
-                let mlmap = gen_mlmap(&package, namespace, depending_modules, project_root);
+                let mlmap = gen_mlmap(
+                    &package,
+                    namespace,
+                    depending_modules,
+                    &build_state.project_root,
+                );
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
@@ -879,8 +884,8 @@ pub fn clean(path: &str) {
         SWEEP
     );
     std::io::stdout().flush().unwrap();
-    let mut build_state = BuildState::new(packages);
-    parse_packages(&project_root, &mut build_state);
+    let mut build_state = BuildState::new(project_root, packages);
+    parse_packages(&mut build_state);
     clean_mjs_files(&build_state.modules);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
@@ -946,8 +951,8 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LOOKING_GLASS
     );
     let _ = stdout().flush();
-    let mut build_state = BuildState::new(packages);
-    parse_packages(&project_root, &mut build_state);
+    let mut build_state = BuildState::new(project_root, packages);
+    parse_packages(&mut build_state);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
         "{}\r{} {}Found source files in {:.2}s",
@@ -964,7 +969,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     );
     let timing_cleanup = Instant::now();
     let (diff_cleanup, total_cleanup, deleted_module_names) =
-        clean::cleanup_previous_build(&mut build_state, &project_root);
+        clean::cleanup_previous_build(&mut build_state);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
@@ -989,7 +994,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     );
 
     let timing_ast = Instant::now();
-    let result_asts = generate_asts(&rescript_version, &project_root, &mut build_state, &pb);
+    let result_asts = generate_asts(&rescript_version, &mut build_state, &pb);
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
@@ -1014,13 +1019,13 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                 timing_ast_elapsed.as_secs_f64()
             );
             println!("{}", &err);
-            clean::cleanup_after_build(&build_state, &project_root, false);
+            clean::cleanup_after_build(&build_state, false);
             return Err(());
         }
     }
 
     let timing_deps = Instant::now();
-    get_deps(&project_root, &mut build_state, &deleted_module_names);
+    get_deps(&mut build_state, &deleted_module_names);
     let timing_deps_elapsed = timing_deps.elapsed();
 
     println!(
@@ -1168,7 +1173,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                 &source_file.implementation.path,
                                 &module.package_name,
                                 &package.namespace,
-                                &project_root,
+                                &build_state.project_root,
                                 "cmi",
                             );
 
@@ -1184,10 +1189,10 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                         &helpers::get_iast_path(
                                             &path,
                                             &package.name,
-                                            &project_root,
+                                            &build_state.project_root,
                                         ),
                                         module,
-                                        &project_root,
+                                        &build_state.project_root,
                                         true,
                                     );
                                     Some(result)
@@ -1199,10 +1204,10 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                 &helpers::get_ast_path(
                                     &source_file.implementation.path,
                                     &package.name,
-                                    &project_root,
+                                    &build_state.project_root,
                                 ),
                                 module,
-                                &project_root,
+                                &build_state.project_root,
                                 false,
                             );
                             // if let Err(error) = result.to_owned() {
@@ -1347,7 +1352,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
 
     logs::finalize(&build_state.packages);
     pb.finish();
-    clean::cleanup_after_build(&build_state, &project_root, compile_errors.len() == 0);
+    clean::cleanup_after_build(&build_state, compile_errors.len() == 0);
     if compile_errors.len() > 0 {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
