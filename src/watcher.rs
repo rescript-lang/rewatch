@@ -8,33 +8,29 @@ use futures_timer::Delay;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::time::Duration;
 
-fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
-    // set the buffer large enough so that we don't trigger unecessary rebuilds
-    let (mut tx, rx) = channel(100000);
-
-    // Automatically select the best implementation for your platform.
-    // You can also access each implementation directly e.g. INotifyWatcher.
-    let watcher = RecommendedWatcher::new(
-        move |res| {
-            futures::executor::block_on(async {
-                let _ = tx.send(res);
-            })
-        },
-        Config::default(),
-    )?;
-
-    Ok((watcher, rx))
-}
+// type Queue = Vec<notify::Event>;
 
 async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Result<()> {
-    let (mut watcher, rx) = async_watcher()?;
+    let queue = std::sync::Mutex::new(Vec::new());
+    // Automatically select the best implementation for your platform.
+    // You can also access each implementation directly e.g. INotifyWatcher.
+    let mut watcher = RecommendedWatcher::new(
+        |res: Result<notify::Event, notify::Error>| match res {
+            Ok(event) => {
+                let _ = queue.lock().unwrap().push(event.to_owned());
+            }
+            Err(e) => println!("watch error: {:?}", e),
+        },
+        Config::default(),
+    )
+    .unwrap();
+
     watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
-    let mut ready_chunks = rx.ready_chunks(100000);
 
     loop {
-        let events = ready_chunks.next().await.unwrap();
-        let needs_compile = events.iter().any(|event| match event {
-            Ok(event) => event.paths.iter().any(|path| {
+        let events = &queue.lock().unwrap().to_vec();
+        let needs_compile = events.iter().any(|event| {
+            event.paths.iter().any(|path| {
                 let path_buf = path.to_path_buf();
                 let name = path_buf
                     .file_name()
@@ -55,16 +51,16 @@ async fn async_watch(path: &str, filter: &Option<regex::Regex>) -> notify::Resul
 
                     _ => false,
                 }
-            }),
-            Err(_) => false,
+            })
         });
 
         if needs_compile {
             // we wait for a bit before starting the compile as a debouncer
             let delay = Duration::from_millis(200);
             Delay::new(delay).await;
+
             // we drain the channel to avoid triggering multiple compiles
-            let _ = ready_chunks.next().await;
+
             let _ = build::build(filter, path);
         }
     }
