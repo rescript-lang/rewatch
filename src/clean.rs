@@ -6,6 +6,7 @@ use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::fs;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
@@ -101,7 +102,14 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         .values()
         .filter_map(|module| match &module.source_type {
             SourceType::SourceFile(source_file) => {
-                Some(source_file.implementation.path.to_string())
+                let package = build_state.packages.get(&module.package_name).unwrap();
+
+                Some(
+                    PathBuf::from(&package.package_dir)
+                        .join(source_file.implementation.path.to_owned())
+                        .to_string_lossy()
+                        .to_string(),
+                )
             }
             _ => None,
         })
@@ -112,9 +120,13 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             .modules
             .values()
             .filter_map(|module| {
-                build::get_interface(module)
-                    .as_ref()
-                    .map(|interface| interface.path.to_string())
+                let package = build_state.packages.get(&module.package_name).unwrap();
+                build::get_interface(module).as_ref().map(|interface| {
+                    PathBuf::from(&package.package_dir)
+                        .join(interface.path.to_owned())
+                        .to_string_lossy()
+                        .to_string()
+                })
             })
             .collect::<AHashSet<String>>(),
     );
@@ -181,12 +193,6 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         }
     }
 
-    let canonicalized_rescript_file_locations = rescript_file_locations
-        .iter()
-        .filter_map(|rescript_file_location| {
-            helpers::canonicalize_parent_string_path(rescript_file_location)
-        })
-        .collect::<AHashSet<String>>();
     // delete the .mjs file which appear in our previous compile assets
     // but does not exists anymore
     // delete the compiler assets for which modules we can't find a rescript file
@@ -194,38 +200,34 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
     // delete the .mjs file for which we DO have a compiler asset, but don't have a
     // rescript file anymore (path is found in the .ast file)
     let diff = ast_rescript_file_locations
-        .difference(&canonicalized_rescript_file_locations)
+        .difference(&rescript_file_locations)
         .collect::<Vec<&String>>();
 
     let diff_len = diff.len();
 
-    diff.par_iter().for_each(|canonicalized_res_file_location| {
+    diff.par_iter().for_each(|res_file_location| {
         let (_module_name, package_name, package_namespace, _last_modified, _ast_file_path) =
             ast_modules
-                .get(&canonicalized_res_file_location.to_string())
+                .get(&res_file_location.to_string())
                 .expect("Could not find module name for ast file");
 
-        remove_asts(
-            canonicalized_res_file_location,
-            package_name,
-            &build_state.project_root,
-        );
+        remove_asts(res_file_location, package_name, &build_state.project_root);
         remove_compile_assets(
-            canonicalized_res_file_location,
+            res_file_location,
             package_name,
             package_namespace,
             &build_state.project_root,
         );
-        remove_mjs_file(&canonicalized_res_file_location)
+        remove_mjs_file(&res_file_location)
     });
 
     ast_rescript_file_locations
-        .intersection(&canonicalized_rescript_file_locations)
+        .intersection(&rescript_file_locations)
         .into_iter()
-        .for_each(|canonicalized_res_file_location| {
+        .for_each(|res_file_location| {
             let (module_name, _package_name, package_namespace, ast_last_modified, ast_file_path) =
                 ast_modules
-                    .get(canonicalized_res_file_location)
+                    .get(res_file_location)
                     .expect("Could not find module name for ast file");
             let module = build_state
                 .modules
@@ -393,22 +395,18 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                 match &module.source_type {
                     SourceType::SourceFile(source_file) => {
                         remove_compile_assets(
-                            &helpers::canonicalize_parent_string_path(
-                                &source_file.implementation.path,
-                            )
-                            .unwrap(),
+                            &source_file.implementation.path,
                             &module.package_name,
                             &package.namespace,
                             &build_state.project_root,
                         );
                     }
                     SourceType::MlMap(_) => remove_compile_assets(
-                        &helpers::canonicalize_string_path(&get_mlmap_path(
+                        &get_mlmap_path(
                             &build_state.project_root,
                             &module.package_name,
                             &package.namespace.to_suffix().unwrap(),
-                        ))
-                        .unwrap(),
+                        ),
                         &module.package_name,
                         &package_tree::Namespace::NoNamespace,
                         &build_state.project_root,

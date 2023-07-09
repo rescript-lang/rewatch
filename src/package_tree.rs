@@ -1,7 +1,5 @@
 use crate::bsconfig;
-use crate::bsconfig::*;
 use crate::helpers;
-use crate::helpers::{is_source_file, LexicalAbsolute};
 use ahash::{AHashMap, AHashSet};
 use convert_case::{Case, Casing};
 use rayon::prelude::*;
@@ -39,11 +37,12 @@ impl Namespace {
 pub struct Package {
     pub name: String,
     pub bsconfig: bsconfig::T,
-    pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
+    pub source_folders: AHashSet<bsconfig::PackageSource>,
     // these are the relative file paths (relative to the package root)
     pub source_files: Option<AHashMap<String, SourceFileMeta>>,
     pub namespace: Namespace,
     pub modules: Option<AHashSet<String>>,
+    // canonicalized dir of the package
     pub package_dir: String,
     pub dirs: Option<AHashSet<PathBuf>>,
     pub is_pinned_dep: bool,
@@ -70,25 +69,23 @@ fn matches_filter(filter: &Option<regex::Regex>, path: &str) -> bool {
 
 pub fn read_folders(
     filter: &Option<regex::Regex>,
+    package_dir: &Path,
     path: &Path,
     recurse: bool,
 ) -> Result<AHashMap<String, SourceFileMeta>, Box<dyn error::Error>> {
     let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
     let path_buf = PathBuf::from(path);
-
-    let path_lex_abs = &path_buf.to_lexical_absolute().unwrap();
-
-    let meta = fs::metadata(path_lex_abs);
+    let meta = fs::metadata(package_dir.join(&path));
     let path_with_meta = meta.map(|meta| {
         (
-            path_lex_abs.to_str().unwrap().to_string(),
+            path.to_owned(),
             SourceFileMeta {
                 modified: meta.modified().unwrap(),
             },
         )
     });
 
-    for entry in fs::read_dir(&path_buf)? {
+    for entry in fs::read_dir(package_dir.join(&path_buf))? {
         let entry_path_buf = entry.map(|entry| entry.path())?;
         let metadata = fs::metadata(&entry_path_buf)?;
         let name = entry_path_buf
@@ -101,17 +98,19 @@ pub fn read_folders(
         let path_ext = entry_path_buf.extension().and_then(|x| x.to_str());
         let new_path = path_buf.join(&name);
         if metadata.file_type().is_dir() && recurse {
-            match read_folders(&filter, &new_path, recurse) {
+            match read_folders(&filter, package_dir, &new_path, recurse) {
                 Ok(s) => map.extend(s),
                 Err(e) => println!("Error reading directory: {}", e),
             }
         }
 
         match path_ext {
-            Some(extension) if is_source_file(extension) => match path_with_meta {
+            Some(extension) if helpers::is_source_file(extension) => match path_with_meta {
                 Ok((ref path, _)) if matches_filter(filter, &name) => {
+                    let mut path = path.to_owned();
+                    path.push(&name);
                     map.insert(
-                        path.to_owned() + "/" + &name,
+                        path.to_string_lossy().to_string(),
                         SourceFileMeta {
                             modified: metadata.modified().unwrap(),
                         },
@@ -133,40 +132,36 @@ pub fn read_folders(
 /// because of the recursiveness. So you get a flat list of files back, retaining the type_ and
 /// wether it needs to recurse into all structures
 fn get_source_dirs(
-    project_root: &str,
-    source: Source,
-) -> AHashSet<(String, bsconfig::PackageSource)> {
-    let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> = AHashSet::new();
+    source: bsconfig::Source,
+    sub_path: Option<PathBuf>,
+) -> AHashSet<bsconfig::PackageSource> {
+    let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
 
-    let (package_root, subdirs, full_recursive) = match source.to_owned() {
-        Source::Shorthand(dir)
-        | Source::Qualified(PackageSource {
-            dir, subdirs: None, ..
-        }) => (dir, None, false),
-        Source::Qualified(PackageSource {
-            dir,
-            subdirs: Some(Subdirs::Recurse(recurse)),
+    let (subdirs, full_recursive) = match source.to_owned() {
+        bsconfig::Source::Shorthand(_)
+        | bsconfig::Source::Qualified(bsconfig::PackageSource { subdirs: None, .. }) => {
+            (None, false)
+        }
+        bsconfig::Source::Qualified(bsconfig::PackageSource {
+            subdirs: Some(bsconfig::Subdirs::Recurse(recurse)),
             ..
-        }) => (dir, None, recurse),
-        Source::Qualified(PackageSource {
-            dir,
-            subdirs: Some(Subdirs::Qualified(subdirs)),
+        }) => (None, recurse),
+        bsconfig::Source::Qualified(bsconfig::PackageSource {
+            subdirs: Some(bsconfig::Subdirs::Qualified(subdirs)),
             ..
-        }) => (dir, Some(subdirs), false),
+        }) => (Some(subdirs), false),
     };
 
-    let full_path = project_root.to_string() + "/" + &package_root;
-    source_folders.insert((
-        full_path.to_owned(),
-        bsconfig::to_qualified_without_children(&source),
-    ));
+    let source_folder = bsconfig::to_qualified_without_children(&source, sub_path.to_owned());
+    source_folders.insert(source_folder.to_owned());
 
     if !full_recursive {
+        let sub_path = Path::new(&source_folder.dir).to_path_buf();
         subdirs
             .unwrap_or(vec![])
             .par_iter()
-            .map(|subdir| get_source_dirs(&full_path, subdir.to_owned()))
-            .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
+            .map(|subdir| get_source_dirs(subdir.to_owned(), Some(sub_path.to_owned())))
+            .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
             .into_iter()
             .for_each(|subdir| source_folders.extend(subdir))
     }
@@ -174,15 +169,18 @@ fn get_source_dirs(
     source_folders
 }
 
-fn get_package_dir(package_name: &str, is_root: bool, project_root: &str) -> String {
+fn get_package_dir(package_name: &str, is_root: bool) -> String {
     if is_root {
-        project_root.to_owned()
+        "".to_string()
     } else {
-        helpers::get_package_path(project_root, package_name)
+        helpers::get_relative_package_path(&package_name)
     }
 }
 
 fn read_bsconfig(package_dir: &str) -> bsconfig::T {
+    if package_dir == "" {
+        return bsconfig::read("bsconfig.json".to_string());
+    }
     bsconfig::read(package_dir.to_string() + "/bsconfig.json")
 }
 
@@ -193,10 +191,8 @@ fn build_package<'a>(
     map: &'a mut AHashMap<String, Package>,
     bsconfig: bsconfig::T,
     package_dir: &str,
-    // is_root: bool,
     project_root: &str,
     is_pinned_dep: bool,
-    // package_name: &str,
 ) -> &'a mut AHashMap<String, Package> {
     // let (package_dir, bsconfig) = read_bsconfig(package_name, project_root, is_root);
     let copied_bsconfig = bsconfig.to_owned();
@@ -207,14 +203,13 @@ fn build_package<'a>(
      * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
     map.insert(copied_bsconfig.name.to_owned(), {
         let source_folders = match bsconfig.sources.to_owned() {
-            bsconfig::OneOrMore::Single(source) => get_source_dirs(&package_dir, source),
+            bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
             bsconfig::OneOrMore::Multiple(sources) => {
-                let mut source_folders: AHashSet<(String, bsconfig::PackageSource)> =
-                    AHashSet::new();
+                let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
                 sources
                     .iter()
-                    .map(|source| get_source_dirs(&package_dir, source.to_owned()))
-                    .collect::<Vec<AHashSet<(String, bsconfig::PackageSource)>>>()
+                    .map(|source| get_source_dirs(source.to_owned(), None))
+                    .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
                     .into_iter()
                     .for_each(|source| source_folders.extend(source));
                 source_folders
@@ -276,7 +271,11 @@ fn build_package<'a>(
         .unwrap_or(vec![])
         .iter()
         .filter_map(|package_name| {
-            let package_dir = get_package_dir(package_name, false, project_root);
+            let package_dir = PathBuf::from(get_package_dir(package_name, false))
+                .canonicalize()
+                .expect("Could not canonicalize package dir")
+                .to_string_lossy()
+                .to_string();
             if !map.contains_key(package_name) {
                 Some(package_dir)
             } else {
@@ -313,30 +312,33 @@ fn build_package<'a>(
 /// NPM package. The file reader allows for this, just warns when this happens.
 /// TODO -> Check wether we actually need the `fs::Metadata`
 pub fn get_source_files(
+    package_dir: &Path,
     filter: &Option<regex::Regex>,
-    dir: &String,
-    source: &PackageSource,
+    source: &bsconfig::PackageSource,
 ) -> AHashMap<String, SourceFileMeta> {
     let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
 
     let (recurse, type_) = match source {
-        PackageSource {
-            subdirs: Some(Subdirs::Recurse(subdirs)),
+        bsconfig::PackageSource {
+            subdirs: Some(bsconfig::Subdirs::Recurse(subdirs)),
             type_,
             ..
         } => (subdirs.to_owned(), type_),
-        PackageSource { type_, .. } => (false, type_),
+        bsconfig::PackageSource { type_, .. } => (false, type_),
     };
 
-    let path_dir = Path::new(dir);
+    let path_dir = Path::new(&source.dir);
     // don't include dev sources for now
     if type_ != &Some("dev".to_string()) {
-        match read_folders(&filter, path_dir, recurse) {
+        match read_folders(&filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
-                println!("Could not read folder: {dir}... Probably ok as type is dev")
+                println!(
+                    "Could not read folder: {}... Probably ok as type is dev",
+                    path_dir.to_string_lossy()
+                )
             }
-            Err(_e) => println!("Could not read folder: {dir}..."),
+            Err(_e) => println!("Could not read folder: {}...", path_dir.to_string_lossy()),
         }
     }
 
@@ -362,7 +364,7 @@ fn extend_with_children(
         value
             .source_folders
             .par_iter()
-            .map(|(dir, source)| get_source_files(&filter, dir, source))
+            .map(|source| get_source_files(Path::new(&value.package_dir), &filter, source))
             .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -386,11 +388,7 @@ fn extend_with_children(
         value.modules = Some(modules);
         let mut dirs = AHashSet::new();
         map.keys().for_each(|path| {
-            let dir = std::path::Path::new(&path)
-                .strip_prefix(&value.package_dir)
-                .unwrap()
-                .parent()
-                .unwrap();
+            let dir = std::path::Path::new(&path).parent().unwrap();
             dirs.insert(dir.to_owned());
         });
         value.dirs = Some(dirs);
@@ -410,7 +408,7 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
      * */
     let mut map: AHashMap<String, Package> = AHashMap::new();
 
-    let package_dir = get_package_dir("", true, root_folder);
+    let package_dir = get_package_dir("", true);
     let bsconfig = read_bsconfig(&package_dir);
     build_package(&mut map, bsconfig, &package_dir, root_folder, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize

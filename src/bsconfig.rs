@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -27,10 +28,14 @@ pub struct PackageSource {
 /// `to_qualified_without_children` takes a tree like structure of dependencies, coming in from
 /// `bsconfig`, and turns it into a flat list. The main thing we extract here are the source
 /// folders, and optional subdirs, where potentially, the subdirs recurse or not.
-pub fn to_qualified_without_children(s: &Source) -> PackageSource {
+pub fn to_qualified_without_children(s: &Source, sub_path: Option<PathBuf>) -> PackageSource {
     match s {
         Source::Shorthand(dir) => PackageSource {
-            dir: dir.to_owned(),
+            dir: sub_path
+                .map(|p| p.join(Path::new(dir)))
+                .unwrap_or(Path::new(dir).to_path_buf())
+                .to_string_lossy()
+                .to_string(),
             subdirs: None,
             type_: None,
         },
@@ -39,12 +44,20 @@ pub fn to_qualified_without_children(s: &Source) -> PackageSource {
             type_,
             subdirs: Some(Subdirs::Recurse(should_recurse)),
         }) => PackageSource {
-            dir: dir.to_owned(),
+            dir: sub_path
+                .map(|p| p.join(Path::new(dir)))
+                .unwrap_or(Path::new(dir).to_path_buf())
+                .to_string_lossy()
+                .to_string(),
             subdirs: Some(Subdirs::Recurse(*should_recurse)),
             type_: type_.to_owned(),
         },
         Source::Qualified(PackageSource { dir, type_, .. }) => PackageSource {
-            dir: dir.to_owned(),
+            dir: sub_path
+                .map(|p| p.join(Path::new(dir)))
+                .unwrap_or(Path::new(dir).to_path_buf())
+                .to_string_lossy()
+                .to_string(),
             subdirs: None,
             type_: type_.to_owned(),
         },
