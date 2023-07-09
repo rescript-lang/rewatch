@@ -173,7 +173,8 @@ fn generate_ast(
     let uncurried_args = get_uncurried_args(version, &package, &root_package);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
-    let res_to_ast_args = |file: String| -> Vec<String> {
+    let res_to_ast_args = |file: &str| -> Vec<String> {
+        let file = "../../".to_string() + file;
         vec![
             vec!["-bs-v".to_string(), format!("{}", version)],
             ppx_flags,
@@ -194,7 +195,7 @@ fn generate_ast(
     };
 
     /* Create .ast */
-    if let Some(res_to_ast) = helpers::canonicalize_string_path(file).map(|file| {
+    if let Some(res_to_ast) = Some(file).map(|file| {
         Command::new(helpers::get_bsc(&root_path))
             .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
             .args(res_to_ast_args(file))
@@ -206,12 +207,14 @@ fn generate_ast(
             if res_to_ast.status.success() {
                 Ok((ast_path, Some(stderr.to_string())))
             } else {
+                println!("err: {}", stderr.to_string());
                 Err(stderr.to_string())
             }
         } else {
             Ok((ast_path, None))
         }
     } else {
+        println!("Parsing file {}...", file);
         return Err(format!(
             "Could not find canonicalize_string_path for file {} in package {}",
             file, package.name
@@ -812,7 +815,6 @@ pub fn compile_file(
     is_interface: bool,
 ) -> Result<Option<String>, String> {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
-    let pkg_path_abs = helpers::get_package_path(root_path, &package.name);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let normal_deps = package
@@ -933,8 +935,6 @@ pub fn compile_file(
             format!(
                 "es6:{}:{}",
                 Path::new(implementation_file_path)
-                    .strip_prefix(pkg_path_abs)
-                    .unwrap()
                     .parent()
                     .unwrap()
                     .to_str()
@@ -965,7 +965,7 @@ pub fn compile_file(
         //     "-I".to_string(),
         //     abs_node_modules_path.to_string() + "/rescript/ocaml",
         // ],
-        vec![helpers::canonicalize_string_path(&ast_path.to_owned()).unwrap()],
+        vec![ast_path.to_string()],
     ]
     .concat();
 
@@ -987,8 +987,6 @@ pub fn compile_file(
                 .to_string();
 
             let dir = std::path::Path::new(implementation_file_path)
-                .strip_prefix(helpers::get_package_path(root_path, &package.name))
-                .unwrap()
                 .parent()
                 .unwrap();
 
