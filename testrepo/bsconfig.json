@@ -14,12 +14,14 @@
   "pinned-dependencies": [
     "@testrepo/main",
     "@testrepo/dep01",
-    "@testrepo/dep02"
+    "@testrepo/dep02",
+    "@testrepo/new-namespace"
   ],
   "bs-dependencies": [
     "@testrepo/main",
     "@testrepo/dep01",
-    "@testrepo/dep02"
+    "@testrepo/dep02",
+    "@testrepo/new-namespace"
   ],
   "reason": {
     "react-jsx": 3
