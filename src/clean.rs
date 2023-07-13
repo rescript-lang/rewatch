@@ -2,6 +2,7 @@ use crate::build;
 use crate::build_types::*;
 use crate::helpers;
 use crate::helpers::get_mlmap_path;
+use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::fs;
@@ -23,18 +24,18 @@ pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     return None;
 }
 
-fn remove_asts(source_file: &str, package_name: &str, namespace: &Option<String>, root_path: &str) {
+fn remove_asts(source_file: &str, package_name: &str, root_path: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
-        namespace,
+        &package_tree::Namespace::NoNamespace,
         root_path,
         "ast",
     ));
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
-        namespace,
+        &package_tree::Namespace::NoNamespace,
         root_path,
         "iast",
     ));
@@ -47,7 +48,7 @@ fn remove_mjs_file(source_file: &str) {
 fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
-    namespace: &Option<String>,
+    namespace: &package_tree::Namespace,
     root_path: &str,
 ) {
     // optimization
@@ -88,8 +89,10 @@ pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
 }
 
 pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
-    let mut ast_modules: AHashMap<String, (String, String, Option<String>, SystemTime, String)> =
-        AHashMap::new();
+    let mut ast_modules: AHashMap<
+        String,
+        (String, String, package_tree::Namespace, SystemTime, String),
+    > = AHashMap::new();
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
 
@@ -205,7 +208,6 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         remove_asts(
             canonicalized_res_file_location,
             package_name,
-            package_namespace,
             &build_state.project_root,
         );
         remove_compile_assets(
@@ -229,11 +231,9 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 .modules
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
-            let full_module_name = module_name.to_string()
-                + &match package_namespace {
-                    Some(namespace) => "-".to_string() + namespace,
-                    None => "".to_string(),
-                };
+            let full_module_name =
+                helpers::module_name_with_namespace(module_name, &package_namespace);
+
             let compile_dirty = cmi_modules.get(&full_module_name);
             if let Some(compile_dirty) = compile_dirty {
                 // println!("{} is not dirty", module_name);
@@ -389,7 +389,6 @@ pub fn cleanup_after_build(build_state: &BuildState, no_errors: bool) {
                         remove_asts(
                             &source_file.implementation.path,
                             &module.package_name,
-                            &package.namespace,
                             &build_state.project_root,
                         );
                     }
@@ -416,11 +415,11 @@ pub fn cleanup_after_build(build_state: &BuildState, no_errors: bool) {
                         &helpers::canonicalize_string_path(&get_mlmap_path(
                             &build_state.project_root,
                             &module.package_name,
-                            &package.namespace.as_ref().unwrap(),
+                            &package.namespace.to_suffix().unwrap(),
                         ))
                         .unwrap(),
                         &module.package_name,
-                        &None,
+                        &package_tree::Namespace::NoNamespace,
                         &build_state.project_root,
                     ),
                 }
