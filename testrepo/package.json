@@ -5,7 +5,8 @@
     "packages": [
       "packages/main",
       "packages/dep01",
-      "packages/dep02"
+      "packages/dep02",
+      "packages/new-namespace"
     ]
   },
   "scripts": {

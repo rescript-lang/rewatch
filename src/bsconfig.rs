@@ -116,6 +116,7 @@ pub struct T {
     pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
     pub namespace: Option<Namespace>,
+    #[serde(rename = "namespace-entry")]
     pub namespace_entry: Option<String>,
 }
 
