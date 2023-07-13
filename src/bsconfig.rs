@@ -167,6 +167,9 @@ pub struct T {
     pub namespace: Option<Namespace>,
     pub jsx: Option<JsxSpecs>,
     pub uncurried: Option<bool>,
+    // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
+    #[serde(rename = "namespace-entry")]
+    pub namespace_entry: Option<String>,
 }
 
 /// This flattens string flags

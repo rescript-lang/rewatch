@@ -342,7 +342,7 @@ fn generate_asts(
                         &module.package_name,
                         &package
                             .namespace
-                            .as_ref()
+                            .to_suffix()
                             .expect("namespace should be set for mlmap module"),
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
@@ -350,7 +350,7 @@ fn generate_asts(
                         &module.package_name,
                         &package
                             .namespace
-                            .as_ref()
+                            .to_suffix()
                             .expect("namespace should be set for mlmap module"),
                     );
                     let mlmap_hash = compute_file_hash(&compile_path);
@@ -533,7 +533,7 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
 
                 let mut deps = get_dep_modules(
                     &ast_path,
-                    package.namespace.to_owned(),
+                    package.namespace.to_suffix(),
                     &package.modules.as_ref().unwrap(),
                     all_mod,
                 );
@@ -548,12 +548,21 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
 
                         deps.extend(get_dep_modules(
                             &iast_path,
-                            package.namespace.to_owned(),
+                            package.namespace.to_suffix(),
                             &package.modules.as_ref().unwrap(),
                             all_mod,
                         ))
                     }
                     None => (),
+                }
+                match &package.namespace {
+                    package_tree::Namespace::NamespaceWithEntry {
+                        namespace: _,
+                        entry,
+                    } if entry == module_name => {
+                        deps.insert(package.namespace.to_suffix().unwrap());
+                    }
+                    _ => (),
                 }
                 deps.remove(module_name);
                 (module_name.to_string(), deps)
@@ -592,7 +601,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 helpers::get_build_path(&build_state.project_root, &package.bsconfig.name);
             helpers::create_build_path(&build_path_abs);
 
-            package.namespace.iter().for_each(|namespace| {
+            package.namespace.to_suffix().iter().for_each(|namespace| {
                 // generate the mlmap "AST" file for modules that have a namespace configured
                 let source_files = match package.source_files.to_owned() {
                     Some(source_files) => source_files
@@ -601,10 +610,29 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         .collect::<Vec<String>>(),
                     None => unreachable!(),
                 };
+                let entry = match &package.namespace {
+                    package_tree::Namespace::NamespaceWithEntry {
+                        entry,
+                        namespace: _,
+                    } => Some(entry),
+                    _ => None,
+                };
 
                 let depending_modules = source_files
                     .iter()
-                    .map(|path| helpers::file_path_to_module_name(&path, &None))
+                    .map(|path| {
+                        helpers::file_path_to_module_name(
+                            &path,
+                            &package_tree::Namespace::NoNamespace,
+                        )
+                    })
+                    .filter(|module_name| {
+                        if let Some(entry) = entry {
+                            module_name != entry
+                        } else {
+                            true
+                        }
+                    })
                     .collect::<AHashSet<String>>();
 
                 let mlmap = gen_mlmap(
@@ -620,10 +648,20 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 let deps = source_files
                     .iter()
                     .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
+                    .filter(|module_name| {
+                        if let Some(entry) = entry {
+                            module_name != entry
+                        } else {
+                            true
+                        }
+                    })
                     .collect::<AHashSet<String>>();
 
                 build_state.insert_module(
-                    &helpers::file_path_to_module_name(&mlmap.to_owned(), &None),
+                    &helpers::file_path_to_module_name(
+                        &mlmap.to_owned(),
+                        &package_tree::Namespace::NoNamespace,
+                    ),
                     Module {
                         source_type: SourceType::MlMap(MlMap { dirty: false }),
                         deps: deps,
@@ -731,15 +769,14 @@ pub fn parse_packages(build_state: &mut BuildState) {
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
     let mlmap_name = format!("{}.mlmap", namespace);
-    let args = vec![vec![
+    let args = vec![
         "-w",
         "-49",
         "-color",
         "always",
         "-no-alias-deps",
         &mlmap_name,
-    ]]
-    .concat();
+    ];
 
     let _ = Command::new(helpers::get_bsc(&root_path))
         .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
@@ -788,9 +825,36 @@ pub fn compile_file(
         })
         .collect::<Vec<Vec<String>>>();
 
-    let namespace_args = match package.namespace.to_owned() {
-        Some(namespace) => vec!["-bs-ns".to_string(), namespace],
-        None => vec![],
+    let implementation_file_path = match module.source_type {
+        SourceType::SourceFile(ref source_file) => &source_file.implementation.path,
+        _ => panic!("Not a source file"),
+    };
+
+    let module_name =
+        helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+
+    let namespace_args = match &package.namespace {
+        package_tree::Namespace::NamespaceWithEntry {
+            namespace: _,
+            entry,
+        } if &module_name == entry => {
+            // if the module is the entry we just want to open the namespace
+            vec![
+                "-open".to_string(),
+                package.namespace.to_suffix().unwrap().to_string(),
+            ]
+        }
+        package_tree::Namespace::Namespace(_)
+        | package_tree::Namespace::NamespaceWithEntry {
+            namespace: _,
+            entry: _,
+        } => {
+            vec![
+                "-bs-ns".to_string(),
+                package.namespace.to_suffix().unwrap().to_string(),
+            ]
+        }
+        package_tree::Namespace::NoNamespace => vec![],
     };
 
     let jsx_args = get_jsx_args(&root_package);
@@ -832,14 +896,6 @@ pub fn compile_file(
         }
         _ => vec![],
     };
-
-    let implementation_file_path = match module.source_type {
-        SourceType::SourceFile(ref source_file) => &source_file.implementation.path,
-        _ => panic!("Not a source file"),
-    };
-
-    let module_name =
-        helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
 
     let implementation_args = if is_interface {
         debug!("Compiling interface file: {}", &module_name);
@@ -1289,7 +1345,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                             // this is why mlmap is compiled in the AST generation stage
                             // compile_mlmap(&module.package, module_name, &project_root);
                             Some((
-                                package.namespace.to_owned().unwrap(),
+                                package.namespace.to_suffix().unwrap(),
                                 Ok(None),
                                 Some(Ok(None)),
                                 false,

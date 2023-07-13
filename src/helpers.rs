@@ -1,3 +1,4 @@
+use crate::package_tree;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
@@ -100,17 +101,39 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-// this doesn't capitalize the module name! if the rescript name of the file is "foo.res" the
-// compiler assets are foo-Namespace.cmt and foo-Namespace.cmj, but the module name is Foo
-pub fn file_path_to_compiler_asset_basename(path: &str, namespace: &Option<String>) -> String {
-    let base = get_basename(path);
+fn add_suffix(base: &str, namespace: &package_tree::Namespace) -> String {
     match namespace {
-        Some(namespace) => base.to_string() + "-" + &namespace,
-        None => base,
+        package_tree::Namespace::NamespaceWithEntry {
+            namespace: _,
+            entry,
+        } if entry == base => base.to_string(),
+        package_tree::Namespace::Namespace(namespace)
+        | package_tree::Namespace::NamespaceWithEntry {
+            namespace,
+            entry: _,
+        } => base.to_string() + "-" + &namespace,
+        package_tree::Namespace::NoNamespace => base.to_string(),
     }
 }
 
-pub fn file_path_to_module_name(path: &str, namespace: &Option<String>) -> String {
+pub fn module_name_with_namespace(
+    module_name: &str,
+    namespace: &package_tree::Namespace,
+) -> String {
+    capitalize(&add_suffix(module_name, namespace))
+}
+
+// this doesn't capitalize the module name! if the rescript name of the file is "foo.res" the
+// compiler assets are foo-Namespace.cmt and foo-Namespace.cmj, but the module name is Foo
+pub fn file_path_to_compiler_asset_basename(
+    path: &str,
+    namespace: &package_tree::Namespace,
+) -> String {
+    let base = get_basename(path);
+    add_suffix(&base, namespace)
+}
+
+pub fn file_path_to_module_name(path: &str, namespace: &package_tree::Namespace) -> String {
     capitalize(&file_path_to_compiler_asset_basename(path, namespace))
 }
 
@@ -155,15 +178,10 @@ pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
 pub fn get_compiler_asset(
     source_file: &str,
     package_name: &str,
-    namespace: &Option<String>,
+    namespace: &package_tree::Namespace,
     root_path: &str,
     extension: &str,
 ) -> String {
-    let namespace = match extension {
-        "ast" | "iast" => &None,
-        _ => namespace,
-    };
-
     get_build_path(root_path, package_name)
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
@@ -199,12 +217,12 @@ pub fn canonicalize_parent_string_path(path: &str) -> Option<String> {
 pub fn get_bs_compiler_asset(
     source_file: &str,
     package_name: &str,
-    namespace: &Option<String>,
+    namespace: &package_tree::Namespace,
     root_path: &str,
     extension: &str,
 ) -> String {
     let namespace = match extension {
-        "ast" | "iast" => &None,
+        "ast" | "iast" => &package_tree::Namespace::NoNamespace,
         _ => namespace,
     };
     let canonicalized_source_file = source_file;
@@ -244,11 +262,23 @@ pub fn get_mlmap_compile_path(root_path: &str, package_name: &str, namespace: &s
 }
 
 pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
-    get_compiler_asset(source_file, package_name, &None, root_path, "ast")
+    get_compiler_asset(
+        source_file,
+        package_name,
+        &package_tree::Namespace::NoNamespace,
+        root_path,
+        "ast",
+    )
 }
 
 pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
-    get_compiler_asset(source_file, package_name, &None, root_path, "iast")
+    get_compiler_asset(
+        source_file,
+        package_name,
+        &package_tree::Namespace::NoNamespace,
+        root_path,
+        "iast",
+    )
 }
 
 pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {

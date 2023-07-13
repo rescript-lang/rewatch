@@ -14,6 +14,27 @@ use std::{error, fs};
 pub struct SourceFileMeta {
     pub modified: SystemTime,
 }
+
+#[derive(Debug, Clone)]
+pub enum Namespace {
+    Namespace(String),
+    NamespaceWithEntry { namespace: String, entry: String },
+    NoNamespace,
+}
+
+impl Namespace {
+    pub fn to_suffix(&self) -> Option<String> {
+        match self {
+            Namespace::Namespace(namespace) => Some(namespace.to_string()),
+            Namespace::NamespaceWithEntry {
+                namespace,
+                entry: _,
+            } => Some("@".to_string() + namespace),
+            Namespace::NoNamespace => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
@@ -21,7 +42,7 @@ pub struct Package {
     pub source_folders: AHashSet<(String, bsconfig::PackageSource)>,
     // these are the relative file paths (relative to the package root)
     pub source_files: Option<AHashMap<String, SourceFileMeta>>,
-    pub namespace: Option<String>,
+    pub namespace: Namespace,
     pub modules: Option<AHashSet<String>>,
     pub package_dir: String,
     pub dirs: Option<AHashSet<PathBuf>>,
@@ -200,21 +221,46 @@ fn build_package<'a>(
             }
         };
 
+        let namespace_from_package = namespace_from_package_name(&bsconfig.name);
         Package {
             name: copied_bsconfig.name.to_owned(),
             bsconfig: copied_bsconfig,
             source_folders,
             source_files: None,
-            namespace: match bsconfig.namespace {
-                Some(bsconfig::Namespace::Bool(true)) => {
-                    Some(namespace_from_package_name(&bsconfig.name))
+            namespace: match (bsconfig.namespace, bsconfig.namespace_entry) {
+                (Some(bsconfig::Namespace::Bool(false)), _) => Namespace::NoNamespace,
+                (None, _) => Namespace::NoNamespace,
+                (Some(bsconfig::Namespace::Bool(true)), None) => {
+                    Namespace::Namespace(namespace_from_package)
                 }
-                Some(bsconfig::Namespace::Bool(false)) => None,
-                None => None,
-                Some(bsconfig::Namespace::String(str)) => match str.as_str() {
-                    "true" => Some(namespace_from_package_name(&bsconfig.name)),
-                    namespace if namespace.is_case(Case::UpperFlat) => Some(namespace.to_string()),
-                    namespace => Some(namespace.to_string().to_case(Case::Pascal)),
+                (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => {
+                    Namespace::NamespaceWithEntry {
+                        namespace: namespace_from_package,
+                        entry: entry,
+                    }
+                }
+                (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
+                    "true" => Namespace::Namespace(namespace_from_package),
+                    namespace if namespace.is_case(Case::UpperFlat) => {
+                        Namespace::Namespace(namespace.to_string())
+                    }
+                    namespace => Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
+                },
+                (Some(bsconfig::Namespace::String(str)), Some(entry)) => match str.as_str() {
+                    "true" => Namespace::NamespaceWithEntry {
+                        namespace: namespace_from_package,
+                        entry,
+                    },
+                    namespace if namespace.is_case(Case::UpperFlat) => {
+                        Namespace::NamespaceWithEntry {
+                            namespace: namespace.to_string(),
+                            entry: entry,
+                        }
+                    }
+                    namespace => Namespace::NamespaceWithEntry {
+                        namespace: namespace.to_string().to_case(Case::Pascal),
+                        entry,
+                    },
                 },
             },
             modules: None,
@@ -326,10 +372,16 @@ fn extend_with_children(
                 .map(|key| helpers::file_path_to_module_name(key, &value.namespace)),
         );
         match value.namespace.to_owned() {
-            Some(namespace) => {
+            Namespace::Namespace(namespace) => {
                 let _ = modules.insert(namespace);
             }
-            None => (),
+            Namespace::NamespaceWithEntry {
+                namespace,
+                entry: _,
+            } => {
+                let _ = modules.insert("@".to_string() + &namespace);
+            }
+            Namespace::NoNamespace => (),
         }
         value.modules = Some(modules);
         let mut dirs = AHashSet::new();
