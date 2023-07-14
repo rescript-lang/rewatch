@@ -277,7 +277,6 @@ fn generate_asts(
                             .to_suffix()
                             .expect("namespace should be set for mlmap module"),
                     );
-                    println!("Compiling mlmap {}", &compile_path);
                     let mlmap_hash = compute_file_hash(&compile_path);
                     compile_mlmap(&package, module_name, &build_state.project_root);
                     let mlmap_hash_after = compute_file_hash(&compile_path);
@@ -437,12 +436,10 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
         .collect();
     build_state
         .modules
-        // .par_iter()
-        .iter()
+        .par_iter()
         .map(|(module_name, module)| match &module.source_type {
             SourceType::MlMap(_) => (module_name.to_string(), module.deps.to_owned()),
             SourceType::SourceFile(source_file) => {
-                println!("source file: {}", source_file.implementation.path);
                 let package = build_state
                     .get_package(&module.package_name)
                     .expect("Package not found");
@@ -485,7 +482,6 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
                     }
                     _ => (),
                 }
-                dbg!(&deps);
                 deps.remove(module_name);
                 (module_name.to_string(), deps)
             }
@@ -691,7 +687,6 @@ pub fn parse_packages(build_state: &mut BuildState) {
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
     let mlmap_name = format!("{}.mlmap", namespace);
-    println!("compiling mlmap: {}", &mlmap_name);
     let args = vec![
         "-w",
         "-49",
@@ -700,18 +695,12 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
         "-no-alias-deps",
         &mlmap_name,
     ];
-    println!(
-        "path: {}",
-        helpers::canonicalize_string_path(&build_path_abs).unwrap()
-    );
 
-    let result = Command::new(helpers::get_bsc(&root_path))
+    let _ = Command::new(helpers::get_bsc(&root_path))
         .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
         .args(args)
         .output()
         .expect("err");
-
-    dbg!(result);
 }
 
 pub fn compile_file(
@@ -760,7 +749,6 @@ pub fn compile_file(
     let module_name =
         helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
 
-    dbg!(&package.namespace);
     let namespace_args = match &package.namespace {
         package_tree::Namespace::NamespaceWithEntry {
             namespace: _,
@@ -1420,7 +1408,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
 
     logs::finalize(&build_state.packages);
     pb.finish();
-    // clean::cleanup_after_build(&build_state, compile_errors.len() == 0);
+    clean::cleanup_after_build(&build_state, compile_errors.len() == 0);
     if compile_errors.len() > 0 {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
