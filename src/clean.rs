@@ -346,12 +346,7 @@ fn failed_to_parse(module: &Module) -> bool {
     }
 }
 
-fn failed_to_compile(module: &Module, no_errors: bool) -> bool {
-    // also clean up dirty modules when the compile failed
-    if !no_errors && module.compile_dirty {
-        return true;
-    };
-
+fn failed_to_compile(module: &Module) -> bool {
     match &module.source_type {
         SourceType::SourceFile(SourceFile {
             implementation:
@@ -373,11 +368,7 @@ fn failed_to_compile(module: &Module, no_errors: bool) -> bool {
     }
 }
 
-pub fn cleanup_after_build(build_state: &BuildState, no_errors: bool) {
-    // let failed_modules = all_modules
-    //     .difference(&compiled_modules)
-    //     .collect::<AHashSet<&String>>();
-
+pub fn cleanup_after_build(build_state: &BuildState) {
     build_state
         .modules
         .par_iter()
@@ -395,7 +386,7 @@ pub fn cleanup_after_build(build_state: &BuildState, no_errors: bool) {
                     _ => (),
                 }
             }
-            if failed_to_compile(module, no_errors) {
+            if failed_to_compile(module) {
                 // only retain ast file if it compiled successfully, that's the only thing we check
                 // if we see a AST file, we assume it compiled successfully, so we also need to clean
                 // up the AST file if compile is not successful
