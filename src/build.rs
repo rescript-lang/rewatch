@@ -38,6 +38,81 @@ pub fn get_version(project_root: &str) -> String {
         .replace("ReScript ", "")
 }
 
+fn get_jsx_args(package: &package_tree::Package) -> Vec<String> {
+    match (
+        package.bsconfig.reason.to_owned(),
+        package.bsconfig.jsx.to_owned(),
+    ) {
+        (_, Some(jsx)) => match jsx.version {
+            Some(version) if version == 3 || version == 4 => {
+                vec!["-bs-jsx".to_string(), version.to_string()]
+            }
+            Some(_version) => panic!("Unsupported JSX version"),
+            None => vec![],
+        },
+        (Some(reason), None) => {
+            vec!["-bs-jsx".to_string(), format!("{}", reason.react_jsx)]
+        }
+        _ => vec![],
+    }
+}
+
+fn get_jsx_mode_args(package: &package_tree::Package) -> Vec<String> {
+    match package.bsconfig.jsx.to_owned() {
+        Some(jsx) => match jsx.mode {
+            Some(bsconfig::JsxMode::Classic) => {
+                vec!["-bs-jsx-mode".to_string(), "classic".to_string()]
+            }
+            Some(bsconfig::JsxMode::Automatic) => {
+                vec!["-bs-jsx-mode".to_string(), "automatic".to_string()]
+            }
+
+            None => vec![],
+        },
+        _ => vec![],
+    }
+}
+
+fn get_jsx_module_args(package: &package_tree::Package) -> Vec<String> {
+    match package.bsconfig.jsx.to_owned() {
+        Some(jsx) => match jsx.module {
+            Some(bsconfig::JsxModule::React) => {
+                vec!["-bs-jsx-module".to_string(), "react".to_string()]
+            }
+            None => vec![],
+        },
+        _ => vec![],
+    }
+}
+
+fn check_if_rescript11_or_higher(version: &str) -> bool {
+    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
+}
+
+fn get_uncurried_args(
+    version: &str,
+    package: &package_tree::Package,
+    root_package: &package_tree::Package,
+) -> Vec<String> {
+    if check_if_rescript11_or_higher(version) {
+        match (
+            root_package.bsconfig.uncurried.to_owned(),
+            package.bsconfig.uncurried.to_owned(),
+        ) {
+            (Some(x), _) | (None, Some(x)) => {
+                if x {
+                    vec!["-uncurried".to_string()]
+                } else {
+                    vec![]
+                }
+            }
+            (None, None) => vec!["-uncurried".to_string()],
+        }
+    } else {
+        vec![]
+    }
+}
+
 fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
     let filter = "bisect";
     match ppx_flags {
@@ -66,6 +141,7 @@ fn path_to_ast_extension(path: &Path) -> &str {
 
 fn generate_ast(
     package: package_tree::Package,
+    root_package: package_tree::Package,
     filename: &str,
     root_path: &str,
     version: &str,
@@ -84,20 +160,20 @@ fn generate_ast(
         &package.name,
     );
 
+    let jsx_args = get_jsx_args(&root_package);
+    let jsx_module_args = get_jsx_module_args(&root_package);
+    let jsx_mode_args = get_jsx_mode_args(&root_package);
+    let uncurried_args = get_uncurried_args(version, &package, &root_package);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let res_to_ast_args = |file: String| -> Vec<String> {
         vec![
             vec!["-bs-v".to_string(), format!("{}", version)],
             ppx_flags,
-            {
-                package
-                    .bsconfig
-                    .reason
-                    .to_owned()
-                    .map(|x| vec!["-bs-jsx".to_string(), format!("{}", x.react_jsx)])
-                    .unwrap_or(vec![])
-            },
+            jsx_args,
+            jsx_module_args,
+            jsx_mode_args,
+            uncurried_args,
             bsc_flags,
             vec![
                 "-absname".to_string(),
@@ -290,6 +366,10 @@ fn generate_asts(
                 }
 
                 SourceType::SourceFile(source_file) => {
+                    let root_package = build_state
+                        .get_package(&build_state.root_config_name)
+                        .unwrap();
+
                     let (ast_path, iast_path) = if source_file.implementation.dirty
                         || source_file
                             .interface
@@ -300,6 +380,7 @@ fn generate_asts(
                         pb.inc(1);
                         let ast_result = generate_ast(
                             package.to_owned(),
+                            root_package.to_owned(),
                             &source_file.implementation.path.to_owned(),
                             &build_state.project_root,
                             &version,
@@ -309,6 +390,7 @@ fn generate_asts(
                             match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
                                 Some(interface_file_path) => generate_ast(
                                     package.to_owned(),
+                                    root_package.to_owned(),
                                     &interface_file_path.to_owned(),
                                     &build_state.project_root,
                                     &version,
@@ -668,9 +750,11 @@ pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path
 
 pub fn compile_file(
     package: &package_tree::Package,
+    root_package: &package_tree::Package,
     ast_path: &str,
     module: &Module,
     root_path: &str,
+    version: &str,
     is_interface: bool,
 ) -> Result<Option<String>, String> {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
@@ -709,6 +793,35 @@ pub fn compile_file(
         None => vec![],
     };
 
+    let jsx_args = get_jsx_args(&root_package);
+    let jsx_module_args = get_jsx_module_args(&root_package);
+    let jsx_mode_args = get_jsx_mode_args(&root_package);
+    let uncurried_args = get_uncurried_args(version, &package, &root_package);
+
+    let warning_args: Vec<String> = match package.bsconfig.warnings.to_owned() {
+        None => vec![],
+        Some(warnings) => {
+            let warn_number = match warnings.number {
+                None => vec![],
+                Some(warnings) => {
+                    vec!["-w".to_string(), warnings.to_string()]
+                }
+            };
+
+            let warn_error = match warnings.error {
+                Some(bsconfig::Error::Catchall(true)) => {
+                    vec!["-warn-error A".to_string()]
+                }
+                Some(bsconfig::Error::Qualified(errors)) => {
+                    vec!["-warn-error".to_string(), errors.to_string()]
+                }
+                _ => vec![],
+            };
+
+            vec![warn_number, warn_error].concat()
+        }
+    };
+
     let read_cmi_args = match get_interface(module) {
         Some(_) => {
             if is_interface {
@@ -733,12 +846,19 @@ pub fn compile_file(
         vec![]
     } else {
         debug!("Compiling file: {}", &module_name);
+
+        // TODO: Also read suffix from package-spec.
+        let suffix = match root_package.bsconfig.suffix.to_owned() {
+            Some(suffix) => suffix,
+            None => bsconfig::Suffix::Mjs,
+        };
+
         vec![
             "-bs-package-name".to_string(),
             package.bsconfig.name.to_owned(),
             "-bs-package-output".to_string(),
             format!(
-                "es6:{}:.mjs",
+                "es6:{}:{}",
                 Path::new(implementation_file_path)
                     .strip_prefix(pkg_path_abs)
                     .unwrap()
@@ -746,6 +866,7 @@ pub fn compile_file(
                     .unwrap()
                     .to_str()
                     .unwrap(),
+                suffix
             ),
         ]
     };
@@ -755,7 +876,12 @@ pub fn compile_file(
         read_cmi_args,
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
+        jsx_args,
+        jsx_module_args,
+        jsx_mode_args,
+        uncurried_args,
         bsc_flags,
+        warning_args,
         // vec!["-warn-error".to_string(), "A".to_string()],
         // ^^ this one fails for bisect-ppx
         // this is the default
@@ -839,6 +965,7 @@ pub fn compile_file(
 pub fn clean(path: &str) {
     let project_root = helpers::get_abs_path(path);
     let packages = package_tree::make(&None, &project_root);
+    let root_config_name = package_tree::get_package_name(&project_root);
 
     let timing_clean_compiler_assets = Instant::now();
     print!(
@@ -884,7 +1011,7 @@ pub fn clean(path: &str) {
         SWEEP
     );
     std::io::stdout().flush().unwrap();
-    let mut build_state = BuildState::new(project_root, packages);
+    let mut build_state = BuildState::new(project_root, root_config_name, packages);
     parse_packages(&mut build_state);
     clean_mjs_files(&build_state.modules);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
@@ -924,6 +1051,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
+    let root_config_name = package_tree::get_package_name(&project_root);
 
     print!(
         "{} {} Building package tree...",
@@ -951,7 +1079,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LOOKING_GLASS
     );
     let _ = stdout().flush();
-    let mut build_state = BuildState::new(project_root, packages);
+    let mut build_state = BuildState::new(project_root, root_config_name, packages);
     parse_packages(&mut build_state);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
@@ -1182,10 +1310,16 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                             let package = build_state
                                 .get_package(&module.package_name)
                                 .expect("Package not found");
+
+                            let root_package = build_state
+                                .get_package(&build_state.root_config_name)
+                                .unwrap();
+
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
                                         &package,
+                                        &root_package,
                                         &helpers::get_iast_path(
                                             &path,
                                             &package.name,
@@ -1193,6 +1327,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                         ),
                                         module,
                                         &build_state.project_root,
+                                        &rescript_version,
                                         true,
                                     );
                                     Some(result)
@@ -1201,6 +1336,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                             };
                             let result = compile_file(
                                 &package,
+                                &root_package,
                                 &helpers::get_ast_path(
                                     &source_file.implementation.path,
                                     &package.name,
@@ -1208,6 +1344,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                 ),
                                 module,
                                 &build_state.project_root,
+                                &rescript_version,
                                 false,
                             );
                             // if let Err(error) = result.to_owned() {
