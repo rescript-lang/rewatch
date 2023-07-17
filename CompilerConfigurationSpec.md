@@ -132,9 +132,13 @@ enum: | "dce" | "exception" | "termination"
 
 | Parameter | JSON type     | Remark | Implemented? |
 | --------- | ------------- | ------ | :----------: |
-| module    | Module-Format |        |     [x]      |
+| module    | Module-Format |        |     [_]      |
 | in-source | boolean       |        |     [x]      |
 | suffix    | Suffix        |        |     [_]      |
+
+### Module-Format
+
+enum: "commonjs" | "es6" | "es6-global"
 
 ### Suffix
 
