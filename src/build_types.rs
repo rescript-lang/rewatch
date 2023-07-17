@@ -67,6 +67,7 @@ pub struct BuildState {
     pub packages: AHashMap<String, Package>,
     pub module_names: AHashSet<String>,
     pub project_root: String,
+    pub root_config_name: String,
 }
 
 impl BuildState {
@@ -77,12 +78,17 @@ impl BuildState {
     pub fn get_module(&self, module_name: &str) -> Option<&Module> {
         self.modules.get(module_name)
     }
-    pub fn new(project_root: String, packages: AHashMap<String, Package>) -> Self {
+    pub fn new(
+        project_root: String,
+        root_config_name: String,
+        packages: AHashMap<String, Package>,
+    ) -> Self {
         Self {
             module_names: AHashSet::new(),
             modules: AHashMap::new(),
             packages: packages,
             project_root: project_root,
+            root_config_name: root_config_name,
         }
     }
     pub fn insert_module(&mut self, module_name: &str, module: Module) {
