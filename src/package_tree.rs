@@ -378,3 +378,8 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
         });
     result
 }
+
+pub fn get_package_name(path: &str) -> String {
+    let bsconfig = read_bsconfig(&path);
+    bsconfig.name
+}
