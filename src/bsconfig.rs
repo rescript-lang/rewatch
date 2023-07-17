@@ -1,5 +1,5 @@
-use serde::Deserialize;
-use std::fs;
+use serde::{Deserialize, Serialize};
+use std::{fmt, fs};
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -94,6 +94,55 @@ pub enum Namespace {
     String(String),
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub enum JsxMode {
+    #[serde(rename = "classic")]
+    Classic,
+    #[serde(rename = "automatic")]
+    Automatic,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub enum JsxModule {
+    #[serde(rename = "react")]
+    React,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum Suffix {
+    #[serde(rename = ".js")]
+    Js,
+    #[serde(rename = ".mjs")]
+    Mjs,
+    #[serde(rename = ".cjs")]
+    Cjs,
+    #[serde(rename = ".bs.js")]
+    BsJs,
+    #[serde(rename = ".bs.mjs")]
+    BsMjs,
+    #[serde(rename = ".bs.cjs")]
+    BsCjs,
+}
+
+impl fmt::Display for Suffix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            serde_json::to_value(self).unwrap().as_str().unwrap()
+        )
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct JsxSpecs {
+    pub version: Option<i32>,
+    pub module: Option<JsxModule>,
+    pub mode: Option<JsxMode>,
+    #[serde(rename = "v3-dependencies")]
+    pub v3_dependencies: Option<Vec<String>>,
+}
+
 /// # bsconfig.json representation
 /// This is tricky, there is a lot of ambiguity. This is probably incomplete.
 #[derive(Deserialize, Debug, Clone)]
@@ -103,7 +152,7 @@ pub struct T {
     #[serde(rename = "package-specs")]
     pub package_specs: Option<OneOrMore<PackageSpec>>,
     pub warnings: Option<Warnings>,
-    pub suffix: Option<String>,
+    pub suffix: Option<Suffix>,
     #[serde(rename = "pinned-dependencies")]
     pub pinned_dependencies: Option<Vec<String>>,
     #[serde(rename = "bs-dependencies")]
@@ -116,6 +165,8 @@ pub struct T {
     pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
     pub namespace: Option<Namespace>,
+    pub jsx: Option<JsxSpecs>,
+    pub uncurried: Option<bool>,
 }
 
 /// This flattens string flags
