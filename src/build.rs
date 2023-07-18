@@ -1203,7 +1203,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                 timing_ast_elapsed.as_secs_f64()
             );
             println!("{}", &err);
-            clean::cleanup_after_build(&build_state, false);
+            clean::cleanup_after_build(&build_state);
             return Err(());
         }
     }
@@ -1545,7 +1545,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
 
     logs::finalize(&build_state.packages);
     pb.finish();
-    clean::cleanup_after_build(&build_state, compile_errors.len() == 0);
+    clean::cleanup_after_build(&build_state);
     if compile_errors.len() > 0 {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
