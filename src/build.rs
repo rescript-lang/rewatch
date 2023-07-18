@@ -874,7 +874,7 @@ pub fn compile_file(
 
             let warn_error = match warnings.error {
                 Some(bsconfig::Error::Catchall(true)) => {
-                    vec!["-warn-error A".to_string()]
+                    vec!["-warn-error".to_string(), "A".to_string()]
                 }
                 Some(bsconfig::Error::Qualified(errors)) => {
                     vec!["-warn-error".to_string(), errors.to_string()]
