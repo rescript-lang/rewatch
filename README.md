@@ -11,7 +11,7 @@ Rewatch is an alternative build system for the [Rescript Compiler](https://rescr
 This project should be considered Alpha Status. Currently used to solve a very specific problem within [Walnut](https://github.com/teamwalnut/). We're open to PR's and other contributions to make this more solid.
 
   - [x] Compile Monorepo's with multiple packages
-- [ ] Correctly compile to different formats than `.mjs` (taken from bsconfig)
+  - [x] Correctly compile to different formats than `.mjs` (taken from bsconfig)
   - [ ] Error Handling - we still panic here-and-there, don't expect a super smooth UX
   - [ ] Compile Single Package
   - [ ] Configure executables - potentially interop with some [Melange](https://github.com/melange-re/melange) / [Bucklescript / ReasonML](https://reasonml.github.io/) subset
