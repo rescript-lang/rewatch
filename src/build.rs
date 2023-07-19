@@ -1052,7 +1052,7 @@ pub fn clean(path: &str) {
     let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
 
     println!(
-        "{}\r{} {}Cleant compiler assets in {:.2}s",
+        "{}\r{} {}Cleaned compiler assets in {:.2}s",
         LINE_CLEAR,
         style("[1/2]").bold().dim(),
         CHECKMARK,
@@ -1062,7 +1062,7 @@ pub fn clean(path: &str) {
 
     let timing_clean_mjs = Instant::now();
     print!(
-        "{} {} Clearing mjs files...",
+        "{} {} Cleaning mjs files...",
         style("[2/2]").bold().dim(),
         SWEEP
     );
@@ -1072,7 +1072,7 @@ pub fn clean(path: &str) {
     clean_mjs_files(&build_state.modules);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
-        "{}\r{} {}Cleant mjs in {:.2}s",
+        "{}\r{} {}Cleaned mjs files in {:.2}s",
         LINE_CLEAR,
         style("[2/2]").bold().dim(),
         CHECKMARK,
