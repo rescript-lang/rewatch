@@ -862,7 +862,7 @@ pub fn compile_file(
     let jsx_mode_args = get_jsx_mode_args(&root_package);
     let uncurried_args = get_uncurried_args(version, &package, &root_package);
 
-    let warning_args: Vec<String> = match root_package.bsconfig.warnings.to_owned() {
+    let warning_args: Vec<String> = match package.bsconfig.warnings.to_owned() {
         None => vec![],
         Some(warnings) => {
             let warn_number = match warnings.number {
