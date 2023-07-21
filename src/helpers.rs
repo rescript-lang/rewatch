@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod emojis {
     use console::Emoji;
+    pub static COMMAND: Emoji<'_, '_> = Emoji("🏃 ", "");
     pub static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
     pub static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
     pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
