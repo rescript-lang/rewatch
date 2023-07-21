@@ -41,7 +41,7 @@ jobs:
       - name: Install Rust targets
         shell: bash
         run: |
-          rustup target add x86_64-unknown-linux-musl \
+          rustup target add x86_64-unknown-linux-gnu \
             aarch64-apple-darwin \
             x86_64-apple-darwin \
             x86_64-pc-windows-gnu
@@ -49,13 +49,16 @@ jobs:
         run: cargo install cargo-zigbuild
       - name: macOS - build universal2
         run: cargo zigbuild --target universal2-apple-darwin --release
-      - name: Linux - build x86_64 musl
-        run: cargo zigbuild --target x86_64-unknown-linux-musl --release
-      - name: Windows - build x86_64 musl
+      # Musl is more portable but also slower than gnu
+      # - name: Linux - build x86_64 musl
+      #   run: cargo zigbuild --target x86_64-unknown-linux-musl --release
+      - name: Linux - build x86_64 gnu
+        run: cargo zigbuild --target x86_64-unknown-linux-gnu --release
+      - name: Windows - build x86_64 gnu
         run: cargo zigbuild --target x86_64-pc-windows-gnu --release
       - name: Move / Rename Artifacts
         run: |
-          mv target/x86_64-unknown-linux-musl/release/rewatch ./rewatch-linux
+          mv target/x86_64-unknown-linux-gnu/release/rewatch ./rewatch-linux
           mv target/universal2-apple-darwin/release/rewatch ./rewatch-macos
           mv target/x86_64-pc-windows-gnu/release/rewatch.exe ./rewatch-windows.exe
 
