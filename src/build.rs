@@ -5,7 +5,6 @@ use crate::clean;
 use crate::clean::clean_mjs_files;
 use crate::helpers;
 use crate::helpers::emojis::*;
-use crate::helpers::is_interface_ast_file;
 use crate::logs;
 use crate::package_tree;
 use ahash::AHashSet;
@@ -139,7 +138,7 @@ fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<On
 
 fn path_to_ast_extension(path: &Path) -> &str {
     let extension = path.extension().unwrap().to_str().unwrap();
-    return if is_interface_ast_file(extension) {
+    return if helpers::is_interface_ast_file(extension) {
         ".iast"
     } else {
         ".ast"
@@ -1017,6 +1016,36 @@ pub fn compile_file(
                         .join(dir)
                         .join(module_name.to_owned() + ".cmti"),
                 );
+            }
+            match &module.source_type {
+                SourceType::SourceFile(SourceFile {
+                    interface: Some(Interface { path, .. }),
+                    ..
+                })
+                | SourceType::SourceFile(SourceFile {
+                    implementation: Implementation { path, .. },
+                    ..
+                }) => {
+                    // we need to copy the source file to the build directory.
+                    // editor tools expects the source file in lib/bs for finding the current package
+                    // and in lib/ocaml when referencing modules in other packages
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&helpers::get_package_path(root_path, &package.name))
+                            .join(path),
+                        std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
+                            .join(path),
+                    )
+                    .expect("copying source file failed");
+
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&helpers::get_package_path(root_path, &package.name))
+                            .join(path),
+                        std::path::Path::new(&helpers::get_build_path(root_path, &package.name))
+                            .join(std::path::Path::new(path).file_name().unwrap()),
+                    )
+                    .expect("copying source file failed");
+                }
+                _ => (),
             }
 
             if helpers::contains_ascii_characters(&err) {
