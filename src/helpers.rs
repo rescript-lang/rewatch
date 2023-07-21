@@ -312,3 +312,13 @@ pub fn is_implementation_file(extension: &str) -> bool {
 pub fn is_source_file(extension: &str) -> bool {
     is_interface_file(extension) || is_implementation_file(extension)
 }
+
+pub fn is_non_exotic_module_name(module_name: &str) -> bool {
+    let mut chars = module_name.chars();
+    if chars.next().unwrap().is_ascii_uppercase()
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return true;
+    }
+    return false;
+}

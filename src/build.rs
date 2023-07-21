@@ -125,8 +125,10 @@ fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<On
                 .iter()
                 .filter(|flag| match (flag, filter) {
                     (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
-                    (bsconfig::OneOrMore::Multiple(str), Some(filter)) => !str.first().unwrap().contains(filter),
-                    _ => true
+                    (bsconfig::OneOrMore::Multiple(str), Some(filter)) => {
+                        !str.first().unwrap().contains(filter)
+                    }
+                    _ => true,
                 })
                 .map(|x| x.to_owned())
                 .collect::<Vec<OneOrMore<String>>>(),
@@ -297,7 +299,7 @@ fn get_dep_modules(
 fn gen_mlmap(
     package: &package_tree::Package,
     namespace: &str,
-    depending_modules: AHashSet<String>,
+    depending_modules: &AHashSet<String>,
     root_path: &str,
 ) -> String {
     let build_path_abs = helpers::get_build_path(root_path, &package.name);
@@ -314,6 +316,10 @@ fn gen_mlmap(
     let mut modules = Vec::from_iter(depending_modules.to_owned());
     modules.sort();
     for module in modules {
+        // check if the module names is referencible in code (no exotic module names)
+        // (only contains A-Z a-z 0-9 and _ and only starts with a capital letter)
+        // if not, it does not make sense to export as part of the name space
+        // this helps compile times of exotic modules such as MyModule.test
         file.write_all(module.as_bytes()).unwrap();
         file.write_all(b"\n").unwrap();
     }
@@ -638,20 +644,26 @@ pub fn parse_packages(build_state: &mut BuildState) {
                             true
                         }
                     })
+                    .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
                     .collect::<AHashSet<String>>();
 
                 let mlmap = gen_mlmap(
                     &package,
                     namespace,
-                    depending_modules,
+                    &depending_modules,
                     &build_state.project_root,
                 );
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
-
                 let deps = source_files
                     .iter()
+                    .filter(|path| {
+                        helpers::is_non_exotic_module_name(&helpers::file_path_to_module_name(
+                            &path,
+                            &package_tree::Namespace::NoNamespace,
+                        ))
+                    })
                     .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
                     .filter(|module_name| {
                         if let Some(entry) = entry {
@@ -669,7 +681,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     ),
                     Module {
                         source_type: SourceType::MlMap(MlMap { dirty: false }),
-                        deps: deps,
+                        deps,
                         reverse_deps: AHashSet::new(),
                         package_name: package.name.to_owned(),
                         compile_dirty: false,
