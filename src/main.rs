@@ -1,4 +1,6 @@
+use clap::{Parser, ValueEnum};
 use regex::Regex;
+
 pub mod bsconfig;
 pub mod build;
 pub mod build_types;
@@ -9,28 +11,55 @@ pub mod package_tree;
 pub mod queue;
 pub mod watcher;
 
+#[derive(Debug, Clone, ValueEnum)]
+enum Command {
+    /// Build using Rewatch
+    Build,
+    /// Build, then start a watcher
+    Watch,
+    /// Clean the build artifacts
+    Clean,
+}
+
+/// Rewatch is an alternative build system for the Rescript Compiler which uses Ninja. It strives
+/// to deliver consistent and faster builds in monorepo setups with multiple packages, where the
+/// default build system fails to pick up changed interfaces across multiple packages.
+#[derive(Parser, Debug)]
+#[command(version)]
+struct Args {
+    #[arg(value_enum)]
+    command: Option<Command>,
+
+    /// The relative path to where the main bsconfig.json resides. IE - the root of your project.
+    folder: Option<String>,
+
+    /// Filter allows for a regex to be supplied which will filter the files to be compiled. For
+    /// instance, to filter out test files for compilation while doing feature work.
+    #[arg(short, long)]
+    filter: Option<String>,
+}
+
 fn main() {
     env_logger::init();
-    let command = std::env::args().nth(1).unwrap_or("build".to_string());
-    let folder = std::env::args().nth(2).unwrap_or(".".to_string());
-    let filter = std::env::args()
-        .nth(3)
+    let args = Args::parse();
+
+    let command = args.command.unwrap_or(Command::Build);
+    let folder = args.folder.unwrap_or(".".to_string());
+    let filter = args
+        .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
 
-    match command.as_str() {
-        "clean" => {
-            build::clean(&folder);
-        }
-        "build" => {
+    match command {
+        Command::Clean => build::clean(&folder),
+        Command::Build => {
             match build::build(&filter, &folder) {
                 Err(()) => std::process::exit(1),
                 Ok(_) => std::process::exit(0),
             };
         }
-        "watch" => {
-            let _modules = build::build(&filter, &folder);
+        Command::Watch => {
+            let _initial_build = build::build(&filter, &folder);
             watcher::start(&filter, &folder);
         }
-        _ => println!("Not a valid build command"),
     }
 }
