@@ -1,4 +1,5 @@
 use crate::build;
+use crate::cmd;
 use crate::helpers;
 use crate::queue::FifoQueue;
 use crate::queue::*;
@@ -11,6 +12,7 @@ async fn async_watch(
     q: Arc<FifoQueue<Result<Event, Error>>>,
     path: &str,
     filter: &Option<regex::Regex>,
+    after_build: Option<String>,
 ) -> notify::Result<()> {
     loop {
         let mut events: Vec<Event> = vec![];
@@ -56,11 +58,12 @@ async fn async_watch(
             }
 
             let _ = build::build(filter, path);
+            after_build.clone().map(|command| cmd::run(command));
         }
     }
 }
 
-pub fn start(filter: &Option<regex::Regex>, folder: &str) {
+pub fn start(filter: &Option<regex::Regex>, folder: &str, after_build: Option<String>) {
     futures::executor::block_on(async {
         let queue = Arc::new(FifoQueue::<Result<Event, Error>>::new());
         let producer = queue.clone();
@@ -72,7 +75,7 @@ pub fn start(filter: &Option<regex::Regex>, folder: &str) {
             .watch(folder.as_ref(), RecursiveMode::Recursive)
             .expect("Could not start watcher");
 
-        if let Err(e) = async_watch(consumer, folder, filter).await {
+        if let Err(e) = async_watch(consumer, folder, filter, after_build).await {
             println!("error: {:?}", e)
         }
     })

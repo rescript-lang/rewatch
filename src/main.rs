@@ -5,6 +5,7 @@ pub mod bsconfig;
 pub mod build;
 pub mod build_types;
 pub mod clean;
+pub mod cmd;
 pub mod helpers;
 pub mod logs;
 pub mod package_tree;
@@ -37,6 +38,13 @@ struct Args {
     /// instance, to filter out test files for compilation while doing feature work.
     #[arg(short, long)]
     filter: Option<String>,
+
+    /// This allows one to pass an additional command to the watcher, which allows it to run when
+    /// finished. For instance, to play a sound when done compiling, or to run a test suite.
+    /// NOTE - You may need to add '--color=always' to your subcommand in case you want to output
+    /// colour as well
+    #[arg(short, long)]
+    after_build: Option<String>,
 }
 
 fn main() {
@@ -54,12 +62,16 @@ fn main() {
         Command::Build => {
             match build::build(&filter, &folder) {
                 Err(()) => std::process::exit(1),
-                Ok(_) => std::process::exit(0),
+                Ok(_) => {
+                    args.after_build.map(|command| cmd::run(command));
+                    std::process::exit(0)
+                }
             };
         }
         Command::Watch => {
             let _initial_build = build::build(&filter, &folder);
-            watcher::start(&filter, &folder);
+            args.after_build.clone().map(|command| cmd::run(command));
+            watcher::start(&filter, &folder, args.after_build);
         }
     }
 }
