@@ -114,14 +114,19 @@ fn get_uncurried_args(
 }
 
 fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
-    let filter = "bisect";
+    // get the environment variable "BISECT_ENABLE" if it exists set the filter to "bisect"
+    let filter = match std::env::var("BISECT_ENABLE") {
+        Ok(_) => None,
+        Err(_) => Some("bisect"),
+    };
     match ppx_flags {
         Some(flags) => Some(
             flags
                 .iter()
-                .filter(|flag| match flag {
-                    bsconfig::OneOrMore::Single(str) => !str.contains(filter),
-                    bsconfig::OneOrMore::Multiple(str) => !str.first().unwrap().contains(filter),
+                .filter(|flag| match (flag, filter) {
+                    (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
+                    (bsconfig::OneOrMore::Multiple(str), Some(filter)) => !str.first().unwrap().contains(filter),
+                    _ => true
                 })
                 .map(|x| x.to_owned())
                 .collect::<Vec<OneOrMore<String>>>(),
