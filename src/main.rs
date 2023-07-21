@@ -21,7 +21,7 @@ enum Command {
     Clean,
 }
 
-/// Rewatch is an alternative build system for the Rescript Compiler which uses Ninja. It strives
+/// Rewatch is an alternative build system for the Rescript Compiler bsb (which uses Ninja internally). It strives
 /// to deliver consistent and faster builds in monorepo setups with multiple packages, where the
 /// default build system fails to pick up changed interfaces across multiple packages.
 #[derive(Parser, Debug)]
