@@ -1111,7 +1111,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
 
     print!(
         "{} {} Building package tree...",
-        style("[1/6]").bold().dim(),
+        style("[1/7]").bold().dim(),
         TREE
     );
     let _ = stdout().flush();
@@ -1123,7 +1123,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
-        style("[1/6]").bold().dim(),
+        style("[1/7]").bold().dim(),
         CHECKMARK,
         timing_package_tree_elapsed.as_secs_f64()
     );
@@ -1131,7 +1131,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     let timing_source_files = Instant::now();
     print!(
         "{} {} Finding source files...",
-        style("[2/6]").bold().dim(),
+        style("[2/7]").bold().dim(),
         LOOKING_GLASS
     );
     let _ = stdout().flush();
@@ -1141,14 +1141,14 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     println!(
         "{}\r{} {}Found source files in {:.2}s",
         LINE_CLEAR,
-        style("[2/6]").bold().dim(),
+        style("[2/7]").bold().dim(),
         CHECKMARK,
         timing_source_files_elapsed.as_secs_f64()
     );
 
     print!(
         "{} {} Cleaning up previous build...",
-        style("[3/6]").bold().dim(),
+        style("[3/7]").bold().dim(),
         SWEEP
     );
     let timing_cleanup = Instant::now();
@@ -1158,7 +1158,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
         LINE_CLEAR,
-        style("[3/6]").bold().dim(),
+        style("[3/7]").bold().dim(),
         CHECKMARK,
         diff_cleanup,
         total_cleanup,
@@ -1171,7 +1171,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     pb.set_style(
         ProgressStyle::with_template(&format!(
             "{} {} Parsing... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[4/6]").bold().dim(),
+            style("[4/7]").bold().dim(),
             CODE
         ))
         .unwrap(),
@@ -1186,7 +1186,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
             println!(
                 "{}\r{} {}Parsed {} source files in {:.2}s",
                 LINE_CLEAR,
-                style("[4/6]").bold().dim(),
+                style("[4/7]").bold().dim(),
                 CHECKMARK,
                 num_dirty_modules,
                 timing_ast_elapsed.as_secs_f64()
@@ -1198,7 +1198,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
-                style("[4/6]").bold().dim(),
+                style("[4/7]").bold().dim(),
                 CROSS,
                 timing_ast_elapsed.as_secs_f64()
             );
@@ -1215,7 +1215,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     println!(
         "{}\r{} {}Collected deps in {:.2}s",
         LINE_CLEAR,
-        style("[5/6]").bold().dim(),
+        style("[5/7]").bold().dim(),
         CHECKMARK,
         timing_deps_elapsed.as_secs_f64()
     );
@@ -1286,7 +1286,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     pb.set_style(
         ProgressStyle::with_template(&format!(
             "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[6/6]").bold().dim(),
+            style("[6/7]").bold().dim(),
             SWORDS
         ))
         .unwrap(),
@@ -1554,7 +1554,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[6/6]").bold().dim(),
+            style("[6/7]").bold().dim(),
             CROSS,
             num_compiled_modules,
             compile_duration.as_secs_f64()
@@ -1567,7 +1567,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[6/6]").bold().dim(),
+            style("[6/7]").bold().dim(),
             CHECKMARK,
             num_compiled_modules,
             compile_duration.as_secs_f64()
@@ -1575,7 +1575,13 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
     }
 
     let timing_total_elapsed = timing_total.elapsed();
-    println!("Done in {:.2}s", timing_total_elapsed.as_secs_f64());
+    println!(
+        "{}\r{} {}Finished Compilation in {:.2}s",
+        LINE_CLEAR,
+        style("[7/7]").bold().dim(),
+        CHECKMARK,
+        timing_total_elapsed.as_secs_f64()
+    );
 
     Ok(build_state)
 }
