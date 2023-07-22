@@ -46,6 +46,7 @@ pub struct Package {
     pub package_dir: String,
     pub dirs: Option<AHashSet<PathBuf>>,
     pub is_pinned_dep: bool,
+    pub is_root: bool,
 }
 
 impl PartialEq for Package {
@@ -173,7 +174,7 @@ fn get_package_dir(package_name: &str, is_root: bool) -> String {
     if is_root {
         "".to_string()
     } else {
-        helpers::get_relative_package_path(&package_name)
+        helpers::get_relative_package_path(&package_name, is_root)
     }
 }
 
@@ -193,6 +194,7 @@ fn build_package<'a>(
     package_dir: &str,
     project_root: &str,
     is_pinned_dep: bool,
+    is_root: bool,
 ) -> &'a mut AHashMap<String, Package> {
     // let (package_dir, bsconfig) = read_bsconfig(package_name, project_root, is_root);
     let copied_bsconfig = bsconfig.to_owned();
@@ -262,6 +264,7 @@ fn build_package<'a>(
             package_dir: package_dir.to_string(),
             dirs: None,
             is_pinned_dep: is_pinned_dep,
+            is_root,
         }
     });
 
@@ -299,6 +302,7 @@ fn build_package<'a>(
                     .as_ref()
                     .map(|p| p.contains(&child_bsconfig.name))
                     .unwrap_or(false),
+                false,
             )
         })
 }
@@ -410,7 +414,7 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
 
     let package_dir = get_package_dir("", true);
     let bsconfig = read_bsconfig(&package_dir);
-    build_package(&mut map, bsconfig, &package_dir, root_folder, true);
+    build_package(&mut map, bsconfig, &package_dir, root_folder, true, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(&filter, map);
@@ -420,8 +424,12 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
         .for_each(|package| match &package.dirs {
             Some(dirs) => dirs.iter().for_each(|dir| {
                 let _ = std::fs::create_dir_all(
-                    std::path::Path::new(&helpers::get_bs_build_path(root_folder, &package.name))
-                        .join(dir),
+                    std::path::Path::new(&helpers::get_bs_build_path(
+                        root_folder,
+                        &package.name,
+                        package.is_root,
+                    ))
+                    .join(dir),
                 );
             }),
             None => (),

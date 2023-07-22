@@ -25,13 +25,14 @@ pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     return None;
 }
 
-fn remove_asts(source_file: &str, package_name: &str, root_path: &str) {
+fn remove_asts(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
         &package_tree::Namespace::NoNamespace,
         root_path,
         "ast",
+        is_root,
     ));
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
@@ -39,6 +40,7 @@ fn remove_asts(source_file: &str, package_name: &str, root_path: &str) {
         &package_tree::Namespace::NoNamespace,
         root_path,
         "iast",
+        is_root,
     ));
 }
 
@@ -51,6 +53,7 @@ fn remove_compile_assets(
     package_name: &str,
     namespace: &package_tree::Namespace,
     root_path: &str,
+    is_root: bool,
 ) {
     // optimization
     // only issue cmti if htere is an interfacce file
@@ -61,6 +64,7 @@ fn remove_compile_assets(
             namespace,
             root_path,
             extension,
+            is_root,
         ));
         let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
             source_file,
@@ -68,6 +72,7 @@ fn remove_compile_assets(
             namespace,
             root_path,
             extension,
+            is_root,
         ));
     }
 }
@@ -92,7 +97,14 @@ pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
 pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
     let mut ast_modules: AHashMap<
         String,
-        (String, String, package_tree::Namespace, SystemTime, String),
+        (
+            String,
+            String,
+            package_tree::Namespace,
+            SystemTime,
+            String,
+            bool,
+        ),
     > = AHashMap::new();
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
@@ -136,6 +148,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
             &build_state.project_root,
             &package.name,
+            package.is_root,
         )))
         .unwrap();
 
@@ -164,6 +177,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                                 package.namespace.to_owned(),
                                                 entry.metadata().unwrap().modified().unwrap(),
                                                 ast_file_path,
+                                                package.is_root,
                                             ),
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
@@ -206,17 +220,29 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
     let diff_len = diff.len();
 
     diff.par_iter().for_each(|res_file_location| {
-        let (_module_name, package_name, package_namespace, _last_modified, _ast_file_path) =
-            ast_modules
-                .get(&res_file_location.to_string())
-                .expect("Could not find module name for ast file");
+        let (
+            _module_name,
+            package_name,
+            package_namespace,
+            _last_modified,
+            _ast_file_path,
+            is_root,
+        ) = ast_modules
+            .get(&res_file_location.to_string())
+            .expect("Could not find module name for ast file");
 
-        remove_asts(res_file_location, package_name, &build_state.project_root);
+        remove_asts(
+            res_file_location,
+            package_name,
+            &build_state.project_root,
+            *is_root,
+        );
         remove_compile_assets(
             res_file_location,
             package_name,
             package_namespace,
             &build_state.project_root,
+            *is_root,
         );
         remove_mjs_file(&res_file_location)
     });
@@ -225,10 +251,16 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         .intersection(&rescript_file_locations)
         .into_iter()
         .for_each(|res_file_location| {
-            let (module_name, _package_name, package_namespace, ast_last_modified, ast_file_path) =
-                ast_modules
-                    .get(res_file_location)
-                    .expect("Could not find module name for ast file");
+            let (
+                module_name,
+                _package_name,
+                package_namespace,
+                ast_last_modified,
+                ast_file_path,
+                _is_root,
+            ) = ast_modules
+                .get(res_file_location)
+                .expect("Could not find module name for ast file");
             let module = build_state
                 .modules
                 .get_mut(module_name)
@@ -299,7 +331,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
     let ast_module_names = ast_modules
         .values()
-        .map(|(module_name, _, _, _, _)| module_name)
+        .map(|(module_name, _, _, _, _, _)| module_name)
         .collect::<AHashSet<&String>>();
 
     let all_module_names = build_state
@@ -383,6 +415,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                             &source_file.implementation.path,
                             &module.package_name,
                             &build_state.project_root,
+                            package.is_root,
                         );
                     }
                     _ => (),
@@ -399,6 +432,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                             &module.package_name,
                             &package.namespace,
                             &build_state.project_root,
+                            package.is_root,
                         );
                     }
                     SourceType::MlMap(_) => remove_compile_assets(
@@ -406,10 +440,12 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                             &build_state.project_root,
                             &module.package_name,
                             &package.namespace.to_suffix().unwrap(),
+                            package.is_root,
                         ),
                         &module.package_name,
                         &package_tree::Namespace::NoNamespace,
                         &build_state.project_root,
+                        package.is_root,
                     ),
                 }
             }

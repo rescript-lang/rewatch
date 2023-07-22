@@ -1,6 +1,9 @@
 {
   "name": "testrepo",
-  "sources": [],
+  "sources": {
+    "dir": "src",
+    "subdirs": true
+  },
   "package-specs": [
     {
       "module": "es6",
