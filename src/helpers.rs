@@ -43,24 +43,39 @@ impl LexicalAbsolute for Path {
     }
 }
 
-pub fn get_relative_package_path(package_name: &str) -> String {
-    format!("node_modules/{}", package_name)
+pub fn get_relative_package_path(package_name: &str, is_root: bool) -> String {
+    match is_root {
+        true => "".to_string(),
+        false => format!("node_modules/{}", package_name),
+    }
 }
 
-pub fn get_package_path(root: &str, package_name: &str) -> String {
-    format!("{}/node_modules/{}", root, package_name)
+pub fn get_package_path(root: &str, package_name: &str, is_root: bool) -> String {
+    match is_root {
+        true => root.to_string(),
+        false => format!("{}/node_modules/{}", root, package_name),
+    }
 }
 
-pub fn get_build_path(root: &str, package_name: &str) -> String {
-    format!("{}/node_modules/{}/lib/ocaml", root, package_name)
+pub fn get_build_path(root: &str, package_name: &str, is_root: bool) -> String {
+    match is_root {
+        true => format!("{}/lib/ocaml", root),
+        false => format!("{}/node_modules/{}/lib/ocaml", root, package_name),
+    }
 }
 
-pub fn get_bs_build_path(root: &str, package_name: &str) -> String {
-    format!("{}/node_modules/{}/lib/bs", root, package_name)
+pub fn get_bs_build_path(root: &str, package_name: &str, is_root: bool) -> String {
+    match is_root {
+        true => format!("{}/lib/bs", root),
+        false => format!("{}/node_modules/{}/lib/bs", root, package_name),
+    }
 }
 
-pub fn get_path(root: &str, package_name: &str, file: &str) -> String {
-    format!("{}/{}/{}", root, package_name, file)
+pub fn get_path(root: &str, package_name: &str, file: &str, is_root: bool) -> String {
+    match is_root {
+        true => format!("{}/{}", root, file),
+        false => format!("{}/node_modules/{}/{}", root, package_name, file),
+    }
 }
 
 pub fn get_node_modules_path(root: &str) -> String {
@@ -186,8 +201,9 @@ pub fn get_compiler_asset(
     namespace: &package_tree::Namespace,
     root_path: &str,
     extension: &str,
+    is_root: bool,
 ) -> String {
-    get_build_path(root_path, package_name)
+    get_build_path(root_path, package_name, is_root)
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
         + "."
@@ -207,6 +223,7 @@ pub fn get_bs_compiler_asset(
     namespace: &package_tree::Namespace,
     root_path: &str,
     extension: &str,
+    is_root: bool,
 ) -> String {
     let namespace = match extension {
         "ast" | "iast" => &package_tree::Namespace::NoNamespace,
@@ -215,7 +232,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&get_bs_build_path(root_path, &package_name))
+    std::path::Path::new(&get_bs_build_path(root_path, &package_name, is_root))
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()
@@ -233,31 +250,53 @@ pub fn is_interface_ast_file(file: &str) -> bool {
     file.ends_with(".iast")
 }
 
-pub fn get_mlmap_path(root_path: &str, package_name: &str, namespace: &str) -> String {
-    get_build_path(root_path, package_name) + "/" + namespace + ".mlmap"
+pub fn get_mlmap_path(
+    root_path: &str,
+    package_name: &str,
+    namespace: &str,
+    is_root: bool,
+) -> String {
+    get_build_path(root_path, package_name, is_root) + "/" + namespace + ".mlmap"
 }
 
-pub fn get_mlmap_compile_path(root_path: &str, package_name: &str, namespace: &str) -> String {
-    get_build_path(root_path, package_name) + "/" + namespace + ".cmi"
+pub fn get_mlmap_compile_path(
+    root_path: &str,
+    package_name: &str,
+    namespace: &str,
+    is_root: bool,
+) -> String {
+    get_build_path(root_path, package_name, is_root) + "/" + namespace + ".cmi"
 }
 
-pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
+pub fn get_ast_path(
+    source_file: &str,
+    package_name: &str,
+    root_path: &str,
+    is_root: bool,
+) -> String {
     get_compiler_asset(
         source_file,
         package_name,
         &package_tree::Namespace::NoNamespace,
         root_path,
         "ast",
+        is_root,
     )
 }
 
-pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str) -> String {
+pub fn get_iast_path(
+    source_file: &str,
+    package_name: &str,
+    root_path: &str,
+    is_root: bool,
+) -> String {
     get_compiler_asset(
         source_file,
         package_name,
         &package_tree::Namespace::NoNamespace,
         root_path,
         "iast",
+        is_root,
     )
 }
 

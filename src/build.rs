@@ -153,7 +153,7 @@ fn generate_ast(
     version: &str,
 ) -> Result<(String, Option<String>), String> {
     let file = &filename.to_string();
-    let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
 
@@ -304,7 +304,7 @@ fn gen_mlmap(
     depending_modules: &AHashSet<String>,
     root_path: &str,
 ) -> String {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
     // we don't really need to create a digest, because we track if we need to
     // recompile in a different way but we need to put it in the file for it to
     // be readable.
@@ -357,6 +357,7 @@ fn generate_asts(
                             .namespace
                             .to_suffix()
                             .expect("namespace should be set for mlmap module"),
+                        package.is_root,
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
                         &build_state.project_root,
@@ -365,6 +366,7 @@ fn generate_asts(
                             .namespace
                             .to_suffix()
                             .expect("namespace should be set for mlmap module"),
+                        package.is_root,
                     );
                     let mlmap_hash = compute_file_hash(&compile_path);
                     compile_mlmap(&package, module_name, &build_state.project_root);
@@ -542,6 +544,7 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
                     &source_file.implementation.path,
                     &module.package_name,
                     &build_state.project_root,
+                    package.is_root,
                 );
 
                 let mut deps = get_dep_modules(
@@ -557,6 +560,7 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
                             &interface.path,
                             &module.package_name,
                             &build_state.project_root,
+                            package.is_root,
                         );
 
                         deps.extend(get_dep_modules(
@@ -610,8 +614,11 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 Some(package_modules) => build_state.module_names.extend(package_modules),
                 None => (),
             }
-            let build_path_abs =
-                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name);
+            let build_path_abs = helpers::get_build_path(
+                &build_state.project_root,
+                &package.bsconfig.name,
+                package.is_root,
+            );
             helpers::create_build_path(&build_path_abs);
 
             package.namespace.to_suffix().iter().for_each(|namespace| {
@@ -786,7 +793,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 }
 
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
     let mlmap_name = format!("{}.mlmap", namespace);
     let args = vec![
         "-w",
@@ -813,7 +820,7 @@ pub fn compile_file(
     version: &str,
     is_interface: bool,
 ) -> Result<Option<String>, String> {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name);
+    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let normal_deps = package
@@ -838,7 +845,12 @@ pub fn compile_file(
         .map(|x| {
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x)).unwrap(),
+                helpers::canonicalize_string_path(&helpers::get_build_path(
+                    root_path,
+                    &x,
+                    package.is_root,
+                ))
+                .unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -993,28 +1005,44 @@ pub fn compile_file(
             if !is_interface {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
-                        .join(dir)
-                        .join(module_name.to_owned() + ".cmi"),
+                    std::path::Path::new(&helpers::get_bs_build_path(
+                        root_path,
+                        &package.name,
+                        package.is_root,
+                    ))
+                    .join(dir)
+                    .join(module_name.to_owned() + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
-                        .join(dir)
-                        .join(module_name.to_owned() + ".cmj"),
+                    std::path::Path::new(&helpers::get_bs_build_path(
+                        root_path,
+                        &package.name,
+                        package.is_root,
+                    ))
+                    .join(dir)
+                    .join(module_name.to_owned() + ".cmj"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
-                        .join(dir)
-                        .join(module_name.to_owned() + ".cmt"),
+                    std::path::Path::new(&helpers::get_bs_build_path(
+                        root_path,
+                        &package.name,
+                        package.is_root,
+                    ))
+                    .join(dir)
+                    .join(module_name.to_owned() + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
-                        .join(dir)
-                        .join(module_name.to_owned() + ".cmti"),
+                    std::path::Path::new(&helpers::get_bs_build_path(
+                        root_path,
+                        &package.name,
+                        package.is_root,
+                    ))
+                    .join(dir)
+                    .join(module_name.to_owned() + ".cmti"),
                 );
             }
             match &module.source_type {
@@ -1030,18 +1058,34 @@ pub fn compile_file(
                     // editor tools expects the source file in lib/bs for finding the current package
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
-                        std::path::Path::new(&helpers::get_package_path(root_path, &package.name))
-                            .join(path),
-                        std::path::Path::new(&helpers::get_bs_build_path(root_path, &package.name))
-                            .join(path),
+                        std::path::Path::new(&helpers::get_package_path(
+                            root_path,
+                            &package.name,
+                            package.is_root,
+                        ))
+                        .join(path),
+                        std::path::Path::new(&helpers::get_bs_build_path(
+                            root_path,
+                            &package.name,
+                            package.is_root,
+                        ))
+                        .join(path),
                     )
                     .expect("copying source file failed");
 
                     let _ = std::fs::copy(
-                        std::path::Path::new(&helpers::get_package_path(root_path, &package.name))
-                            .join(path),
-                        std::path::Path::new(&helpers::get_build_path(root_path, &package.name))
-                            .join(std::path::Path::new(path).file_name().unwrap()),
+                        std::path::Path::new(&helpers::get_package_path(
+                            root_path,
+                            &package.name,
+                            package.is_root,
+                        ))
+                        .join(path),
+                        std::path::Path::new(&helpers::get_build_path(
+                            root_path,
+                            &package.name,
+                            package.is_root,
+                        ))
+                        .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
                 }
@@ -1403,6 +1447,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                 &package.namespace,
                                 &build_state.project_root,
                                 "cmi",
+                                package.is_root,
                             );
 
                             let cmi_digest = compute_file_hash(&cmi_path);
@@ -1424,6 +1469,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                             &path,
                                             &package.name,
                                             &build_state.project_root,
+                                            package.is_root,
                                         ),
                                         module,
                                         &build_state.project_root,
@@ -1441,6 +1487,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                                     &source_file.implementation.path,
                                     &package.name,
                                     &build_state.project_root,
+                                    package.is_root,
                                 ),
                                 module,
                                 &build_state.project_root,
