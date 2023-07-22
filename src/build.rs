@@ -1128,13 +1128,12 @@ pub fn clean(path: &str) {
         );
         std::io::stdout().flush().unwrap();
 
-        let path = std::path::Path::new(&package.package_dir)
-            .join("lib")
-            .join("ocaml");
+        let path_str = helpers::get_build_path(&project_root, &package.name, package.is_root);
+        let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
-        let path = std::path::Path::new(&package.package_dir)
-            .join("lib")
-            .join("bs");
+
+        let path_str = helpers::get_bs_build_path(&project_root, &package.name, package.is_root);
+        let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
     });
     let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
@@ -1155,9 +1154,9 @@ pub fn clean(path: &str) {
         SWEEP
     );
     std::io::stdout().flush().unwrap();
-    let mut build_state = BuildState::new(project_root, root_config_name, packages);
+    let mut build_state = BuildState::new(project_root.to_owned(), root_config_name, packages);
     parse_packages(&mut build_state);
-    clean_mjs_files(&build_state.modules);
+    clean_mjs_files(&build_state, &project_root);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
         "{}\r{} {}Cleaned mjs files in {:.2}s",
