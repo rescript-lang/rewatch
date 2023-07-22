@@ -1,3 +1,4 @@
+use crate::bsconfig;
 use crate::build;
 use crate::build_types::*;
 use crate::helpers;
@@ -44,8 +45,8 @@ fn remove_asts(source_file: &str, package_name: &str, root_path: &str, is_root: 
     ));
 }
 
-fn remove_mjs_file(source_file: &str) {
-    let _ = std::fs::remove_file(helpers::change_extension(source_file, "mjs"));
+fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
+    let _ = std::fs::remove_file(helpers::change_extension(source_file, &suffix.to_string()));
 }
 
 fn remove_compile_assets(
@@ -77,21 +78,39 @@ fn remove_compile_assets(
     }
 }
 
-pub fn clean_mjs_files(all_modules: &AHashMap<String, Module>) {
+pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
     // get all rescript file locations
-    let rescript_file_locations = all_modules
+    let rescript_file_locations = build_state
+        .modules
         .values()
         .filter_map(|module| match &module.source_type {
             SourceType::SourceFile(source_file) => {
-                Some(source_file.implementation.path.to_string())
+                let package = build_state.packages.get(&module.package_name).unwrap();
+                Some((
+                    std::path::PathBuf::from(helpers::get_package_path(
+                        &project_root,
+                        &module.package_name,
+                        package.is_root,
+                    ))
+                    .join(source_file.implementation.path.to_string())
+                    .to_string_lossy()
+                    .to_string(),
+                    package
+                        .bsconfig
+                        .suffix
+                        .to_owned()
+                        .unwrap_or(bsconfig::Suffix::Mjs),
+                ))
             }
             _ => None,
         })
-        .collect::<AHashSet<String>>();
+        .collect::<Vec<(String, bsconfig::Suffix)>>();
 
     rescript_file_locations
         .par_iter()
-        .for_each(|rescript_file_location| remove_mjs_file(&rescript_file_location));
+        .for_each(|(rescript_file_location, suffix)| {
+            remove_mjs_file(&rescript_file_location, &suffix)
+        });
 }
 
 pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
@@ -104,6 +123,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             SystemTime,
             String,
             bool,
+            Option<bsconfig::Suffix>,
         ),
     > = AHashMap::new();
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
@@ -178,6 +198,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                                 entry.metadata().unwrap().modified().unwrap(),
                                                 ast_file_path,
                                                 package.is_root,
+                                                package.bsconfig.suffix.to_owned(),
                                             ),
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
@@ -227,6 +248,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             _last_modified,
             _ast_file_path,
             is_root,
+            suffix,
         ) = ast_modules
             .get(&res_file_location.to_string())
             .expect("Could not find module name for ast file");
@@ -244,7 +266,10 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             &build_state.project_root,
             *is_root,
         );
-        remove_mjs_file(&res_file_location)
+        remove_mjs_file(
+            &res_file_location,
+            &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
+        );
     });
 
     ast_rescript_file_locations
@@ -258,6 +283,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 ast_last_modified,
                 ast_file_path,
                 _is_root,
+                _suffix,
             ) = ast_modules
                 .get(res_file_location)
                 .expect("Could not find module name for ast file");
@@ -331,7 +357,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
     let ast_module_names = ast_modules
         .values()
-        .map(|(module_name, _, _, _, _, _)| module_name)
+        .map(|(module_name, _, _, _, _, _, _)| module_name)
         .collect::<AHashSet<&String>>();
 
     let all_module_names = build_state
