@@ -45,6 +45,9 @@ struct Args {
     /// colour as well
     #[arg(short, long)]
     after_build: Option<String>,
+
+    #[arg(short, long)]
+    no_timing: Option<bool>,
 }
 
 fn main() {
@@ -60,7 +63,7 @@ fn main() {
     match command {
         Command::Clean => build::clean(&folder),
         Command::Build => {
-            match build::build(&filter, &folder) {
+            match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
                 Err(()) => std::process::exit(1),
                 Ok(_) => {
                     args.after_build.map(|command| cmd::run(command));
@@ -69,7 +72,7 @@ fn main() {
             };
         }
         Command::Watch => {
-            let _initial_build = build::build(&filter, &folder);
+            let _initial_build = build::build(&filter, &folder, false);
             args.after_build.clone().map(|command| cmd::run(command));
             watcher::start(&filter, &folder, args.after_build);
         }

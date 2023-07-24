@@ -1207,11 +1207,12 @@ fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
-pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()> {
+pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
     let root_config_name = package_tree::get_package_name(&project_root);
+    let default_timing: Option<std::time::Duration> = if no_timing { Some(std::time::Duration::new(0.0 as u64, 0.0 as u32)) } else { None };
 
     print!(
         "{} {} Building package tree...",
@@ -1229,7 +1230,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LINE_CLEAR,
         style("[1/7]").bold().dim(),
         CHECKMARK,
-        timing_package_tree_elapsed.as_secs_f64()
+        default_timing.unwrap_or(timing_package_tree_elapsed).as_secs_f64()
     );
 
     let timing_source_files = Instant::now();
@@ -1247,7 +1248,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LINE_CLEAR,
         style("[2/7]").bold().dim(),
         CHECKMARK,
-        timing_source_files_elapsed.as_secs_f64()
+        default_timing.unwrap_or(timing_source_files_elapsed).as_secs_f64()
     );
 
     print!(
@@ -1266,7 +1267,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         CHECKMARK,
         diff_cleanup,
         total_cleanup,
-        timing_cleanup_elapsed.as_secs_f64()
+        default_timing.unwrap_or(timing_cleanup_elapsed).as_secs_f64()
     );
 
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
@@ -1293,7 +1294,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                 style("[4/7]").bold().dim(),
                 CHECKMARK,
                 num_dirty_modules,
-                timing_ast_elapsed.as_secs_f64()
+                default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
             println!("{}", &err);
         }
@@ -1304,7 +1305,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
                 LINE_CLEAR,
                 style("[4/7]").bold().dim(),
                 CROSS,
-                timing_ast_elapsed.as_secs_f64()
+                default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
             println!("{}", &err);
             clean::cleanup_after_build(&build_state);
@@ -1321,7 +1322,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LINE_CLEAR,
         style("[5/7]").bold().dim(),
         CHECKMARK,
-        timing_deps_elapsed.as_secs_f64()
+        default_timing.unwrap_or(timing_deps_elapsed).as_secs_f64()
     );
 
     let start_compiling = Instant::now();
@@ -1664,7 +1665,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
             style("[6/7]").bold().dim(),
             CROSS,
             num_compiled_modules,
-            compile_duration.as_secs_f64()
+            default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
         return Err(());
     } else {
@@ -1677,7 +1678,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
             style("[6/7]").bold().dim(),
             CHECKMARK,
             num_compiled_modules,
-            compile_duration.as_secs_f64()
+            default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
     }
 
@@ -1687,7 +1688,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str) -> Result<BuildState, ()
         LINE_CLEAR,
         style("[7/7]").bold().dim(),
         CHECKMARK,
-        timing_total_elapsed.as_secs_f64()
+        default_timing.unwrap_or(timing_total_elapsed).as_secs_f64()
     );
 
     Ok(build_state)
