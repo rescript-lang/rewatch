@@ -26,6 +26,12 @@ async fn async_watch(
         let needs_compile = events.iter().any(|event| {
             event.paths.iter().any(|path| {
                 let path_buf = path.to_path_buf();
+
+                let is_in_bs_build_path = path_buf
+                    .to_str()
+                    .map(|x| x.contains("/lib/bs/") || x.contains("/lib/ocaml/"))
+                    .unwrap_or(false);
+
                 let name = path_buf
                     .file_name()
                     .and_then(|x| x.to_str())
@@ -33,8 +39,8 @@ async fn async_watch(
                     .to_string();
 
                 let extension = path_buf.extension().and_then(|ext| ext.to_str());
-                match extension {
-                    Some(extension) => {
+                match (is_in_bs_build_path, extension) {
+                    (false, Some(extension)) => {
                         (helpers::is_implementation_file(&extension)
                             || helpers::is_interface_file(&extension))
                             && filter
