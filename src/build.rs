@@ -715,7 +715,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                             .entry(module_name.to_string())
                             .and_modify(|module| match module.source_type {
                                 SourceType::SourceFile(ref mut source_file) => {
-                                    if source_file.implementation.path.len() > 0 {
+                                    if &source_file.implementation.path != file {
                                         error!(
                                             "Duplicate files found for module: {}",
                                             &module_name
@@ -748,45 +748,62 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                 compile_dirty: true,
                             });
                     } else {
-                        build_state
-                            .modules
-                            .entry(module_name.to_string())
-                            .and_modify(|module| match module.source_type {
-                                SourceType::SourceFile(ref mut source_file) => {
-                                    source_file.interface = Some(Interface {
-                                        path: file.to_owned(),
-                                        parse_state: ParseState::Pending,
-                                        compile_state: CompileState::Pending,
-                                        last_modified: metadata.modified,
-                                        dirty: true,
+                        // remove last character of string: resi -> res, rei -> re, mli -> ml
+                        let mut implementation_filename = file.to_owned();
+                        implementation_filename.pop();
+                        match source_files.get(&implementation_filename) {
+                            None => {
+                                println!(
+                                    "{}\rWarning: No implementation file found for interface file (skipping): {}",
+                                    LINE_CLEAR,
+                                    file
+                                );
+                            }
+                            Some(_) => {
+                        
+                                build_state
+                                    .modules
+                                    .entry(module_name.to_string())
+                                    .and_modify(|module| match module.source_type {
+                                        SourceType::SourceFile(ref mut source_file) => {
+                                            source_file.interface = Some(Interface {
+                                                path: file.to_owned(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            });
+                                        }
+                                        _ => (),
+                                    })
+                                    .or_insert(Module {
+                                        source_type: SourceType::SourceFile(SourceFile {
+                                            // this will be overwritten later
+                                            implementation: Implementation {
+                                                path: implementation_filename.to_string(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            },
+                                            interface: Some(Interface {
+                                                path: file.to_owned(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            }),
+                                        }),
+                                        deps: AHashSet::new(),
+                                            reverse_deps: AHashSet::new(),
+                                        package_name: package.name.to_owned(),
+                                        compile_dirty: true,
                                     });
-                                }
-                                _ => (),
-                            })
-                            .or_insert(Module {
-                                source_type: SourceType::SourceFile(SourceFile {
-                                    // this will be overwritten later
-                                    implementation: Implementation {
-                                        path: "".to_string(),
-                                        parse_state: ParseState::Pending,
-                                        compile_state: CompileState::Pending,
-                                        last_modified: metadata.modified,
-                                        dirty: false,
-                                    },
-                                    interface: Some(Interface {
-                                        path: file.to_owned(),
-                                        parse_state: ParseState::Pending,
-                                        compile_state: CompileState::Pending,
-                                        last_modified: metadata.modified,
-                                        dirty: true,
-                                    }),
-                                }),
-                                deps: AHashSet::new(),
-                                reverse_deps: AHashSet::new(),
-                                package_name: package.name.to_owned(),
-                                compile_dirty: true,
-                            });
+
+                            }
+                        }
                     }
+                    
                 }),
             }
         });

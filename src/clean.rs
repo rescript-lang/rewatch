@@ -26,7 +26,7 @@ pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
     return None;
 }
 
-fn remove_asts(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
+fn remove_ast(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
@@ -35,6 +35,9 @@ fn remove_asts(source_file: &str, package_name: &str, root_path: &str, is_root: 
         "ast",
         is_root,
     ));
+}
+
+fn remove_iast(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
@@ -46,7 +49,11 @@ fn remove_asts(source_file: &str, package_name: &str, root_path: &str, is_root: 
 }
 
 fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
-    let _ = std::fs::remove_file(helpers::change_extension(source_file, &suffix.to_string()));
+    let _ = std::fs::remove_file(helpers::change_extension(
+        source_file,
+        // suffix.to_string includes the ., so we need to remove it
+        &suffix.to_string()[1..],
+    ));
 }
 
 fn remove_compile_assets(
@@ -137,10 +144,16 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 let package = build_state.packages.get(&module.package_name).unwrap();
 
                 Some(
-                    PathBuf::from(&package.package_dir)
-                        .join(source_file.implementation.path.to_owned())
-                        .to_string_lossy()
-                        .to_string(),
+                    PathBuf::from(helpers::get_package_path(
+                        &build_state.project_root,
+                        &module.package_name,
+                        package.is_root,
+                    ))
+                    .canonicalize()
+                    .expect("Could not canonicalize")
+                    .join(source_file.implementation.path.to_owned())
+                    .to_string_lossy()
+                    .to_string(),
                 )
             }
             _ => None,
@@ -154,10 +167,16 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             .filter_map(|module| {
                 let package = build_state.packages.get(&module.package_name).unwrap();
                 build::get_interface(module).as_ref().map(|interface| {
-                    PathBuf::from(&package.package_dir)
-                        .join(interface.path.to_owned())
-                        .to_string_lossy()
-                        .to_string()
+                    PathBuf::from(helpers::get_package_path(
+                        &build_state.project_root,
+                        &module.package_name,
+                        package.is_root,
+                    ))
+                    .canonicalize()
+                    .expect("Could not canonicalize")
+                    .join(interface.path.to_owned())
+                    .to_string_lossy()
+                    .to_string()
                 })
             })
             .collect::<AHashSet<String>>(),
@@ -240,37 +259,54 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
     let diff_len = diff.len();
 
-    diff.par_iter().for_each(|res_file_location| {
-        let (
-            _module_name,
-            package_name,
-            package_namespace,
-            _last_modified,
-            _ast_file_path,
-            is_root,
-            suffix,
-        ) = ast_modules
-            .get(&res_file_location.to_string())
-            .expect("Could not find module name for ast file");
-
-        remove_asts(
-            res_file_location,
-            package_name,
-            &build_state.project_root,
-            *is_root,
-        );
-        remove_compile_assets(
-            res_file_location,
-            package_name,
-            package_namespace,
-            &build_state.project_root,
-            *is_root,
-        );
-        remove_mjs_file(
-            &res_file_location,
-            &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
-        );
-    });
+    let deleted_interfaces = diff
+        .par_iter()
+        .map(|res_file_location| {
+            let (
+                module_name,
+                package_name,
+                package_namespace,
+                _last_modified,
+                ast_file_path,
+                is_root,
+                suffix,
+            ) = ast_modules
+                .get(&res_file_location.to_string())
+                .expect("Could not find module name for ast file");
+            remove_compile_assets(
+                res_file_location,
+                package_name,
+                package_namespace,
+                &build_state.project_root,
+                *is_root,
+            );
+            println!("Removing mjs file: {}", res_file_location);
+            remove_mjs_file(
+                &res_file_location,
+                &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
+            );
+            remove_iast(
+                res_file_location,
+                package_name,
+                &build_state.project_root,
+                *is_root,
+            );
+            remove_ast(
+                res_file_location,
+                package_name,
+                &build_state.project_root,
+                *is_root,
+            );
+            match helpers::get_extension(ast_file_path).as_str() {
+                "iast" => Some(module_name.to_owned()),
+                "ast" => None,
+                _ => None,
+            }
+        })
+        .collect::<Vec<Option<String>>>()
+        .iter()
+        .filter_map(|module_name| module_name.to_owned())
+        .collect::<AHashSet<String>>();
 
     ast_rescript_file_locations
         .intersection(&rescript_file_locations)
@@ -279,7 +315,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             let (
                 module_name,
                 _package_name,
-                package_namespace,
+                _package_namespace,
                 ast_last_modified,
                 ast_file_path,
                 _is_root,
@@ -291,8 +327,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 .modules
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
-            let full_module_name =
-                helpers::module_name_with_namespace(module_name, &package_namespace);
+            let full_module_name = module_name.to_owned();
 
             let compile_dirty = cmi_modules.get(&full_module_name);
             if let Some(compile_dirty) = compile_dirty {
@@ -325,7 +360,9 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 };
 
                 if let Some(last_modified) = last_modified {
-                    if compile_dirty > &last_modified {
+                    if compile_dirty > &last_modified
+                        && !deleted_interfaces.contains(&full_module_name)
+                    {
                         module.compile_dirty = false;
                     }
                 }
@@ -347,7 +384,9 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                     } else {
                         let implementation = &mut source_file.implementation;
                         let source_last_modified = implementation.last_modified;
-                        if ast_last_modified > &source_last_modified {
+                        if ast_last_modified > &source_last_modified
+                            && !deleted_interfaces.contains(module_name)
+                        {
                             implementation.dirty = false;
                         }
                     }
@@ -357,7 +396,13 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
     let ast_module_names = ast_modules
         .values()
-        .map(|(module_name, _, _, _, _, _, _)| module_name)
+        .filter_map(|(module_name, _, _, _, ast_file_path, _, _)| {
+            match helpers::get_extension(ast_file_path).as_str() {
+                "iast" => None,
+                "ast" => Some(module_name),
+                _ => None,
+            }
+        })
         .collect::<AHashSet<&String>>();
 
     let all_module_names = build_state
@@ -437,7 +482,13 @@ pub fn cleanup_after_build(build_state: &BuildState) {
             if failed_to_parse(module) {
                 match &module.source_type {
                     SourceType::SourceFile(source_file) => {
-                        remove_asts(
+                        remove_iast(
+                            &source_file.implementation.path,
+                            &module.package_name,
+                            &build_state.project_root,
+                            package.is_root,
+                        );
+                        remove_ast(
                             &source_file.implementation.path,
                             &module.package_name,
                             &build_state.project_root,
