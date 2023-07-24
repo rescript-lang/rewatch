@@ -236,7 +236,9 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                             "cmi" => {
                                 let module_name = helpers::file_path_to_module_name(
                                     path.to_str().unwrap(),
-                                    &package.namespace,
+                                    // we don't want to include a namespace here because the CMI file
+                                    // already includes a namespace
+                                    &package_tree::Namespace::NoNamespace,
                                 );
                                 cmi_modules.insert(
                                     module_name,
@@ -334,9 +336,8 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 .modules
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
-            let full_module_name = module_name.to_owned();
 
-            let compile_dirty = cmi_modules.get(&full_module_name);
+            let compile_dirty = cmi_modules.get(module_name);
             if let Some(compile_dirty) = compile_dirty {
                 // println!("{} is not dirty", module_name);
                 let (implementation_last_modified, interface_last_modified) = match &module
@@ -367,9 +368,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 };
 
                 if let Some(last_modified) = last_modified {
-                    if compile_dirty > &last_modified
-                        && !deleted_interfaces.contains(&full_module_name)
-                    {
+                    if compile_dirty > &last_modified && !deleted_interfaces.contains(module_name) {
                         module.compile_dirty = false;
                     }
                 }
