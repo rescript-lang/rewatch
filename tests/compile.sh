@@ -1,37 +1,77 @@
-echo "Test: It should compile"
+source "./utils.sh"
 cd ../testrepo
 
-if RUST_BACKTRACE=1 ../target/release/rewatch clean .;
+bold "Test: It should compile"
+
+if rewatch clean &> /dev/null;
 then
-  echo "✅ - Repo Cleaned"
+  success "Repo Cleaned"
 else 
-  echo "❌ - Error Cleaning Repo"
+  error "Error Cleaning Repo"
   exit 1
 fi
 
-if RUST_BACKTRACE=1 ../target/release/rewatch build .; 
+if rewatch &> /dev/null; 
 then
-  echo "✅ - Repo Built"
+  success "Repo Built"
 else 
-  echo "❌ - Error Building Repo"
+  error "Error Building Repo"
   exit 1
 fi
 
 
 if git diff --exit-code ./; 
 then
-  echo "✅ - Testrepo has no changes"
+  success "Testrepo has no changes"
 else 
-  echo "❌ - Build has changed"
+  error "Build has changed"
   exit 1
 fi
 
 node ./packages/main/src/Main.mjs > ./packages/main/src/output.txt
 
+mv ./packages/main/src/Main.res ./packages/main/src/Main2.res
+rewatch build --no-timing=true &> ../tests/snapshots/rename-file.txt
+mv ./packages/main/src/Main2.res ./packages/main/src/Main.res
+rewatch build &>  /dev/null
+mv ./packages/main/src/ModuleWithInterface.resi ./packages/main/src/ModuleWithInterface2.resi
+rewatch build --no-timing=true &> ../tests/snapshots/rename-interface-file.txt
+mv ./packages/main/src/ModuleWithInterface2.resi ./packages/main/src/ModuleWithInterface.resi
+rewatch build &> /dev/null
+mv ./packages/main/src/ModuleWithInterface.res ./packages/main/src/ModuleWithInterface2.res
+rewatch build --no-timing=true &> ../tests/snapshots/rename-file-with-interface.txt
+mv ./packages/main/src/ModuleWithInterface2.res ./packages/main/src/ModuleWithInterface.res
+rewatch build &> /dev/null
+
+# make sure we don't have changes in the test repo
 if git diff --exit-code ./; 
 then
-  echo "✅ - Output is correct"
+  success "Output is correct"
 else 
-  echo "❌ - Output is incorrect"
+  error "Output is incorrect"
+  exit 1
+fi
+
+# make sure there are no new files created by the build
+# this could happen because of not cleaning up .mjs files
+# after we rename files
+new_files=$(git ls-files --others --exclude-standard ./)
+if [[ $new_files = "" ]];
+then
+  success "No new files created"
+else 
+  error "❌ - New files created"
+  printf "${new_files}\n"
+  exit 1
+fi
+
+# see if the snapshots have changed
+changed_snapshots=$(git ls-files  --modified ../tests/snapshots)
+if git diff --exit-code ../tests/snapshots &> /dev/null; 
+then
+  success "Snapshots are correct"
+else 
+  error "Snapshots are incorrect:"
+  printf "${changed_snapshots}\n"
   exit 1
 fi

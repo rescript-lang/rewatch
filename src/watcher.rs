@@ -63,7 +63,7 @@ async fn async_watch(
                 let _ = q.pop();
             }
 
-            let _ = build::build(filter, path);
+            let _ = build::build(filter, path, false);
             after_build.clone().map(|command| cmd::run(command));
         }
     }

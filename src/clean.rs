@@ -93,6 +93,10 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
         .filter_map(|module| match &module.source_type {
             SourceType::SourceFile(source_file) => {
                 let package = build_state.packages.get(&module.package_name).unwrap();
+                let root_package = build_state
+                    .packages
+                    .get(&build_state.root_config_name)
+                    .expect("Could not find root package");
                 Some((
                     std::path::PathBuf::from(helpers::get_package_path(
                         &project_root,
@@ -102,7 +106,7 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
                     .join(source_file.implementation.path.to_string())
                     .to_string_lossy()
                     .to_string(),
-                    package
+                    root_package
                         .bsconfig
                         .suffix
                         .to_owned()
@@ -206,6 +210,10 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
                                 let ast_file_path = path.to_str().unwrap().to_owned();
                                 let res_file_path = get_res_path_from_ast(&ast_file_path);
+                                let root_package = build_state
+                                    .packages
+                                    .get(&build_state.root_config_name)
+                                    .expect("Could not find root package");
                                 match res_file_path {
                                     Some(res_file_path) => {
                                         let _ = ast_modules.insert(
@@ -217,7 +225,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                                 entry.metadata().unwrap().modified().unwrap(),
                                                 ast_file_path,
                                                 package.is_root,
-                                                package.bsconfig.suffix.to_owned(),
+                                                root_package.bsconfig.suffix.to_owned(),
                                             ),
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
@@ -280,7 +288,6 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 &build_state.project_root,
                 *is_root,
             );
-            println!("Removing mjs file: {}", res_file_location);
             remove_mjs_file(
                 &res_file_location,
                 &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
