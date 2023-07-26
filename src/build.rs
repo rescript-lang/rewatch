@@ -1251,7 +1251,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                 num_dirty_modules,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
-            println!("{}", &err);
+            print!("{}", &err);
         }
         Err(err) => {
             logs::finalize(&build_state.project_root, &build_state.packages);
@@ -1262,7 +1262,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                 CROSS,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
-            println!("{}", &err);
+            print!("{}", &err);
             clean::cleanup_after_build(&build_state);
             return Err(());
         }
@@ -1616,7 +1616,6 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
         }
-        println!("{}", &compile_errors);
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
@@ -1625,11 +1624,9 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             num_compiled_modules,
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
+        print!("{}", &compile_errors);
         return Err(());
     } else {
-        if helpers::contains_ascii_characters(&compile_warnings) {
-            println!("{}", &compile_warnings);
-        }
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
@@ -1638,6 +1635,9 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             num_compiled_modules,
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
+        if helpers::contains_ascii_characters(&compile_warnings) {
+            print!("{}", &compile_warnings);
+        }
     }
 
     let timing_total_elapsed = timing_total.elapsed();
