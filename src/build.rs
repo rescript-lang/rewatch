@@ -453,7 +453,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                                     }
                                     _ => (),
                                 }
-                                logs::append(&package.package_dir, &err);
+                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -465,7 +465,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                             }
                             _ => (),
                         }
-                        logs::append(&package.package_dir, &err);
+                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -484,7 +484,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                                     }
                                     _ => (),
                                 }
-                                logs::append(&package.package_dir, &err);
+                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -500,7 +500,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                             }
                             _ => (),
                         }
-                        logs::append(&package.package_dir, &err);
+                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -599,12 +599,15 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 Some(package_modules) => build_state.module_names.extend(package_modules),
                 None => (),
             }
-            let build_path_abs = helpers::get_build_path(
+            let build_path_abs =
+                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name, package.is_root);
+            let bs_build_path = helpers::get_bs_build_path(
                 &build_state.project_root,
                 &package.bsconfig.name,
                 package.is_root,
             );
             helpers::create_build_path(&build_path_abs);
+            helpers::create_build_path(&bs_build_path);
 
             package.namespace.to_suffix().iter().for_each(|namespace| {
                 // generate the mlmap "AST" file for modules that have a namespace configured
@@ -1251,7 +1254,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             println!("{}", &err);
         }
         Err(err) => {
-            logs::finalize(&build_state.packages);
+            logs::finalize(&build_state.project_root, &build_state.packages);
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
@@ -1538,15 +1541,24 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                         SourceType::SourceFile(ref mut source_file) => {
                             match result {
                                 Ok(Some(err)) => {
-                                    source_file.implementation.compile_state =
-                                        CompileState::Warning;
-                                    logs::append(&package.package_dir, &err);
+                                    source_file.implementation.compile_state = CompileState::Warning;
+                                    logs::append(
+                                        &build_state.project_root,
+                                        package.is_root,
+                                        &package.name,
+                                        &err,
+                                    );
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(&package.package_dir, &err);
+                                    logs::append(
+                                        &build_state.project_root,
+                                        package.is_root,
+                                        &package.name,
+                                        &err,
+                                    );
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -1554,14 +1566,24 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(&package.package_dir, &err);
+                                    logs::append(
+                                        &build_state.project_root,
+                                        package.is_root,
+                                        &package.name,
+                                        &err,
+                                    );
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(&package.package_dir, &err);
+                                    logs::append(
+                                        &build_state.project_root,
+                                        package.is_root,
+                                        &package.name,
+                                        &err,
+                                    );
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -1587,7 +1609,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     }
     let compile_duration = start_compiling.elapsed();
 
-    logs::finalize(&build_state.packages);
+    logs::finalize(&build_state.project_root, &build_state.packages);
     pb.finish();
     clean::cleanup_after_build(&build_state);
     if compile_errors.len() > 0 {

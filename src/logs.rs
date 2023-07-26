@@ -12,12 +12,13 @@ enum Location {
     Ocaml,
 }
 
-fn get_log_file_path(subfolder: Location, name: &str) -> String {
-    let subfolder_str = match subfolder {
-        Location::Bs => "bs",
-        Location::Ocaml => "ocaml",
+fn get_log_file_path(project_root: &str, subfolder: Location, name: &str, is_root: bool) -> String {
+    let build_folder = match subfolder {
+        Location::Bs => helpers::get_bs_build_path(project_root, name, is_root),
+        Location::Ocaml => helpers::get_build_path(project_root, name, is_root),
     };
-    name.to_owned() + "/lib/" + subfolder_str + "/.compiler.log"
+
+    build_folder.to_owned() + "/.compiler.log"
 }
 
 fn escape_colours(str: &str) -> String {
@@ -43,38 +44,45 @@ fn write_to_log_file(mut file: File, package_name: &str, content: &str) {
     }
 }
 
-pub fn initialize(packages: &AHashMap<String, Package>) {
-    packages.par_iter().for_each(|(name, _)| {
-        let _ = File::create(get_log_file_path(Location::Bs, name)).map(|file| {
-            write_to_log_file(
-                file,
-                &name,
-                &format!("#Start({})\n", helpers::get_system_time()),
-            )
-        });
+pub fn initialize(project_root: &str, packages: &AHashMap<String, Package>) {
+    packages.par_iter().for_each(|(name, package)| {
+        let _ = File::create(get_log_file_path(
+            project_root,
+            Location::Bs,
+            name,
+            package.is_root,
+        ))
+        .map(|file| write_to_log_file(file, &name, &format!("#Start({})\n", helpers::get_system_time())))
+        .expect(&("Cannot create compiler log for package ".to_owned() + name));
     })
 }
 
-pub fn append(name: &str, str: &str) {
-    let _ = File::options()
+pub fn append(project_root: &str, is_root: bool, name: &str, str: &str) {
+    File::options()
         .append(true)
-        .open(get_log_file_path(Location::Bs, name))
-        .map(|file| write_to_log_file(file, &name, str));
+        .open(get_log_file_path(project_root, Location::Bs, name, is_root))
+        .map(|file| write_to_log_file(file, &name, str))
+        .expect(
+            &("Cannot write compilerlog: ".to_owned()
+                + &get_log_file_path(project_root, Location::Bs, name, is_root)),
+        );
 }
 
-pub fn finalize(packages: &AHashMap<String, Package>) {
-    packages.par_iter().for_each(|(name, _)| {
+pub fn finalize(project_root: &str, packages: &AHashMap<String, Package>) {
+    packages.par_iter().for_each(|(name, package)| {
         let _ = File::options()
             .append(true)
-            .open(get_log_file_path(Location::Bs, name))
-            .map(|file| {
-                write_to_log_file(
-                    file,
-                    &name,
-                    &format!("#Done({})\n", helpers::get_system_time()),
-                )
-            });
+            .open(get_log_file_path(
+                project_root,
+                Location::Bs,
+                name,
+                package.is_root,
+            ))
+            .map(|file| write_to_log_file(file, &name, &format!("#Done({})\n", helpers::get_system_time())));
 
-        let _ = std::fs::copy(get_log_file_path(Location::Bs, name), get_log_file_path(Location::Ocaml, name));
+        let _ = std::fs::copy(
+            get_log_file_path(project_root, Location::Bs, name, package.is_root),
+            get_log_file_path(project_root, Location::Ocaml, name, package.is_root),
+        );
     })
 }
