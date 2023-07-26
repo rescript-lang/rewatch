@@ -123,32 +123,24 @@ fn capitalize(s: &str) -> String {
 
 fn add_suffix(base: &str, namespace: &package_tree::Namespace) -> String {
     match namespace {
-        package_tree::Namespace::NamespaceWithEntry {
-            namespace: _,
-            entry,
-        } if entry == base => base.to_string(),
+        package_tree::Namespace::NamespaceWithEntry { namespace: _, entry } if entry == base => {
+            base.to_string()
+        }
         package_tree::Namespace::Namespace(namespace)
-        | package_tree::Namespace::NamespaceWithEntry {
-            namespace,
-            entry: _,
-        } => base.to_string() + "-" + &namespace,
+        | package_tree::Namespace::NamespaceWithEntry { namespace, entry: _ } => {
+            base.to_string() + "-" + &namespace
+        }
         package_tree::Namespace::NoNamespace => base.to_string(),
     }
 }
 
-pub fn module_name_with_namespace(
-    module_name: &str,
-    namespace: &package_tree::Namespace,
-) -> String {
+pub fn module_name_with_namespace(module_name: &str, namespace: &package_tree::Namespace) -> String {
     capitalize(&add_suffix(module_name, namespace))
 }
 
 // this doesn't capitalize the module name! if the rescript name of the file is "foo.res" the
 // compiler assets are foo-Namespace.cmt and foo-Namespace.cmj, but the module name is Foo
-pub fn file_path_to_compiler_asset_basename(
-    path: &str,
-    namespace: &package_tree::Namespace,
-) -> String {
+pub fn file_path_to_compiler_asset_basename(path: &str, namespace: &package_tree::Namespace) -> String {
     let base = get_basename(path);
     add_suffix(&base, namespace)
 }
@@ -186,13 +178,9 @@ pub fn get_bsc(root_path: &str) -> String {
 }
 
 pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
-    suffixes.iter().any(|&suffix| {
-        s.extension()
-            .unwrap_or(&OsString::new())
-            .to_str()
-            .unwrap_or("")
-            == suffix
-    })
+    suffixes
+        .iter()
+        .any(|&suffix| s.extension().unwrap_or(&OsString::new()).to_str().unwrap_or("") == suffix)
 }
 
 pub fn get_compiler_asset(
@@ -250,30 +238,15 @@ pub fn is_interface_ast_file(file: &str) -> bool {
     file.ends_with(".iast")
 }
 
-pub fn get_mlmap_path(
-    root_path: &str,
-    package_name: &str,
-    namespace: &str,
-    is_root: bool,
-) -> String {
+pub fn get_mlmap_path(root_path: &str, package_name: &str, namespace: &str, is_root: bool) -> String {
     get_build_path(root_path, package_name, is_root) + "/" + namespace + ".mlmap"
 }
 
-pub fn get_mlmap_compile_path(
-    root_path: &str,
-    package_name: &str,
-    namespace: &str,
-    is_root: bool,
-) -> String {
+pub fn get_mlmap_compile_path(root_path: &str, package_name: &str, namespace: &str, is_root: bool) -> String {
     get_build_path(root_path, package_name, is_root) + "/" + namespace + ".cmi"
 }
 
-pub fn get_ast_path(
-    source_file: &str,
-    package_name: &str,
-    root_path: &str,
-    is_root: bool,
-) -> String {
+pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str, is_root: bool) -> String {
     get_compiler_asset(
         source_file,
         package_name,
@@ -284,12 +257,7 @@ pub fn get_ast_path(
     )
 }
 
-pub fn get_iast_path(
-    source_file: &str,
-    package_name: &str,
-    root_path: &str,
-    is_root: bool,
-) -> String {
+pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str, is_root: bool) -> String {
     get_compiler_asset(
         source_file,
         package_name,
@@ -307,9 +275,7 @@ pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::Fi
 
 pub fn get_system_time() -> u128 {
     let start = SystemTime::now();
-    let since_the_epoch = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
+    let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
     since_the_epoch.as_millis()
 }
 
@@ -333,9 +299,7 @@ pub fn is_source_file(extension: &str) -> bool {
 
 pub fn is_non_exotic_module_name(module_name: &str) -> bool {
     let mut chars = module_name.chars();
-    if chars.next().unwrap().is_ascii_uppercase()
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-    {
+    if chars.next().unwrap().is_ascii_uppercase() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return true;
     }
     return false;

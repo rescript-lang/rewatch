@@ -329,11 +329,7 @@ fn gen_mlmap(
     path.to_string()
 }
 
-fn generate_asts(
-    version: &str,
-    build_state: &mut BuildState,
-    pb: &ProgressBar,
-) -> Result<String, String> {
+fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
 
@@ -381,16 +377,10 @@ fn generate_asts(
                 }
 
                 SourceType::SourceFile(source_file) => {
-                    let root_package = build_state
-                        .get_package(&build_state.root_config_name)
-                        .unwrap();
+                    let root_package = build_state.get_package(&build_state.root_config_name).unwrap();
 
                     let (ast_path, iast_path) = if source_file.implementation.dirty
-                        || source_file
-                            .interface
-                            .as_ref()
-                            .map(|i| i.dirty)
-                            .unwrap_or(false)
+                        || source_file.interface.as_ref().map(|i| i.dirty).unwrap_or(false)
                     {
                         pb.inc(1);
                         let ast_result = generate_ast(
@@ -401,30 +391,29 @@ fn generate_asts(
                             &version,
                         );
 
-                        let iast_result =
-                            match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
-                                Some(interface_file_path) => generate_ast(
-                                    package.to_owned(),
-                                    root_package.to_owned(),
-                                    &interface_file_path.to_owned(),
-                                    &build_state.project_root,
-                                    &version,
-                                )
-                                .map(|result| Some(result)),
-                                _ => Ok(None),
-                            };
+                        let iast_result = match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
+                            Some(interface_file_path) => generate_ast(
+                                package.to_owned(),
+                                root_package.to_owned(),
+                                &interface_file_path.to_owned(),
+                                &build_state.project_root,
+                                &version,
+                            )
+                            .map(|result| Some(result)),
+                            _ => Ok(None),
+                        };
 
                         (ast_result, iast_result)
                     } else {
                         (
                             Ok((
-                                helpers::get_basename(&source_file.implementation.path).to_string()
-                                    + ".ast",
+                                helpers::get_basename(&source_file.implementation.path).to_string() + ".ast",
                                 None,
                             )),
-                            Ok(source_file.interface.as_ref().map(|i| {
-                                (helpers::get_basename(&i.path).to_string() + ".iast", None)
-                            })),
+                            Ok(source_file
+                                .interface
+                                .as_ref()
+                                .map(|i| (helpers::get_basename(&i.path).to_string() + ".iast", None))),
                         )
                     };
 
@@ -460,8 +449,7 @@ fn generate_asts(
                             if let Some(err) = err {
                                 match module.source_type {
                                     SourceType::SourceFile(ref mut source_file) => {
-                                        source_file.implementation.parse_state =
-                                            ParseState::Warning;
+                                        source_file.implementation.parse_state = ParseState::Warning;
                                     }
                                     _ => (),
                                 }
@@ -489,9 +477,10 @@ fn generate_asts(
                             if let Some(err) = err {
                                 match module.source_type {
                                     SourceType::SourceFile(ref mut source_file) => {
-                                        source_file.interface.as_mut().map(|interface| {
-                                            interface.parse_state = ParseState::ParseError
-                                        });
+                                        source_file
+                                            .interface
+                                            .as_mut()
+                                            .map(|interface| interface.parse_state = ParseState::ParseError);
                                     }
                                     _ => (),
                                 }
@@ -504,9 +493,10 @@ fn generate_asts(
                     Err(err) => {
                         match module.source_type {
                             SourceType::SourceFile(ref mut source_file) => {
-                                source_file.interface.as_mut().map(|interface| {
-                                    interface.parse_state = ParseState::ParseError
-                                });
+                                source_file
+                                    .interface
+                                    .as_mut()
+                                    .map(|interface| interface.parse_state = ParseState::ParseError);
                             }
                             _ => (),
                         }
@@ -526,11 +516,7 @@ fn generate_asts(
 }
 
 fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
-    let all_mod = &build_state
-        .module_names
-        .union(deleted_modules)
-        .cloned()
-        .collect();
+    let all_mod = &build_state.module_names.union(deleted_modules).cloned().collect();
     build_state
         .modules
         .par_iter()
@@ -573,10 +559,9 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
                     None => (),
                 }
                 match &package.namespace {
-                    package_tree::Namespace::NamespaceWithEntry {
-                        namespace: _,
-                        entry,
-                    } if entry == module_name => {
+                    package_tree::Namespace::NamespaceWithEntry { namespace: _, entry }
+                        if entry == module_name =>
+                    {
                         deps.insert(package.namespace.to_suffix().unwrap());
                     }
                     _ => (),
@@ -631,20 +616,14 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     None => unreachable!(),
                 };
                 let entry = match &package.namespace {
-                    package_tree::Namespace::NamespaceWithEntry {
-                        entry,
-                        namespace: _,
-                    } => Some(entry),
+                    package_tree::Namespace::NamespaceWithEntry { entry, namespace: _ } => Some(entry),
                     _ => None,
                 };
 
                 let depending_modules = source_files
                     .iter()
                     .map(|path| {
-                        helpers::file_path_to_module_name(
-                            &path,
-                            &package_tree::Namespace::NoNamespace,
-                        )
+                        helpers::file_path_to_module_name(&path, &package_tree::Namespace::NoNamespace)
                     })
                     .filter(|module_name| {
                         if let Some(entry) = entry {
@@ -656,12 +635,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
                     .collect::<AHashSet<String>>();
 
-                let mlmap = gen_mlmap(
-                    &package,
-                    namespace,
-                    &depending_modules,
-                    &build_state.project_root,
-                );
+                let mlmap = gen_mlmap(&package, namespace, &depending_modules, &build_state.project_root);
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
@@ -706,8 +680,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 
                     let file_buf = PathBuf::from(file);
                     let extension = file_buf.extension().unwrap().to_str().unwrap();
-                    let module_name =
-                        helpers::file_path_to_module_name(&file.to_owned(), &namespace);
+                    let module_name = helpers::file_path_to_module_name(&file.to_owned(), &namespace);
 
                     if helpers::is_implementation_file(extension) {
                         build_state
@@ -716,10 +689,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                             .and_modify(|module| match module.source_type {
                                 SourceType::SourceFile(ref mut source_file) => {
                                     if &source_file.implementation.path != file {
-                                        error!(
-                                            "Duplicate files found for module: {}",
-                                            &module_name
-                                        );
+                                        error!("Duplicate files found for module: {}", &module_name);
                                         error!("file 1: {}", &source_file.implementation.path);
                                         error!("file 2: {}", &file);
 
@@ -754,13 +724,11 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         match source_files.get(&implementation_filename) {
                             None => {
                                 println!(
-                                    "{}\rWarning: No implementation file found for interface file (skipping): {}",
-                                    LINE_CLEAR,
-                                    file
-                                );
+                                "{}\rWarning: No implementation file found for interface file (skipping): {}",
+                                LINE_CLEAR, file
+                            )
                             }
                             Some(_) => {
-                        
                                 build_state
                                     .modules
                                     .entry(module_name.to_string())
@@ -795,15 +763,13 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                             }),
                                         }),
                                         deps: AHashSet::new(),
-                                            reverse_deps: AHashSet::new(),
+                                        reverse_deps: AHashSet::new(),
                                         package_name: package.name.to_owned(),
                                         compile_dirty: true,
                                     });
-
                             }
                         }
                     }
-                    
                 }),
             }
         });
@@ -812,14 +778,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 pub fn compile_mlmap(package: &package_tree::Package, namespace: &str, root_path: &str) {
     let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
     let mlmap_name = format!("{}.mlmap", namespace);
-    let args = vec![
-        "-w",
-        "-49",
-        "-color",
-        "always",
-        "-no-alias-deps",
-        &mlmap_name,
-    ];
+    let args = vec!["-w", "-49", "-color", "always", "-no-alias-deps", &mlmap_name];
 
     let _ = Command::new(helpers::get_bsc(&root_path))
         .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
@@ -862,12 +821,8 @@ pub fn compile_file(
         .map(|x| {
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(
-                    root_path,
-                    &x,
-                    package.is_root,
-                ))
-                .unwrap(),
+                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x, package.is_root))
+                    .unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -877,14 +832,10 @@ pub fn compile_file(
         _ => panic!("Not a source file"),
     };
 
-    let module_name =
-        helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+    let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
 
     let namespace_args = match &package.namespace {
-        package_tree::Namespace::NamespaceWithEntry {
-            namespace: _,
-            entry,
-        } if &module_name == entry => {
+        package_tree::Namespace::NamespaceWithEntry { namespace: _, entry } if &module_name == entry => {
             // if the module is the entry we just want to open the namespace
             vec![
                 "-open".to_string(),
@@ -1014,9 +965,7 @@ pub fn compile_file(
                 .expect("stdout should be non-null")
                 .to_string();
 
-            let dir = std::path::Path::new(implementation_file_path)
-                .parent()
-                .unwrap();
+            let dir = std::path::Path::new(implementation_file_path).parent().unwrap();
 
             // perhaps we can do this copying somewhere else
             if !is_interface {
@@ -1165,11 +1114,7 @@ pub fn clean(path: &str) {
     std::io::stdout().flush().unwrap();
 
     let timing_clean_mjs = Instant::now();
-    print!(
-        "{} {} Cleaning mjs files...",
-        style("[2/2]").bold().dim(),
-        SWEEP
-    );
+    print!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
     std::io::stdout().flush().unwrap();
     let mut build_state = BuildState::new(project_root.to_owned(), root_config_name, packages);
     parse_packages(&mut build_state);
@@ -1212,7 +1157,11 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
     let root_config_name = package_tree::get_package_name(&project_root);
-    let default_timing: Option<std::time::Duration> = if no_timing { Some(std::time::Duration::new(0.0 as u64, 0.0 as u32)) } else { None };
+    let default_timing: Option<std::time::Duration> = if no_timing {
+        Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
+    } else {
+        None
+    };
 
     print!(
         "{} {} Building package tree...",
@@ -1223,14 +1172,15 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let timing_package_tree = Instant::now();
     let packages = package_tree::make(&filter, &project_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
-    logs::initialize(&packages);
 
     println!(
         "{}\r{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
         style("[1/7]").bold().dim(),
         CHECKMARK,
-        default_timing.unwrap_or(timing_package_tree_elapsed).as_secs_f64()
+        default_timing
+            .unwrap_or(timing_package_tree_elapsed)
+            .as_secs_f64()
     );
 
     let timing_source_files = Instant::now();
@@ -1242,13 +1192,16 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let _ = stdout().flush();
     let mut build_state = BuildState::new(project_root, root_config_name, packages);
     parse_packages(&mut build_state);
+    logs::initialize(&build_state.project_root, &build_state.packages);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
         "{}\r{} {}Found source files in {:.2}s",
         LINE_CLEAR,
         style("[2/7]").bold().dim(),
         CHECKMARK,
-        default_timing.unwrap_or(timing_source_files_elapsed).as_secs_f64()
+        default_timing
+            .unwrap_or(timing_source_files_elapsed)
+            .as_secs_f64()
     );
 
     print!(
@@ -1257,8 +1210,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
         SWEEP
     );
     let timing_cleanup = Instant::now();
-    let (diff_cleanup, total_cleanup, deleted_module_names) =
-        clean::cleanup_previous_build(&mut build_state);
+    let (diff_cleanup, total_cleanup, deleted_module_names) = clean::cleanup_previous_build(&mut build_state);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
         "{}\r{} {}Cleaned {}/{} {:.2}s",
@@ -1369,13 +1321,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     loop {
         let mut reverse_deps: AHashSet<String> = AHashSet::new();
         for dirty_module in current_step_modules.iter() {
-            reverse_deps.extend(
-                build_state
-                    .get_module(dirty_module)
-                    .unwrap()
-                    .reverse_deps
-                    .clone(),
-            );
+            reverse_deps.extend(build_state.get_module(dirty_module).unwrap().reverse_deps.clone());
         }
         current_step_modules = reverse_deps
             .difference(&compile_universe)
@@ -1435,13 +1381,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                 {
                     if !module.compile_dirty {
                         // we are sure we don't have to compile this, so we can mark it as compiled and clean
-                        return Some((
-                            module_name.to_string(),
-                            Ok(None),
-                            Some(Ok(None)),
-                            true,
-                            false,
-                        ));
+                        return Some((module_name.to_string(), Ok(None), Some(Ok(None)), true, false));
                     }
                     match module.source_type.to_owned() {
                         SourceType::MlMap(_) => {
@@ -1473,9 +1413,8 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                                 .get_package(&module.package_name)
                                 .expect("Package not found");
 
-                            let root_package = build_state
-                                .get_package(&build_state.root_config_name)
-                                .unwrap();
+                            let root_package =
+                                build_state.get_package(&build_state.root_config_name).unwrap();
 
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
@@ -1574,11 +1513,8 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                         clean_modules.insert(module_name.to_string());
                     }
 
-                    let module_reverse_deps = build_state
-                        .get_module(module_name)
-                        .unwrap()
-                        .reverse_deps
-                        .clone();
+                    let module_reverse_deps =
+                        build_state.get_module(module_name).unwrap().reverse_deps.clone();
 
                     // if not clean -- compile modules that depend on this module
                     for dep in module_reverse_deps.iter() {

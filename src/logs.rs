@@ -21,9 +21,8 @@ fn get_log_file_path(subfolder: Location, name: &str) -> String {
 }
 
 fn escape_colours(str: &str) -> String {
-    let re =
-        Regex::new(r"[\u001b\u009b]\[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]")
-            .expect("Could not create regex");
+    let re = Regex::new(r"[\u001b\u009b]\[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]")
+        .expect("Could not create regex");
     re.replace_all(str, "").to_string()
 }
 

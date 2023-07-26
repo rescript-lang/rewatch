@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rewatch::build;
-use rewatch::package_tree;
 use rewatch::helpers;
+use rewatch::package_tree;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -37,10 +37,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             // Create initial build
             let _ = build::build(folder);
             // Update the file
-            let _ = writeln!(
-                file,
-                r#"let log2 = () => ["a", "b"]->forEach(Js.log);log2()"#
-            );
+            let _ = writeln!(file, r#"let log2 = () => ["a", "b"]->forEach(Js.log);log2()"#);
             // Create another build
             let _ = build::build(folder);
 

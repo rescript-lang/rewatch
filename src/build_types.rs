@@ -78,11 +78,7 @@ impl BuildState {
     pub fn get_module(&self, module_name: &str) -> Option<&Module> {
         self.modules.get(module_name)
     }
-    pub fn new(
-        project_root: String,
-        root_config_name: String,
-        packages: AHashMap<String, Package>,
-    ) -> Self {
+    pub fn new(project_root: String, root_config_name: String, packages: AHashMap<String, Package>) -> Self {
         Self {
             module_names: AHashSet::new(),
             modules: AHashMap::new(),

@@ -119,9 +119,7 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
 
     rescript_file_locations
         .par_iter()
-        .for_each(|(rescript_file_location, suffix)| {
-            remove_mjs_file(&rescript_file_location, &suffix)
-        });
+        .for_each(|(rescript_file_location, suffix)| remove_mjs_file(&rescript_file_location, &suffix));
 }
 
 pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
@@ -240,10 +238,8 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                     // already includes a namespace
                                     &package_tree::Namespace::NoNamespace,
                                 );
-                                cmi_modules.insert(
-                                    module_name,
-                                    entry.metadata().unwrap().modified().unwrap(),
-                                );
+                                cmi_modules
+                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
                             }
                             _ => {
                                 // println!("other extension: {:?}", other);
@@ -340,9 +336,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             let compile_dirty = cmi_modules.get(module_name);
             if let Some(compile_dirty) = compile_dirty {
                 // println!("{} is not dirty", module_name);
-                let (implementation_last_modified, interface_last_modified) = match &module
-                    .source_type
-                {
+                let (implementation_last_modified, interface_last_modified) = match &module.source_type {
                     SourceType::MlMap(_) => (None, None),
                     SourceType::SourceFile(source_file) => {
                         let implementation_last_modified = source_file.implementation.last_modified;
@@ -361,9 +355,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                             Some(interface_last_modified)
                         }
                     }
-                    (Some(implementation_last_modified), None) => {
-                        Some(implementation_last_modified)
-                    }
+                    (Some(implementation_last_modified), None) => Some(implementation_last_modified),
                     _ => None,
                 };
 
@@ -428,11 +420,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         })
         .collect::<AHashSet<String>>();
 
-    (
-        diff_len,
-        ast_rescript_file_locations.len(),
-        deleted_module_names,
-    )
+    (diff_len, ast_rescript_file_locations.len(), deleted_module_names)
 }
 
 fn failed_to_parse(module: &Module) -> bool {
@@ -480,57 +468,54 @@ fn failed_to_compile(module: &Module) -> bool {
 }
 
 pub fn cleanup_after_build(build_state: &BuildState) {
-    build_state
-        .modules
-        .par_iter()
-        .for_each(|(_module_name, module)| {
-            let package = build_state.get_package(&module.package_name).unwrap();
-            if failed_to_parse(module) {
-                match &module.source_type {
-                    SourceType::SourceFile(source_file) => {
-                        remove_iast(
-                            &source_file.implementation.path,
-                            &module.package_name,
-                            &build_state.project_root,
-                            package.is_root,
-                        );
-                        remove_ast(
-                            &source_file.implementation.path,
-                            &module.package_name,
-                            &build_state.project_root,
-                            package.is_root,
-                        );
-                    }
-                    _ => (),
-                }
-            }
-            if failed_to_compile(module) {
-                // only retain ast file if it compiled successfully, that's the only thing we check
-                // if we see a AST file, we assume it compiled successfully, so we also need to clean
-                // up the AST file if compile is not successful
-                match &module.source_type {
-                    SourceType::SourceFile(source_file) => {
-                        remove_compile_assets(
-                            &source_file.implementation.path,
-                            &module.package_name,
-                            &package.namespace,
-                            &build_state.project_root,
-                            package.is_root,
-                        );
-                    }
-                    SourceType::MlMap(_) => remove_compile_assets(
-                        &get_mlmap_path(
-                            &build_state.project_root,
-                            &module.package_name,
-                            &package.namespace.to_suffix().unwrap(),
-                            package.is_root,
-                        ),
+    build_state.modules.par_iter().for_each(|(_module_name, module)| {
+        let package = build_state.get_package(&module.package_name).unwrap();
+        if failed_to_parse(module) {
+            match &module.source_type {
+                SourceType::SourceFile(source_file) => {
+                    remove_iast(
+                        &source_file.implementation.path,
                         &module.package_name,
-                        &package_tree::Namespace::NoNamespace,
                         &build_state.project_root,
                         package.is_root,
-                    ),
+                    );
+                    remove_ast(
+                        &source_file.implementation.path,
+                        &module.package_name,
+                        &build_state.project_root,
+                        package.is_root,
+                    );
                 }
+                _ => (),
             }
-        });
+        }
+        if failed_to_compile(module) {
+            // only retain ast file if it compiled successfully, that's the only thing we check
+            // if we see a AST file, we assume it compiled successfully, so we also need to clean
+            // up the AST file if compile is not successful
+            match &module.source_type {
+                SourceType::SourceFile(source_file) => {
+                    remove_compile_assets(
+                        &source_file.implementation.path,
+                        &module.package_name,
+                        &package.namespace,
+                        &build_state.project_root,
+                        package.is_root,
+                    );
+                }
+                SourceType::MlMap(_) => remove_compile_assets(
+                    &get_mlmap_path(
+                        &build_state.project_root,
+                        &module.package_name,
+                        &package.namespace.to_suffix().unwrap(),
+                        package.is_root,
+                    ),
+                    &module.package_name,
+                    &package_tree::Namespace::NoNamespace,
+                    &build_state.project_root,
+                    package.is_root,
+                ),
+            }
+        }
+    });
 }
