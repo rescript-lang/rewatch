@@ -43,10 +43,7 @@ async fn async_watch(
                     (false, Some(extension)) => {
                         (helpers::is_implementation_file(&extension)
                             || helpers::is_interface_file(&extension))
-                            && filter
-                                .as_ref()
-                                .map(|re| !re.is_match(&name))
-                                .unwrap_or(true)
+                            && filter.as_ref().map(|re| !re.is_match(&name)).unwrap_or(true)
                     }
 
                     _ => false,

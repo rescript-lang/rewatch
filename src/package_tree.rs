@@ -24,10 +24,7 @@ impl Namespace {
     pub fn to_suffix(&self) -> Option<String> {
         match self {
             Namespace::Namespace(namespace) => Some(namespace.to_string()),
-            Namespace::NamespaceWithEntry {
-                namespace,
-                entry: _,
-            } => Some("@".to_string() + namespace),
+            Namespace::NamespaceWithEntry { namespace, entry: _ } => Some("@".to_string() + namespace),
             Namespace::NoNamespace => None,
         }
     }
@@ -89,12 +86,7 @@ pub fn read_folders(
     for entry in fs::read_dir(package_dir.join(&path_buf))? {
         let entry_path_buf = entry.map(|entry| entry.path())?;
         let metadata = fs::metadata(&entry_path_buf)?;
-        let name = entry_path_buf
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let name = entry_path_buf.file_name().unwrap().to_str().unwrap().to_string();
 
         let path_ext = entry_path_buf.extension().and_then(|x| x.to_str());
         let new_path = path_buf.join(&name);
@@ -132,17 +124,12 @@ pub fn read_folders(
 /// sources in a flat list. In the process, it removes the children, as they are being resolved
 /// because of the recursiveness. So you get a flat list of files back, retaining the type_ and
 /// wether it needs to recurse into all structures
-fn get_source_dirs(
-    source: bsconfig::Source,
-    sub_path: Option<PathBuf>,
-) -> AHashSet<bsconfig::PackageSource> {
+fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHashSet<bsconfig::PackageSource> {
     let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
 
     let (subdirs, full_recursive) = match source.to_owned() {
         bsconfig::Source::Shorthand(_)
-        | bsconfig::Source::Qualified(bsconfig::PackageSource { subdirs: None, .. }) => {
-            (None, false)
-        }
+        | bsconfig::Source::Qualified(bsconfig::PackageSource { subdirs: None, .. }) => (None, false),
         bsconfig::Source::Qualified(bsconfig::PackageSource {
             subdirs: Some(bsconfig::Subdirs::Recurse(recurse)),
             ..
@@ -227,15 +214,11 @@ fn build_package<'a>(
             namespace: match (bsconfig.namespace, bsconfig.namespace_entry) {
                 (Some(bsconfig::Namespace::Bool(false)), _) => Namespace::NoNamespace,
                 (None, _) => Namespace::NoNamespace,
-                (Some(bsconfig::Namespace::Bool(true)), None) => {
-                    Namespace::Namespace(namespace_from_package)
-                }
-                (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => {
-                    Namespace::NamespaceWithEntry {
-                        namespace: namespace_from_package,
-                        entry: entry,
-                    }
-                }
+                (Some(bsconfig::Namespace::Bool(true)), None) => Namespace::Namespace(namespace_from_package),
+                (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => Namespace::NamespaceWithEntry {
+                    namespace: namespace_from_package,
+                    entry: entry,
+                },
                 (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
                     "true" => Namespace::Namespace(namespace_from_package),
                     namespace if namespace.is_case(Case::UpperFlat) => {
@@ -248,12 +231,10 @@ fn build_package<'a>(
                         namespace: namespace_from_package,
                         entry,
                     },
-                    namespace if namespace.is_case(Case::UpperFlat) => {
-                        Namespace::NamespaceWithEntry {
-                            namespace: namespace.to_string(),
-                            entry: entry,
-                        }
-                    }
+                    namespace if namespace.is_case(Case::UpperFlat) => Namespace::NamespaceWithEntry {
+                        namespace: namespace.to_string(),
+                        entry: entry,
+                    },
                     namespace => Namespace::NamespaceWithEntry {
                         namespace: namespace.to_string().to_case(Case::Pascal),
                         entry,
@@ -381,10 +362,7 @@ fn extend_with_children(
             Namespace::Namespace(namespace) => {
                 let _ = modules.insert(namespace);
             }
-            Namespace::NamespaceWithEntry {
-                namespace,
-                entry: _,
-            } => {
+            Namespace::NamespaceWithEntry { namespace, entry: _ } => {
                 let _ = modules.insert("@".to_string() + &namespace);
             }
             Namespace::NoNamespace => (),

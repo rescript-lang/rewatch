@@ -1,6 +1,5 @@
 /// As taken from: https://fedevitale.medium.com/thread-safe-queue-in-rust-1ed1acb9b93e
 /// https://github.com/rawnly/queue-rs
-
 use std::{
     collections::VecDeque,
     sync::{Condvar, Mutex},

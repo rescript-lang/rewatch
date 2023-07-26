@@ -139,11 +139,7 @@ pub enum Suffix {
 
 impl fmt::Display for Suffix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_value(self).unwrap().as_str().unwrap()
-        )
+        write!(f, "{}", serde_json::to_value(self).unwrap().as_str().unwrap())
     }
 }
 
@@ -233,9 +229,7 @@ pub fn flatten_ppx_flags(
                 OneOrMore::Multiple(ys) => {
                     let first_character = ys[0].chars().nth(0);
                     let ppx = match first_character {
-                        Some('.') => {
-                            node_modules_dir.to_owned() + "/" + package_name + "/" + &ys[0]
-                        }
+                        Some('.') => node_modules_dir.to_owned() + "/" + package_name + "/" + &ys[0],
                         _ => node_modules_dir.to_owned() + "/" + &ys[0],
                     };
                     vec![
@@ -258,8 +252,7 @@ pub fn read(path: String) -> T {
     fs::read_to_string(path.clone())
         .map_err(|e| format!("Could not read bsconfig. {path} - {e}"))
         .and_then(|x| {
-            serde_json::from_str::<T>(&x)
-                .map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
+            serde_json::from_str::<T>(&x).map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
         })
         .expect("Errors reading bsconfig")
 }
