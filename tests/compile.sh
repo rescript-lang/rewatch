@@ -1,3 +1,4 @@
+cd $(dirname $0)
 source "./utils.sh"
 cd ../testrepo
 
@@ -43,6 +44,12 @@ rewatch build --no-timing=true &> ../tests/snapshots/rename-file-with-interface.
 mv ./packages/main/src/ModuleWithInterface2.res ./packages/main/src/ModuleWithInterface.res
 rewatch build &> /dev/null
 
+# when deleting a file that other files depend on, the compile should fail
+rm packages/dep02/src/Dep02.res
+rewatch build --no-timing=true &> ../tests/snapshots/remove-file.txt
+git checkout -- packages/dep02/src/Dep02.res
+rewatch build &> /dev/null
+
 # make sure we don't have changes in the test repo
 if git diff --exit-code ./; 
 then
@@ -72,6 +79,15 @@ then
   success "Snapshots are correct"
 else 
   error "Snapshots are incorrect:"
-  printf "${changed_snapshots}\n"
+  # print filenames in the snapshot dir call bold with the filename
+  # and then cat their contents
+  printf "\n\n"
+  for file in $changed_snapshots; do
+    bold $file
+    # show diff of file vs contents in git
+    git diff --no-index $file $file
+    printf "\n\n"
+  done
+
   exit 1
 fi
