@@ -85,7 +85,7 @@ else
   for file in $changed_snapshots; do
     bold $file
     # show diff of file vs contents in git
-    git diff --no-index $file $file
+    git diff $file $file
     printf "\n\n"
   done
 
