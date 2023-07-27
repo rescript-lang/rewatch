@@ -1285,9 +1285,12 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let mut compiled_modules = AHashSet::<String>::new();
     let dirty_modules = build_state
         .modules
-        .iter()
+        .iter_mut()
         .filter_map(|(module_name, module)| {
             if module.compile_dirty {
+                Some(module_name.to_owned())
+            } else if !module.deps.is_disjoint(&deleted_module_names) {
+                module.compile_dirty = true;
                 Some(module_name.to_owned())
             } else {
                 None
