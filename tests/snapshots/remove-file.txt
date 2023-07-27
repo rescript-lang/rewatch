@@ -6,7 +6,7 @@
 [2K[6/7] ️🛑  Compiled 2 modules in 0.00s
 
   [1;31mWe've found a bug for you![0m
-  [36m/Users/jfrolich/development/rewatch/testrepo/packages/dep01/src/Dep01.res[0m:[2m3:9-17[0m
+  [36m/packages/dep01/src/Dep01.res[0m:[2m3:9-17[0m
 
   1 [2m│[0m let log = () => {
   2 [2m│[0m         Js.log("02")

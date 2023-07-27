@@ -47,6 +47,8 @@ rewatch build &> /dev/null
 # when deleting a file that other files depend on, the compile should fail
 rm packages/dep02/src/Dep02.res
 rewatch build --no-timing=true &> ../tests/snapshots/remove-file.txt
+# replace the absolute path so the snapshot is the same on all machines
+replace "s/$(pwd | sed "s/\//\\\\\//g")//g" ../tests/snapshots/remove-file.txt
 git checkout -- packages/dep02/src/Dep02.res
 rewatch build &> /dev/null
 

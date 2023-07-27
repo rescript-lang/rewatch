@@ -3,15 +3,6 @@ cd ../testrepo
 
 bold "Test: It should watch"
 
-replace() { 
-  if [[ $OSTYPE == 'darwin'* ]]; 
-  then
-    sed -i '' $1 $2;
-  else 
-    sed -i $1 $2;
-  fi
-} 
-
 if rewatch clean &> /dev/null;
 then
   success "Repo Cleaned"
