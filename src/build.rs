@@ -1608,11 +1608,11 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             .map(|module_name| module_name.to_string())
             .collect::<AHashSet<String>>();
 
-            let cycle = helpers::detect_cycle_stack(&build_state.modules, not_compiled_modules);
+            let cycle_stack = helpers::detect_cycle_stack(&build_state.modules, not_compiled_modules);
 
-            match cycle {
-                Some(cycle) => {
-                    let error = format!("Dependency cycle detected: \n{}\n", cycle.join(" -> "));
+            match cycle_stack {
+                Some(cycle_stack) => {
+                    let error = format!("Dependency cycle detected: \n{}\n", cycle_stack.join(" -> "));
                     compile_errors.push_str(&error)
                 }
                 None => {

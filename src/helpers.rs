@@ -320,12 +320,12 @@ pub fn get_extension(path: &str) -> String {
 
 
 
-fn detect_cycle_helper(module_name: String, modules: &AHashMap<String, Module>, visited: &mut 
-    AHashMap<String, bool>, stack: &mut Vec<String>) ->  Option<Vec<String>> {
-    if visited.contains_key(&module_name) {
+fn detect_cycle_helper(module_name: String, modules: &AHashMap<String, Module>, visited_modules: &mut 
+    AHashSet<String>, stack: &mut Vec<String>) ->  Option<Vec<String>> {
+    if visited_modules.contains(&module_name) {
         return None;
     }
-    visited.insert(module_name.to_string(), true);
+    visited_modules.insert(module_name.to_string());
     stack.push(module_name.to_string());
     
     let module_reverse_deps = modules
@@ -335,7 +335,7 @@ fn detect_cycle_helper(module_name: String, modules: &AHashMap<String, Module>, 
                     .clone();
 
     for dep_module_name in &module_reverse_deps {
-        if visited.contains_key(dep_module_name) {
+        if visited_modules.contains(dep_module_name) {
             let index = stack.iter().position(|x| x == dep_module_name);
             // if we already visited this node in the stack, then we have a cycle
             match index {
@@ -346,20 +346,21 @@ fn detect_cycle_helper(module_name: String, modules: &AHashMap<String, Module>, 
                 None => {}
             }
         } else {
-            return detect_cycle_helper(dep_module_name.to_string(), modules, visited, stack);
+            return detect_cycle_helper(dep_module_name.to_string(), modules, visited_modules, stack);
         }
     }
     stack.pop();
     return None;
  }
 
+//  Do a DFS of the tree and stop when we spot a duplicated dependency in the stack
 pub fn detect_cycle_stack(modules: &AHashMap<String, Module>, module_subset: AHashSet<String>) -> Option<Vec<String>> {
-    let mut visited: AHashMap<String, bool> = AHashMap::new();
+    let mut visited_modules: AHashSet<String> = AHashSet::new();
 
     let mut stack: Vec<String> = vec![];
     for module_name in module_subset {
-        if !visited.contains_key(&module_name) {
-            let cycle_stack = detect_cycle_helper(module_name, &modules, &mut visited,  &mut stack);
+        if !visited_modules.contains(&module_name) {
+            let cycle_stack = detect_cycle_helper(module_name, &modules, &mut visited_modules,  &mut stack);
             if cycle_stack.is_some() {
                 return cycle_stack;
             }
