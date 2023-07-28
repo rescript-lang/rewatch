@@ -56,7 +56,7 @@ pub enum SourceType {
 pub struct Module {
     pub source_type: SourceType,
     pub deps: AHashSet<String>,
-    pub reverse_deps: AHashSet<String>,
+    pub dependents: AHashSet<String>,
     pub package_name: String,
     pub compile_dirty: bool,
 }
