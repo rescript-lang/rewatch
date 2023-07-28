@@ -578,7 +578,7 @@ fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>) {
             }
             deps.iter().for_each(|dep_name| {
                 if let Some(module) = build_state.modules.get_mut(dep_name) {
-                    module.reverse_deps.insert(module_name.to_string());
+                    module.dependents.insert(module_name.to_string());
                 }
             });
         });
@@ -668,7 +668,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     Module {
                         source_type: SourceType::MlMap(MlMap { dirty: false }),
                         deps,
-                        reverse_deps: AHashSet::new(),
+                        dependents: AHashSet::new(),
                         package_name: package.name.to_owned(),
                         compile_dirty: false,
                     },
@@ -716,7 +716,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                     interface: None,
                                 }),
                                 deps: AHashSet::new(),
-                                reverse_deps: AHashSet::new(),
+                                dependents: AHashSet::new(),
                                 package_name: package.name.to_owned(),
                                 compile_dirty: true,
                             });
@@ -766,7 +766,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                             }),
                                         }),
                                         deps: AHashSet::new(),
-                                        reverse_deps: AHashSet::new(),
+                                        dependents: AHashSet::new(),
                                         package_name: package.name.to_owned(),
                                         compile_dirty: true,
                                     });
@@ -1329,11 +1329,11 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
 
     let mut current_step_modules = dirty_modules.clone();
     loop {
-        let mut reverse_deps: AHashSet<String> = AHashSet::new();
+        let mut dependents: AHashSet<String> = AHashSet::new();
         for dirty_module in current_step_modules.iter() {
-            reverse_deps.extend(build_state.get_module(dirty_module).unwrap().reverse_deps.clone());
+            dependents.extend(build_state.get_module(dirty_module).unwrap().dependents.clone());
         }
-        current_step_modules = reverse_deps
+        current_step_modules = dependents
             .difference(&compile_universe)
             .map(|s| s.to_string())
             .collect::<AHashSet<String>>();
@@ -1523,11 +1523,10 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
                         clean_modules.insert(module_name.to_string());
                     }
 
-                    let module_reverse_deps =
-                        build_state.get_module(module_name).unwrap().reverse_deps.clone();
+                    let module_dependents = build_state.get_module(module_name).unwrap().dependents.clone();
 
                     // if not clean -- compile modules that depend on this module
-                    for dep in module_reverse_deps.iter() {
+                    for dep in module_dependents.iter() {
                         let dep_module = build_state.modules.get_mut(dep).unwrap();
                         //  mark the reverse dep as dirty when the source is not clean
                         if !*is_clean {
