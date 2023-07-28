@@ -1,3 +1,6 @@
+use ahash::{AHashMap, AHashSet};
+
+use crate::build_types::Module;
 use crate::package_tree;
 use std::ffi::OsString;
 use std::fs;
@@ -313,4 +316,54 @@ pub fn get_extension(path: &str) -> String {
         .to_str()
         .expect("Could not get extension 2")
         .to_string();
+}
+
+
+
+fn detect_cycle_helper(module_name: String, modules: &AHashMap<String, Module>, visited: &mut 
+    AHashMap<String, bool>, stack: &mut Vec<String>) ->  Option<Vec<String>> {
+    if visited.contains_key(&module_name) {
+        return None;
+    }
+    visited.insert(module_name.to_string(), true);
+    stack.push(module_name.to_string());
+    
+    let module_reverse_deps = modules
+                    .get(&module_name)
+                    .unwrap()
+                    .reverse_deps
+                    .clone();
+
+    for dep_module_name in &module_reverse_deps {
+        if visited.contains_key(dep_module_name) {
+            let index = stack.iter().position(|x| x == dep_module_name);
+            // if we already visited this node in the stack, then we have a cycle
+            match index {
+                Some(index) => {
+                    let cycle_stack = stack[index..].to_vec();
+                    return Some(cycle_stack)
+                }
+                None => {}
+            }
+        } else {
+            return detect_cycle_helper(dep_module_name.to_string(), modules, visited, stack);
+        }
+    }
+    stack.pop();
+    return None;
+ }
+
+pub fn detect_cycle_stack(modules: &AHashMap<String, Module>, module_subset: AHashSet<String>) -> Option<Vec<String>> {
+    let mut visited: AHashMap<String, bool> = AHashMap::new();
+
+    let mut stack: Vec<String> = vec![];
+    for module_name in module_subset {
+        if !visited.contains_key(&module_name) {
+            let cycle_stack = detect_cycle_helper(module_name, &modules, &mut visited,  &mut stack);
+            if cycle_stack.is_some() {
+                return cycle_stack;
+            }
+        }
+    }
+    return None;
 }

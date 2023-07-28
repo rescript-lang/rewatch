@@ -1603,8 +1603,22 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             break;
         }
         if in_progress_modules.len() == 0 {
-            // we probably want to find the cycle(s), and give a helpful error message here
-            compile_errors.push_str("Can't continue... Dependency cycle\n")
+            let not_compiled_modules: AHashSet<String> = compile_universe
+            .difference(&compiled_modules)
+            .map(|module_name| module_name.to_string())
+            .collect::<AHashSet<String>>();
+
+            let cycle = helpers::detect_cycle_stack(&build_state.modules, not_compiled_modules);
+
+            match cycle {
+                Some(cycle) => {
+                    let error = format!("Dependency cycle detected: \n{}\n", cycle.join(" -> "));
+                    compile_errors.push_str(&error)
+                }
+                None => {
+                    compile_errors.push_str("Can't continue... Dependency cycle\n")
+                }
+            }
         }
         if compile_errors.len() > 0 {
             break;
