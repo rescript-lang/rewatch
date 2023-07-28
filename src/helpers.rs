@@ -314,3 +314,16 @@ pub fn get_extension(path: &str) -> String {
         .expect("Could not get extension 2")
         .to_string();
 }
+
+pub fn format_namespaced_module_name(module_name: &str) -> String {
+    // from ModuleName-Namespace to Namespace.ModuleName
+    // also format ModuleName-@Namespace to Namespace.ModuleName
+    let mut split = module_name.split("-");
+    let module_name = split.next().unwrap();
+    let namespace = split.next();
+    let namespace = namespace.map(|ns| ns.trim_start_matches("@"));
+    return match namespace {
+        None => module_name.to_string(),
+        Some(ns) => ns.to_string() + "." + module_name,
+    };
+}

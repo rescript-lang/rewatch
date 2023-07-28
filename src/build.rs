@@ -1155,6 +1155,74 @@ fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
+fn find_dependency_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
+    let mut visited: AHashSet<String> = AHashSet::new();
+    let mut stack: Vec<String> = vec![];
+
+    // we want to sort the module names so that we always return the same
+    // dependency cycle (there can be more than one)
+    let mut module_names = modules
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect::<Vec<String>>();
+
+    module_names.sort_by(|a, b| a.cmp(b));
+    for module_name in module_names {
+        if find_dependency_cycle_helper(&module_name, &modules, &mut visited, &mut stack) {
+            return stack;
+        }
+        visited.clear();
+        stack.clear();
+    }
+    stack
+}
+
+fn find_dependency_cycle_helper(
+    module_name: &String,
+    modules: &Vec<(&String, &Module)>,
+    visited: &mut AHashSet<String>,
+    stack: &mut Vec<String>,
+) -> bool {
+    if let Some(module) = modules
+        .iter()
+        .find(|(name, _)| *name == module_name)
+        .map(|(_, module)| module)
+    {
+        visited.insert(module_name.to_string());
+        // if the module is a mlmap (namespace), we don't want to show this in the path
+        // because the namespace is not a module the user created, so only add source files
+        // to the stack
+        if let SourceType::SourceFile(_) = module.source_type {
+            stack.push(module_name.to_string())
+        }
+        for dep in &module.deps {
+            if !visited.contains(dep) {
+                if find_dependency_cycle_helper(dep, modules, visited, stack) {
+                    return true;
+                }
+            } else if stack.contains(dep) {
+                stack.push(dep.to_string());
+                return true;
+            }
+        }
+        // because we only pushed source files to the stack, we also only need to
+        // pop these from the stack if we don't find a dependency cycle
+        if let SourceType::SourceFile(_) = module.source_type {
+            let _ = stack.pop();
+        }
+        return false;
+    }
+    false
+}
+
+fn format_dependency_cycle(cycle: &Vec<String>) -> String {
+    cycle
+        .iter()
+        .map(|s| helpers::format_namespaced_module_name(s))
+        .collect::<Vec<String>>()
+        .join(" -> ")
+}
+
 pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
@@ -1326,8 +1394,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     // we get this by traversing from the dirty modules to all the modules that
     // are dependent on them
     let mut compile_universe = dirty_modules.clone();
-
-    let mut current_step_modules = dirty_modules.clone();
+    let mut current_step_modules = compile_universe.clone();
     loop {
         let mut dependents: AHashSet<String> = AHashSet::new();
         for dirty_module in current_step_modules.iter() {
@@ -1338,7 +1405,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             .map(|s| s.to_string())
             .collect::<AHashSet<String>>();
 
-        compile_universe.extend(current_step_modules.clone());
+        compile_universe.extend(current_step_modules.to_owned());
         if current_step_modules.is_empty() {
             break;
         }
@@ -1375,8 +1442,9 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             loop_count,
         );
 
-        in_progress_modules
-            .clone()
+        let current_in_progres_modules = in_progress_modules.clone();
+
+        current_in_progres_modules
             .par_iter()
             .map(|module_name| {
                 let module = build_state.get_module(module_name).unwrap();
@@ -1606,8 +1674,18 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             break;
         }
         if in_progress_modules.len() == 0 {
-            // we probably want to find the cycle(s), and give a helpful error message here
-            compile_errors.push_str("Can't continue... Dependency cycle\n")
+            // find the dependency cycle
+            let cycle = find_dependency_cycle(
+                &compile_universe
+                    .iter()
+                    .map(|s| (s, build_state.get_module(s).unwrap()))
+                    .collect::<Vec<(&String, &Module)>>(),
+            );
+            compile_errors.push_str(&format!(
+                "\n{}\n{}\n",
+                style("Can't continue... Found a circular dependency in your code:").red(),
+                format_dependency_cycle(&cycle)
+            ))
         }
         if compile_errors.len() > 0 {
             break;

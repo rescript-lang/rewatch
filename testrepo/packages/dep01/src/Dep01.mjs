@@ -10,4 +10,4 @@ function log(param) {
 export {
   log ,
 }
-/* No side effect */
+/* Dep02 Not a pure module */
