@@ -1,3 +1,4 @@
+#!/bin/bash
 cd $(dirname $0)
 source "./utils.sh"
 cd ../testrepo
@@ -50,6 +51,12 @@ rewatch build --no-timing=true &> ../tests/snapshots/remove-file.txt
 # replace the absolute path so the snapshot is the same on all machines
 replace "s/$(pwd | sed "s/\//\\\\\//g")//g" ../tests/snapshots/remove-file.txt
 git checkout -- packages/dep02/src/Dep02.res
+rewatch build &> /dev/null
+
+# it should show an error when we have a dependency cycle
+echo 'Dep01.log()' >> packages/new-namespace/src/NS_alias.res
+rewatch build --no-timing=true &> ../tests/snapshots/dependency-cycle.txt
+git checkout -- packages/new-namespace/src/NS_alias.res
 rewatch build &> /dev/null
 
 # make sure we don't have changes in the test repo
