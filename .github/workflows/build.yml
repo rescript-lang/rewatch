@@ -3,28 +3,23 @@ name: Release
 on:
   push:
   release:
-    types: published
+    types: 
+      - published
+
+concurrency:
+  group: ${{ github.ref }}-release
+  cancel-in-progress: true
 
 jobs:
-  cancel-previous-runs:
-    name: Cancel Previous Runs
-    runs-on: ubuntu-20.04
-    steps:
-      - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.9.0
-        with:
-          access_token: ${{ github.token }}
   build:
     name: Release
-    strategy:
-      fail-fast: false
     runs-on: macos-latest
     env:
       RUST_BACKTRACE: "1"
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           ref: ${{ github.ref }}
       - name: setup sccache
