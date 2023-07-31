@@ -1673,7 +1673,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
         if files_total_count == compile_universe_count {
             break;
         }
-        if in_progress_modules.len() == 0 {
+        if in_progress_modules.len() == 0 || in_progress_modules.eq(&current_in_progres_modules) {
             // find the dependency cycle
             let cycle = find_dependency_cycle(
                 &compile_universe

@@ -59,6 +59,12 @@ rewatch build --no-timing=true &> ../tests/snapshots/dependency-cycle.txt
 git checkout -- packages/new-namespace/src/NS_alias.res
 rewatch build &> /dev/null
 
+# it should not loop (we had an infinite loop when clean building with a cycle)
+rewatch clean &> /dev/null
+echo 'Dep01.log()' >> packages/new-namespace/src/NS_alias.res
+git checkout -- packages/new-namespace/src/NS_alias.res
+rewatch build &> /dev/null
+
 # make sure we don't have changes in the test repo
 if git diff --exit-code ./; 
 then
