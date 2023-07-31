@@ -1,9 +1,9 @@
 [1/7] 🌴  Building package tree...[2K[1/7] ️✅  Built package tree in 0.00s
 [2/7] 🔍  Finding source files...[2K[2/7] ️✅  Found source files in 0.00s
-[3/7] 🧹  Cleaning up previous build...[2K[3/7] ️✅  Cleaned 1/9 0.00s
+[3/7] 🧹  Cleaning up previous build...[2K[3/7] ️✅  Cleaned 1/10 0.00s
 [2K[4/7] ️✅  Parsed 0 source files in 0.00s
 [2K[5/7] ️✅  Collected deps in 0.00s
-[2K[6/7] ️🛑  Compiled 2 modules in 0.00s
+[2K[6/7] ️🛑  Compiled 1 modules in 0.00s
 
   [1;31mWe've found a bug for you![0m
   [36m/packages/dep01/src/Dep01.res[0m:[2m3:9-17[0m

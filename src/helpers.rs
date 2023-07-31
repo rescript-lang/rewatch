@@ -126,10 +126,11 @@ fn add_suffix(base: &str, namespace: &package_tree::Namespace) -> String {
         package_tree::Namespace::NamespaceWithEntry { namespace: _, entry } if entry == base => {
             base.to_string()
         }
-        package_tree::Namespace::Namespace(namespace)
-        | package_tree::Namespace::NamespaceWithEntry { namespace, entry: _ } => {
-            base.to_string() + "-" + &namespace
-        }
+        package_tree::Namespace::Namespace(_)
+        | package_tree::Namespace::NamespaceWithEntry {
+            namespace: _,
+            entry: _,
+        } => base.to_string() + "-" + &namespace.to_suffix().unwrap(),
         package_tree::Namespace::NoNamespace => base.to_string(),
     }
 }
