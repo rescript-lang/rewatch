@@ -15,6 +15,9 @@ async fn async_watch(
     after_build: Option<String>,
 ) -> notify::Result<()> {
     loop {
+        // We want to sleep for a little while so the CPU can schedule other work. That way we end
+        // up not burning CPU cycles.
+        Delay::new(Duration::from_millis(50)).await;
         let mut events: Vec<Event> = vec![];
         while !q.is_empty() {
             match q.pop() {
