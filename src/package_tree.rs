@@ -1,6 +1,8 @@
 use crate::bsconfig;
 use crate::helpers;
+use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
+use console::style;
 use convert_case::{Case, Casing};
 use rayon::prelude::*;
 use std::hash::{Hash, Hasher};
@@ -255,11 +257,19 @@ fn build_package<'a>(
         .unwrap_or(vec![])
         .iter()
         .filter_map(|package_name| {
-            let package_dir = PathBuf::from(get_package_dir(package_name, false))
-                .canonicalize()
-                .expect("Could not canonicalize package dir")
-                .to_string_lossy()
-                .to_string();
+            let package_dir = match PathBuf::from(get_package_dir(package_name, false)).canonicalize() {
+                Ok(dir) => dir.to_string_lossy().to_string(),
+                Err(e) => {
+                    print!(
+                        "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
+                        style("[1/2]").bold().dim(),
+                        CROSS,
+                        e.to_string()
+                    );
+                    std::process::exit(2)
+                }
+            };
+
             if !map.contains_key(package_name) {
                 Some(package_dir)
             } else {
