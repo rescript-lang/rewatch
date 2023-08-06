@@ -23,6 +23,8 @@ jobs:
         with:
           command: build
           args: --release
+      - name: Run unit test
+        run: cargo test
       - name: Install Yarn Dependencies
         run: cd ./testrepo && yarn install
       - name: Run Test
