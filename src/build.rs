@@ -1186,6 +1186,10 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             .as_secs_f64()
     );
 
+    if !package_tree::valide_package_dependencies(&packages) {
+        return Err(());
+    }
+
     let timing_source_files = Instant::now();
     print!(
         "{} {} Finding source files...",
