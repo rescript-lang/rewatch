@@ -74,9 +74,9 @@ impl<T> Queue<T> for FifoQueue<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::prelude::*;
-    use crate::FifoQueue;
     use std::{sync::Arc, thread};
+
+    use super::*;
 
     #[test]
     fn test_basic_functionalities() {
