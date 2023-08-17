@@ -1254,7 +1254,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             .as_secs_f64()
     );
 
-    if !package_tree::valide_package_dependencies(&packages) {
+    if !package_tree::validate_packages_dependencies(&packages) {
         return Err(());
     }
 

@@ -180,8 +180,8 @@ pub struct T {
     #[serde(rename = "namespace-entry")]
     pub namespace_entry: Option<String>,
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
-    #[serde(rename = "allowed-parents")]
-    pub allowed_parents: Option<Vec<String>>,
+    #[serde(rename = "allowed-dependents")]
+    pub allowed_dependents: Option<Vec<String>>,
 }
 
 /// This flattens string flags
