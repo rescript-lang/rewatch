@@ -1,7 +1,6 @@
 pub mod build_types;
 pub mod clean;
 pub mod compile;
-pub mod dependency_cycle;
 pub mod deps;
 pub mod logs;
 pub mod namespaces;
@@ -130,7 +129,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     let timing_ast = Instant::now();
-    let result_asts = parse::generate_asts(&rescript_version, &mut build_state, &pb);
+    let result_asts = parse::generate_asts(&rescript_version, &mut build_state, || pb.inc(1));
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
@@ -173,8 +172,22 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     let start_compiling = Instant::now();
-    let (compile_errors, compile_warnings, num_compiled_modules) =
-        compile::compile(&mut build_state, &deleted_module_names, &rescript_version);
+    let pb = ProgressBar::new(build_state.modules.len().try_into().unwrap());
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
+            style("[6/7]").bold().dim(),
+            SWORDS
+        ))
+        .unwrap(),
+    );
+    let (compile_errors, compile_warnings, num_compiled_modules) = compile::compile(
+        &mut build_state,
+        &deleted_module_names,
+        &rescript_version,
+        || pb.inc(1),
+        |size| pb.set_length(size),
+    );
     let compile_duration = start_compiling.elapsed();
 
     logs::finalize(&build_state.project_root, &build_state.packages);
