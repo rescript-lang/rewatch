@@ -1,13 +1,12 @@
+mod dependency_cycle;
+
 use super::build_types::*;
-use super::dependency_cycle;
 use super::logs;
 use super::packages;
 use crate::bsconfig;
 use crate::helpers;
-use crate::helpers::emojis::*;
 use ahash::AHashSet;
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
 use log::{info, log_enabled, Level::Info};
 use rayon::prelude::*;
@@ -18,6 +17,8 @@ pub fn compile(
     mut build_state: &mut BuildState,
     deleted_module_names: &AHashSet<String>,
     rescript_version: &str,
+    inc: impl Fn() -> () + std::marker::Sync,
+    set_length: impl Fn(u64) -> (),
 ) -> (String, String, usize) {
     let mut compiled_modules = AHashSet::<String>::new();
 
@@ -82,16 +83,8 @@ pub fn compile(
         }
     }
 
-    let pb = ProgressBar::new(compile_universe.len().try_into().unwrap());
-    pb.set_style(
-        ProgressStyle::with_template(&format!(
-            "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[6/7]").bold().dim(),
-            SWORDS
-        ))
-        .unwrap(),
-    );
     let compile_universe_count = compile_universe.len();
+    set_length(compile_universe_count as u64);
 
     // start off with all modules that have no deps in this compile universe
     let mut in_progress_modules = compile_universe
@@ -237,7 +230,7 @@ pub fn compile(
                 }
                 .map(|res| {
                     if !(log_enabled!(Info)) {
-                        pb.inc(1);
+                        inc();
                     }
                     res
                 })

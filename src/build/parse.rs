@@ -5,7 +5,6 @@ use super::packages;
 use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
-use indicatif::ProgressBar;
 use log::debug;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -14,7 +13,7 @@ use std::process::Command;
 pub fn generate_asts(
     version: &str,
     build_state: &mut BuildState,
-    pb: &ProgressBar,
+    inc: impl Fn() -> () + std::marker::Sync,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -69,7 +68,7 @@ pub fn generate_asts(
                         || source_file.interface.as_ref().map(|i| i.dirty).unwrap_or(false)
                     {
                         // dbg!("Compiling", source_file.implementation.path.to_owned());
-                        pb.inc(1);
+                        inc();
                         let ast_result = generate_ast(
                             package.to_owned(),
                             root_package.to_owned(),
