@@ -2,7 +2,6 @@ use crate::bsconfig;
 use crate::build;
 use crate::build_types::*;
 use crate::helpers;
-use crate::helpers::get_mlmap_path;
 use crate::package_tree;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
@@ -56,7 +55,33 @@ fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
     ));
 }
 
-fn remove_compile_assets(
+fn remove_compile_asset(
+    source_file: &str,
+    package_name: &str,
+    namespace: &package_tree::Namespace,
+    root_path: &str,
+    is_root: bool,
+    extension: &str,
+) {
+    let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        source_file,
+        package_name,
+        namespace,
+        root_path,
+        extension,
+        is_root,
+    ));
+    let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
+        source_file,
+        package_name,
+        namespace,
+        root_path,
+        extension,
+        is_root,
+    ));
+}
+
+pub fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
     namespace: &package_tree::Namespace,
@@ -66,22 +91,14 @@ fn remove_compile_assets(
     // optimization
     // only issue cmti if htere is an interfacce file
     for extension in &["cmj", "cmi", "cmt", "cmti"] {
-        let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        remove_compile_asset(
             source_file,
             package_name,
             namespace,
             root_path,
-            extension,
             is_root,
-        ));
-        let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
-            source_file,
-            package_name,
-            namespace,
-            root_path,
             extension,
-            is_root,
-        ));
+        );
     }
 }
 
@@ -122,20 +139,23 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
         .for_each(|(rescript_file_location, suffix)| remove_mjs_file(&rescript_file_location, &suffix));
 }
 
+struct AstModule {
+    module_name: String,
+    package_name: String,
+    namespace: package_tree::Namespace,
+    last_modified: SystemTime,
+    ast_file_path: String,
+    is_root: bool,
+    suffix: Option<bsconfig::Suffix>,
+}
+
+// TODO: change to scan_previous_build => CompileAssetsState
+// and then do cleanup on that state (for instance remove all .mjs files that are not in the state)
+
 pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
-    let mut ast_modules: AHashMap<
-        String,
-        (
-            String,
-            String,
-            package_tree::Namespace,
-            SystemTime,
-            String,
-            bool,
-            Option<bsconfig::Suffix>,
-        ),
-    > = AHashMap::new();
+    let mut ast_modules: AHashMap<String, AstModule> = AHashMap::new();
     let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
+    let mut cmt_modules: AHashMap<String, SystemTime> = AHashMap::new();
     let mut ast_rescript_file_locations = AHashSet::new();
 
     let mut rescript_file_locations = build_state
@@ -216,15 +236,15 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                     Some(res_file_path) => {
                                         let _ = ast_modules.insert(
                                             res_file_path.to_owned(),
-                                            (
-                                                module_name,
-                                                package.name.to_owned(),
-                                                package.namespace.to_owned(),
-                                                entry.metadata().unwrap().modified().unwrap(),
-                                                ast_file_path,
-                                                package.is_root,
-                                                root_package.bsconfig.suffix.to_owned(),
-                                            ),
+                                            AstModule {
+                                                module_name: module_name,
+                                                package_name: package.name.to_owned(),
+                                                namespace: package.namespace.to_owned(),
+                                                last_modified: entry.metadata().unwrap().modified().unwrap(),
+                                                ast_file_path: ast_file_path,
+                                                is_root: package.is_root,
+                                                suffix: root_package.bsconfig.suffix.to_owned(),
+                                            },
                                         );
                                         let _ = ast_rescript_file_locations.insert(res_file_path);
                                     }
@@ -239,6 +259,16 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                                     &package_tree::Namespace::NoNamespace,
                                 );
                                 cmi_modules
+                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
+                            }
+                            "cmt" => {
+                                let module_name = helpers::file_path_to_module_name(
+                                    path.to_str().unwrap(),
+                                    // we don't want to include a namespace here because the CMI file
+                                    // already includes a namespace
+                                    &package_tree::Namespace::NoNamespace,
+                                );
+                                cmt_modules
                                     .insert(module_name, entry.metadata().unwrap().modified().unwrap());
                             }
                             _ => {
@@ -268,15 +298,15 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
     let deleted_interfaces = diff
         .par_iter()
         .map(|res_file_location| {
-            let (
+            let AstModule {
                 module_name,
                 package_name,
-                package_namespace,
-                _last_modified,
+                namespace: package_namespace,
                 ast_file_path,
                 is_root,
                 suffix,
-            ) = ast_modules
+                ..
+            } = ast_modules
                 .get(&res_file_location.to_string())
                 .expect("Could not find module name for ast file");
             remove_compile_assets(
@@ -317,15 +347,12 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         .intersection(&rescript_file_locations)
         .into_iter()
         .for_each(|res_file_location| {
-            let (
+            let AstModule {
                 module_name,
-                _package_name,
-                _package_namespace,
-                ast_last_modified,
+                last_modified: ast_last_modified,
                 ast_file_path,
-                _is_root,
-                _suffix,
-            ) = ast_modules
+                ..
+            } = ast_modules
                 .get(res_file_location)
                 .expect("Could not find module name for ast file");
             let module = build_state
@@ -335,29 +362,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
 
             let compile_dirty = cmi_modules.get(module_name);
             if let Some(compile_dirty) = compile_dirty {
-                // println!("{} is not dirty", module_name);
-                let (implementation_last_modified, interface_last_modified) = match &module.source_type {
-                    SourceType::MlMap(_) => (None, None),
-                    SourceType::SourceFile(source_file) => {
-                        let implementation_last_modified = source_file.implementation.last_modified;
-                        let interface_last_modified = source_file
-                            .interface
-                            .as_ref()
-                            .map(|interface| interface.last_modified);
-                        (Some(implementation_last_modified), interface_last_modified)
-                    }
-                };
-                let last_modified = match (implementation_last_modified, interface_last_modified) {
-                    (Some(implementation_last_modified), Some(interface_last_modified)) => {
-                        if implementation_last_modified > interface_last_modified {
-                            Some(implementation_last_modified)
-                        } else {
-                            Some(interface_last_modified)
-                        }
-                    }
-                    (Some(implementation_last_modified), None) => Some(implementation_last_modified),
-                    _ => None,
-                };
+                let last_modified = Some(ast_last_modified);
 
                 if let Some(last_modified) = last_modified {
                     if compile_dirty > &last_modified && !deleted_interfaces.contains(module_name) {
@@ -392,15 +397,33 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             }
         });
 
+    cmi_modules.iter_mut().for_each(|(module_name, last_modified)| {
+        build_state.modules.get_mut(module_name).map(|module| {
+            module.last_compiled_cmi = Some(*last_modified);
+        });
+    });
+
+    cmt_modules.iter_mut().for_each(|(module_name, last_modified)| {
+        build_state.modules.get_mut(module_name).map(|module| {
+            module.last_compiled_cmt = Some(*last_modified);
+        });
+    });
+
     let ast_module_names = ast_modules
         .values()
-        .filter_map(|(module_name, _, _, _, ast_file_path, _, _)| {
-            match helpers::get_extension(ast_file_path).as_str() {
-                "iast" => None,
-                "ast" => Some(module_name),
-                _ => None,
-            }
-        })
+        .filter_map(
+            |AstModule {
+                 module_name,
+                 ast_file_path,
+                 ..
+             }| {
+                match helpers::get_extension(ast_file_path).as_str() {
+                    "iast" => None,
+                    "ast" => Some(module_name),
+                    _ => None,
+                }
+            },
+        )
         .collect::<AHashSet<&String>>();
 
     let all_module_names = build_state
@@ -495,26 +518,19 @@ pub fn cleanup_after_build(build_state: &BuildState) {
             // up the AST file if compile is not successful
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
-                    remove_compile_assets(
+                    // we only clean the cmt (typed tree) here, this will cause the file to be recompiled
+                    // (and thus keep showing the warning), but it will keep the cmi file, so that we don't
+                    // unecessary mark all the dependents as dirty, when there is no change in the interface
+                    remove_compile_asset(
                         &source_file.implementation.path,
                         &module.package_name,
                         &package.namespace,
                         &build_state.project_root,
                         package.is_root,
+                        "cmt",
                     );
                 }
-                SourceType::MlMap(_) => remove_compile_assets(
-                    &get_mlmap_path(
-                        &build_state.project_root,
-                        &module.package_name,
-                        &package.namespace.to_suffix().unwrap(),
-                        package.is_root,
-                    ),
-                    &module.package_name,
-                    &package_tree::Namespace::NoNamespace,
-                    &build_state.project_root,
-                    package.is_root,
-                ),
+                SourceType::MlMap(_) => (),
             }
         }
     });
