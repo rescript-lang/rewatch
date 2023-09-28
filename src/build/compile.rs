@@ -696,6 +696,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                                     //     "✅ {} is a dependent of {} ({:?} / {:?})",
                                     //     module_name, dependent, last_compiled_dependent, last_compiled
                                     // );
+
                                     modules_with_expired_deps.insert(dependent.to_string());
                                 } else {
                                     // println!(
@@ -703,6 +704,9 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                                     //     module_name, dependent, last_compiled_dependent, last_compiled
                                     // );
                                 }
+                            }
+                            (None, _) => {
+                                modules_with_expired_deps.insert(dependent.to_string());
                             }
                             _ => (),
                         }
