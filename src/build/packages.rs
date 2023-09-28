@@ -1,14 +1,19 @@
+use super::build_types::*;
+use super::namespaces;
+use super::packages;
 use crate::bsconfig;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
 use console::style;
 use convert_case::{Case, Casing};
+use log::{debug, error};
 use rayon::prelude::*;
+use std::error;
+use std::fs::{self};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use std::{error, fs};
 
 #[derive(Debug, Clone)]
 pub struct SourceFileMeta {
@@ -428,4 +433,266 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
 pub fn get_package_name(path: &str) -> String {
     let bsconfig = read_bsconfig(&path);
     bsconfig.name
+}
+
+pub fn parse_packages(build_state: &mut BuildState) {
+    build_state
+        .packages
+        .clone()
+        .iter()
+        .for_each(|(package_name, package)| {
+            debug!("Parsing package: {}", package_name);
+            match package.modules.to_owned() {
+                Some(package_modules) => build_state.module_names.extend(package_modules),
+                None => (),
+            }
+            let build_path_abs =
+                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name, package.is_root);
+            let bs_build_path = helpers::get_bs_build_path(
+                &build_state.project_root,
+                &package.bsconfig.name,
+                package.is_root,
+            );
+            helpers::create_build_path(&build_path_abs);
+            helpers::create_build_path(&bs_build_path);
+
+            package.namespace.to_suffix().iter().for_each(|namespace| {
+                // generate the mlmap "AST" file for modules that have a namespace configured
+                let source_files = match package.source_files.to_owned() {
+                    Some(source_files) => source_files
+                        .keys()
+                        .map(|key| key.to_owned())
+                        .collect::<Vec<String>>(),
+                    None => unreachable!(),
+                };
+                let entry = match &package.namespace {
+                    packages::Namespace::NamespaceWithEntry { entry, namespace: _ } => Some(entry),
+                    _ => None,
+                };
+
+                let depending_modules = source_files
+                    .iter()
+                    .map(|path| helpers::file_path_to_module_name(&path, &packages::Namespace::NoNamespace))
+                    .filter(|module_name| {
+                        if let Some(entry) = entry {
+                            module_name != entry
+                        } else {
+                            true
+                        }
+                    })
+                    .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
+                    .collect::<AHashSet<String>>();
+
+                let mlmap =
+                    namespaces::gen_mlmap(&package, namespace, &depending_modules, &build_state.project_root);
+
+                // mlmap will be compiled in the AST generation step
+                // compile_mlmap(&package, namespace, &project_root);
+                let deps = source_files
+                    .iter()
+                    .filter(|path| {
+                        helpers::is_non_exotic_module_name(&helpers::file_path_to_module_name(
+                            &path,
+                            &packages::Namespace::NoNamespace,
+                        ))
+                    })
+                    .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
+                    .filter(|module_name| {
+                        if let Some(entry) = entry {
+                            module_name != entry
+                        } else {
+                            true
+                        }
+                    })
+                    .collect::<AHashSet<String>>();
+
+                build_state.insert_module(
+                    &helpers::file_path_to_module_name(&mlmap.to_owned(), &packages::Namespace::NoNamespace),
+                    Module {
+                        source_type: SourceType::MlMap(MlMap { dirty: false }),
+                        deps,
+                        dependents: AHashSet::new(),
+                        package_name: package.name.to_owned(),
+                        compile_dirty: false,
+                        last_compiled_cmt: None,
+                        last_compiled_cmi: None,
+                    },
+                );
+            });
+
+            debug!("Building source file-tree for package: {}", package.name);
+            match &package.source_files {
+                None => (),
+                Some(source_files) => source_files.iter().for_each(|(file, metadata)| {
+                    let namespace = package.namespace.to_owned();
+
+                    let file_buf = PathBuf::from(file);
+                    let extension = file_buf.extension().unwrap().to_str().unwrap();
+                    let module_name = helpers::file_path_to_module_name(&file.to_owned(), &namespace);
+
+                    if helpers::is_implementation_file(extension) {
+                        build_state
+                            .modules
+                            .entry(module_name.to_string())
+                            .and_modify(|module| match module.source_type {
+                                SourceType::SourceFile(ref mut source_file) => {
+                                    if &source_file.implementation.path != file {
+                                        error!("Duplicate files found for module: {}", &module_name);
+                                        error!("file 1: {}", &source_file.implementation.path);
+                                        error!("file 2: {}", &file);
+
+                                        panic!("Unable to continue... See log output above...");
+                                    }
+                                    source_file.implementation.path = file.to_owned();
+                                    source_file.implementation.last_modified = metadata.modified;
+                                    source_file.implementation.dirty = true;
+                                }
+                                _ => (),
+                            })
+                            .or_insert(Module {
+                                source_type: SourceType::SourceFile(SourceFile {
+                                    implementation: Implementation {
+                                        path: file.to_owned(),
+                                        parse_state: ParseState::Pending,
+                                        compile_state: CompileState::Pending,
+                                        last_modified: metadata.modified,
+                                        dirty: true,
+                                    },
+                                    interface: None,
+                                }),
+                                deps: AHashSet::new(),
+                                dependents: AHashSet::new(),
+                                package_name: package.name.to_owned(),
+                                compile_dirty: true,
+                                last_compiled_cmt: None,
+                                last_compiled_cmi: None,
+                            });
+                    } else {
+                        // remove last character of string: resi -> res, rei -> re, mli -> ml
+                        let mut implementation_filename = file.to_owned();
+                        implementation_filename.pop();
+                        match source_files.get(&implementation_filename) {
+                            None => {
+                                println!(
+                                "{}\rWarning: No implementation file found for interface file (skipping): {}",
+                                LINE_CLEAR, file
+                            )
+                            }
+                            Some(_) => {
+                                build_state
+                                    .modules
+                                    .entry(module_name.to_string())
+                                    .and_modify(|module| match module.source_type {
+                                        SourceType::SourceFile(ref mut source_file) => {
+                                            source_file.interface = Some(Interface {
+                                                path: file.to_owned(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            });
+                                        }
+                                        _ => (),
+                                    })
+                                    .or_insert(Module {
+                                        source_type: SourceType::SourceFile(SourceFile {
+                                            // this will be overwritten later
+                                            implementation: Implementation {
+                                                path: implementation_filename.to_string(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            },
+                                            interface: Some(Interface {
+                                                path: file.to_owned(),
+                                                parse_state: ParseState::Pending,
+                                                compile_state: CompileState::Pending,
+                                                last_modified: metadata.modified,
+                                                dirty: true,
+                                            }),
+                                        }),
+                                        deps: AHashSet::new(),
+                                        dependents: AHashSet::new(),
+                                        package_name: package.name.to_owned(),
+                                        compile_dirty: true,
+                                        last_compiled_cmt: None,
+                                        last_compiled_cmi: None,
+                                    });
+                            }
+                        }
+                    }
+                }),
+            }
+        });
+}
+
+fn check_if_rescript11_or_higher(version: &str) -> bool {
+    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
+}
+
+impl Package {
+    pub fn get_jsx_args(&self) -> Vec<String> {
+        match (self.bsconfig.reason.to_owned(), self.bsconfig.jsx.to_owned()) {
+            (_, Some(jsx)) => match jsx.version {
+                Some(version) if version == 3 || version == 4 => {
+                    vec!["-bs-jsx".to_string(), version.to_string()]
+                }
+                Some(_version) => panic!("Unsupported JSX version"),
+                None => vec![],
+            },
+            (Some(reason), None) => {
+                vec!["-bs-jsx".to_string(), format!("{}", reason.react_jsx)]
+            }
+            _ => vec![],
+        }
+    }
+
+    pub fn get_jsx_mode_args(&self) -> Vec<String> {
+        match self.bsconfig.jsx.to_owned() {
+            Some(jsx) => match jsx.mode {
+                Some(bsconfig::JsxMode::Classic) => {
+                    vec!["-bs-jsx-mode".to_string(), "classic".to_string()]
+                }
+                Some(bsconfig::JsxMode::Automatic) => {
+                    vec!["-bs-jsx-mode".to_string(), "automatic".to_string()]
+                }
+
+                None => vec![],
+            },
+            _ => vec![],
+        }
+    }
+
+    pub fn get_jsx_module_args(&self) -> Vec<String> {
+        match self.bsconfig.jsx.to_owned() {
+            Some(jsx) => match jsx.module {
+                Some(bsconfig::JsxModule::React) => {
+                    vec!["-bs-jsx-module".to_string(), "react".to_string()]
+                }
+                None => vec![],
+            },
+            _ => vec![],
+        }
+    }
+
+    pub fn get_uncurried_args(&self, version: &str, root_package: &packages::Package) -> Vec<String> {
+        if check_if_rescript11_or_higher(version) {
+            match (
+                root_package.bsconfig.uncurried.to_owned(),
+                self.bsconfig.uncurried.to_owned(),
+            ) {
+                (Some(x), _) | (None, Some(x)) => {
+                    if x {
+                        vec!["-uncurried".to_string()]
+                    } else {
+                        vec![]
+                    }
+                }
+                (None, None) => vec!["-uncurried".to_string()],
+            }
+        } else {
+            vec![]
+        }
+    }
 }

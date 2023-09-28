@@ -1,5 +1,5 @@
+use crate::build::packages::Package;
 use crate::helpers;
-use crate::package_tree::Package;
 use ahash::AHashMap;
 use log::error;
 use rayon::prelude::*;

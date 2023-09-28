@@ -1,35 +1,19 @@
+use super::build_types::*;
+use super::packages;
 use crate::bsconfig;
-use crate::build;
-use crate::build_types::*;
 use crate::helpers;
-use crate::package_tree;
-use ahash::{AHashMap, AHashSet};
+use crate::helpers::emojis::*;
+use ahash::AHashSet;
+use console::style;
 use rayon::prelude::*;
-use std::fs;
-use std::path::PathBuf;
-use std::time::SystemTime;
-
-pub fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
-    if let Ok(lines) = helpers::read_lines(ast_file.to_string()) {
-        // we skip the first line with is some null characters
-        // the following lines in the AST are the dependency modules
-        // we stop when we hit a line that starts with a "/", this is the path of the file.
-        // this is the point where the dependencies end and the actual AST starts
-        for line in lines.skip(1) {
-            match line {
-                Ok(line) if line.trim_start().starts_with('/') => return Some(line),
-                _ => (),
-            }
-        }
-    }
-    return None;
-}
+use std::io::Write;
+use std::time::Instant;
 
 fn remove_ast(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
-        &package_tree::Namespace::NoNamespace,
+        &packages::Namespace::NoNamespace,
         root_path,
         "ast",
         is_root,
@@ -40,7 +24,7 @@ fn remove_iast(source_file: &str, package_name: &str, root_path: &str, is_root: 
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
         package_name,
-        &package_tree::Namespace::NoNamespace,
+        &packages::Namespace::NoNamespace,
         root_path,
         "iast",
         is_root,
@@ -58,7 +42,7 @@ fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
 fn remove_compile_asset(
     source_file: &str,
     package_name: &str,
-    namespace: &package_tree::Namespace,
+    namespace: &packages::Namespace,
     root_path: &str,
     is_root: bool,
     extension: &str,
@@ -84,7 +68,7 @@ fn remove_compile_asset(
 pub fn remove_compile_assets(
     source_file: &str,
     package_name: &str,
-    namespace: &package_tree::Namespace,
+    namespace: &packages::Namespace,
     root_path: &str,
     is_root: bool,
 ) {
@@ -139,158 +123,22 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
         .for_each(|(rescript_file_location, suffix)| remove_mjs_file(&rescript_file_location, &suffix));
 }
 
-struct AstModule {
-    module_name: String,
-    package_name: String,
-    namespace: package_tree::Namespace,
-    last_modified: SystemTime,
-    ast_file_path: String,
-    is_root: bool,
-    suffix: Option<bsconfig::Suffix>,
-}
-
 // TODO: change to scan_previous_build => CompileAssetsState
 // and then do cleanup on that state (for instance remove all .mjs files that are not in the state)
 
-pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AHashSet<String>) {
-    let mut ast_modules: AHashMap<String, AstModule> = AHashMap::new();
-    let mut cmi_modules: AHashMap<String, SystemTime> = AHashMap::new();
-    let mut cmt_modules: AHashMap<String, SystemTime> = AHashMap::new();
-    let mut ast_rescript_file_locations = AHashSet::new();
-
-    let mut rescript_file_locations = build_state
-        .modules
-        .values()
-        .filter_map(|module| match &module.source_type {
-            SourceType::SourceFile(source_file) => {
-                let package = build_state.packages.get(&module.package_name).unwrap();
-
-                Some(
-                    PathBuf::from(helpers::get_package_path(
-                        &build_state.project_root,
-                        &module.package_name,
-                        package.is_root,
-                    ))
-                    .canonicalize()
-                    .expect("Could not canonicalize")
-                    .join(source_file.implementation.path.to_owned())
-                    .to_string_lossy()
-                    .to_string(),
-                )
-            }
-            _ => None,
-        })
-        .collect::<AHashSet<String>>();
-
-    rescript_file_locations.extend(
-        build_state
-            .modules
-            .values()
-            .filter_map(|module| {
-                let package = build_state.packages.get(&module.package_name).unwrap();
-                build::get_interface(module).as_ref().map(|interface| {
-                    PathBuf::from(helpers::get_package_path(
-                        &build_state.project_root,
-                        &module.package_name,
-                        package.is_root,
-                    ))
-                    .canonicalize()
-                    .expect("Could not canonicalize")
-                    .join(interface.path.to_owned())
-                    .to_string_lossy()
-                    .to_string()
-                })
-            })
-            .collect::<AHashSet<String>>(),
-    );
-
-    // scan all ast files in all packages
-    for package in build_state.packages.values() {
-        let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
-            &build_state.project_root,
-            &package.name,
-            package.is_root,
-        )))
-        .unwrap();
-
-        for entry in read_dir {
-            match entry {
-                Ok(entry) => {
-                    let path = entry.path();
-                    let extension = path.extension().and_then(|e| e.to_str());
-                    match extension {
-                        Some(ext) => match ext {
-                            "iast" | "ast" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    &package.namespace,
-                                );
-
-                                let ast_file_path = path.to_str().unwrap().to_owned();
-                                let res_file_path = get_res_path_from_ast(&ast_file_path);
-                                let root_package = build_state
-                                    .packages
-                                    .get(&build_state.root_config_name)
-                                    .expect("Could not find root package");
-                                match res_file_path {
-                                    Some(res_file_path) => {
-                                        let _ = ast_modules.insert(
-                                            res_file_path.to_owned(),
-                                            AstModule {
-                                                module_name: module_name,
-                                                package_name: package.name.to_owned(),
-                                                namespace: package.namespace.to_owned(),
-                                                last_modified: entry.metadata().unwrap().modified().unwrap(),
-                                                ast_file_path: ast_file_path,
-                                                is_root: package.is_root,
-                                                suffix: root_package.bsconfig.suffix.to_owned(),
-                                            },
-                                        );
-                                        let _ = ast_rescript_file_locations.insert(res_file_path);
-                                    }
-                                    None => (),
-                                }
-                            }
-                            "cmi" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    // we don't want to include a namespace here because the CMI file
-                                    // already includes a namespace
-                                    &package_tree::Namespace::NoNamespace,
-                                );
-                                cmi_modules
-                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
-                            }
-                            "cmt" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    // we don't want to include a namespace here because the CMI file
-                                    // already includes a namespace
-                                    &package_tree::Namespace::NoNamespace,
-                                );
-                                cmt_modules
-                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
-                            }
-                            _ => {
-                                // println!("other extension: {:?}", other);
-                            }
-                        },
-                        None => (),
-                    }
-                }
-                Err(_) => (),
-            }
-        }
-    }
-
+pub fn cleanup_previous_build(
+    build_state: &mut BuildState,
+    compile_assets_state: CompileAssetsState,
+) -> (usize, usize, AHashSet<String>) {
     // delete the .mjs file which appear in our previous compile assets
     // but does not exists anymore
     // delete the compiler assets for which modules we can't find a rescript file
     // location of rescript file is in the AST
     // delete the .mjs file for which we DO have a compiler asset, but don't have a
     // rescript file anymore (path is found in the .ast file)
-    let diff = ast_rescript_file_locations
-        .difference(&rescript_file_locations)
+    let diff = compile_assets_state
+        .ast_rescript_file_locations
+        .difference(&compile_assets_state.rescript_file_locations)
         .collect::<Vec<&String>>();
 
     let diff_len = diff.len();
@@ -306,7 +154,8 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 is_root,
                 suffix,
                 ..
-            } = ast_modules
+            } = compile_assets_state
+                .ast_modules
                 .get(&res_file_location.to_string())
                 .expect("Could not find module name for ast file");
             remove_compile_assets(
@@ -343,8 +192,9 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         .filter_map(|module_name| module_name.to_owned())
         .collect::<AHashSet<String>>();
 
-    ast_rescript_file_locations
-        .intersection(&rescript_file_locations)
+    compile_assets_state
+        .ast_rescript_file_locations
+        .intersection(&compile_assets_state.rescript_file_locations)
         .into_iter()
         .for_each(|res_file_location| {
             let AstModule {
@@ -352,7 +202,8 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 last_modified: ast_last_modified,
                 ast_file_path,
                 ..
-            } = ast_modules
+            } = compile_assets_state
+                .ast_modules
                 .get(res_file_location)
                 .expect("Could not find module name for ast file");
             let module = build_state
@@ -360,7 +211,7 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
 
-            let compile_dirty = cmi_modules.get(module_name);
+            let compile_dirty = compile_assets_state.cmi_modules.get(module_name);
             if let Some(compile_dirty) = compile_dirty {
                 let last_modified = Some(ast_last_modified);
 
@@ -397,19 +248,26 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
             }
         });
 
-    cmi_modules.iter_mut().for_each(|(module_name, last_modified)| {
-        build_state.modules.get_mut(module_name).map(|module| {
-            module.last_compiled_cmi = Some(*last_modified);
+    compile_assets_state
+        .cmi_modules
+        .iter()
+        .for_each(|(module_name, last_modified)| {
+            build_state.modules.get_mut(module_name).map(|module| {
+                module.last_compiled_cmi = Some(*last_modified);
+            });
         });
-    });
 
-    cmt_modules.iter_mut().for_each(|(module_name, last_modified)| {
-        build_state.modules.get_mut(module_name).map(|module| {
-            module.last_compiled_cmt = Some(*last_modified);
+    compile_assets_state
+        .cmt_modules
+        .iter()
+        .for_each(|(module_name, last_modified)| {
+            build_state.modules.get_mut(module_name).map(|module| {
+                module.last_compiled_cmt = Some(*last_modified);
+            });
         });
-    });
 
-    let ast_module_names = ast_modules
+    let ast_module_names = compile_assets_state
+        .ast_modules
         .values()
         .filter_map(
             |AstModule {
@@ -443,7 +301,11 @@ pub fn cleanup_previous_build(build_state: &mut BuildState) -> (usize, usize, AH
         })
         .collect::<AHashSet<String>>();
 
-    (diff_len, ast_rescript_file_locations.len(), deleted_module_names)
+    (
+        diff_len,
+        compile_assets_state.ast_rescript_file_locations.len(),
+        deleted_module_names,
+    )
 }
 
 fn failed_to_parse(module: &Module) -> bool {
@@ -534,4 +396,62 @@ pub fn cleanup_after_build(build_state: &BuildState) {
             }
         }
     });
+}
+
+pub fn clean(path: &str) {
+    let project_root = helpers::get_abs_path(path);
+    let packages = packages::make(&None, &project_root);
+    let root_config_name = packages::get_package_name(&project_root);
+
+    let timing_clean_compiler_assets = Instant::now();
+    print!(
+        "{} {} Cleaning compiler assets...",
+        style("[1/2]").bold().dim(),
+        SWEEP
+    );
+    std::io::stdout().flush().unwrap();
+    packages.iter().for_each(|(_, package)| {
+        print!(
+            "{}\r{} {} Cleaning {}...",
+            LINE_CLEAR,
+            style("[1/2]").bold().dim(),
+            SWEEP,
+            package.name
+        );
+        std::io::stdout().flush().unwrap();
+
+        let path_str = helpers::get_build_path(&project_root, &package.name, package.is_root);
+        let path = std::path::Path::new(&path_str);
+        let _ = std::fs::remove_dir_all(path);
+
+        let path_str = helpers::get_bs_build_path(&project_root, &package.name, package.is_root);
+        let path = std::path::Path::new(&path_str);
+        let _ = std::fs::remove_dir_all(path);
+    });
+    let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
+
+    println!(
+        "{}\r{} {}Cleaned compiler assets in {:.2}s",
+        LINE_CLEAR,
+        style("[1/2]").bold().dim(),
+        CHECKMARK,
+        timing_clean_compiler_assets_elapsed.as_secs_f64()
+    );
+    std::io::stdout().flush().unwrap();
+
+    let timing_clean_mjs = Instant::now();
+    print!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
+    std::io::stdout().flush().unwrap();
+    let mut build_state = BuildState::new(project_root.to_owned(), root_config_name, packages);
+    packages::parse_packages(&mut build_state);
+    clean_mjs_files(&build_state, &project_root);
+    let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
+    println!(
+        "{}\r{} {}Cleaned mjs files in {:.2}s",
+        LINE_CLEAR,
+        style("[2/2]").bold().dim(),
+        CHECKMARK,
+        timing_clean_mjs_elapsed.as_secs_f64()
+    );
+    std::io::stdout().flush().unwrap();
 }
