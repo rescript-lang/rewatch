@@ -59,6 +59,17 @@ pub struct Module {
     pub dependents: AHashSet<String>,
     pub package_name: String,
     pub compile_dirty: bool,
+    pub last_compiled_cmi: Option<SystemTime>,
+    pub last_compiled_cmt: Option<SystemTime>,
+}
+
+impl Module {
+    pub fn is_mlmap(&self) -> bool {
+        match self.source_type {
+            SourceType::MlMap(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]

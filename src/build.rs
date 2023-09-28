@@ -379,7 +379,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                 SourceType::SourceFile(source_file) => {
                     let root_package = build_state.get_package(&build_state.root_config_name).unwrap();
 
-                    let (ast_path, iast_path) = if source_file.implementation.dirty
+                    let (ast_path, iast_path, dirty) = if source_file.implementation.dirty
                         || source_file.interface.as_ref().map(|i| i.dirty).unwrap_or(false)
                     {
                         pb.inc(1);
@@ -403,7 +403,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                             _ => Ok(None),
                         };
 
-                        (ast_result, iast_result)
+                        (ast_result, iast_result, true)
                     } else {
                         (
                             Ok((
@@ -414,10 +414,11 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                                 .interface
                                 .as_ref()
                                 .map(|i| (helpers::get_basename(&i.path).to_string() + ".iast", None))),
+                            false,
                         )
                     };
 
-                    (module_name.to_owned(), ast_path, iast_path, true)
+                    (module_name.to_owned(), ast_path, iast_path, dirty)
                 }
             }
         })
@@ -441,6 +442,7 @@ fn generate_asts(version: &str, build_state: &mut BuildState, pb: &ProgressBar) 
                         SourceType::MlMap(_) => module.compile_dirty = true,
                         _ => (),
                     }
+                    module.compile_dirty = true
                 }
                 match ast_path {
                     Ok((_path, err)) => {
@@ -671,6 +673,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         dependents: AHashSet::new(),
                         package_name: package.name.to_owned(),
                         compile_dirty: false,
+                        last_compiled_cmt: None,
+                        last_compiled_cmi: None,
                     },
                 );
             });
@@ -719,6 +723,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                 dependents: AHashSet::new(),
                                 package_name: package.name.to_owned(),
                                 compile_dirty: true,
+                                last_compiled_cmt: None,
+                                last_compiled_cmi: None,
                             });
                     } else {
                         // remove last character of string: resi -> res, rei -> re, mli -> ml
@@ -769,6 +775,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                         dependents: AHashSet::new(),
                                         package_name: package.name.to_owned(),
                                         compile_dirty: true,
+                                        last_compiled_cmt: None,
+                                        last_compiled_cmi: None,
                                     });
                             }
                         }
@@ -1223,6 +1231,60 @@ fn format_dependency_cycle(cycle: &Vec<String>) -> String {
         .join(" -> ")
 }
 
+pub fn mark_modules_with_deleted_deps_dirty(
+    build_state: &mut BuildState,
+    deleted_modules: &AHashSet<String>,
+) {
+    build_state.modules.iter_mut().for_each(|(_, module)| {
+        if !module.deps.is_disjoint(deleted_modules) {
+            module.compile_dirty = true;
+        }
+    });
+}
+
+pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
+    let mut modules_with_expired_deps: AHashSet<String> = AHashSet::new();
+    build_state
+        .modules
+        .iter()
+        .filter(|m| !m.1.is_mlmap())
+        .for_each(|(module_name, module)| {
+            for dependent in module.dependents.iter() {
+                let dependent_module = build_state.modules.get(dependent).unwrap();
+                match dependent_module.source_type {
+                    SourceType::SourceFile(_) => {
+                        match (module.last_compiled_cmt, module.last_compiled_cmi) {
+                            (None, None) | (Some(_), None) | (None, Some(_)) => {
+                                modules_with_expired_deps.insert(module_name.to_string());
+                            }
+                            (Some(_), Some(_)) => (),
+                        }
+
+                        // we compare the last compiled time of the dependent module with the last
+                        // compile of the interface of the module it depends on, if the interface
+                        // didn't change it doesn't matter
+                        match (dependent_module.last_compiled_cmt, module.last_compiled_cmi) {
+                            (Some(last_compiled_dependent), Some(last_compiled)) => {
+                                if last_compiled_dependent < last_compiled {
+                                    modules_with_expired_deps.insert(dependent.to_string());
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                    // a namespace is never a dependent of a module (it can be a dependency, but not the other
+                    // way around)
+                    SourceType::MlMap(_) => (),
+                }
+            }
+        });
+    build_state.modules.iter_mut().for_each(|(module_name, module)| {
+        if modules_with_expired_deps.contains(module_name) {
+            module.compile_dirty = true;
+        }
+    });
+}
+
 pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
@@ -1351,20 +1413,28 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let start_compiling = Instant::now();
 
     let mut compiled_modules = AHashSet::<String>::new();
+
+    mark_modules_with_deleted_deps_dirty(&mut build_state, &deleted_module_names);
+    mark_modules_with_expired_deps_dirty(&mut build_state);
+
     let dirty_modules = build_state
         .modules
-        .iter_mut()
+        .iter()
         .filter_map(|(module_name, module)| {
             if module.compile_dirty {
-                Some(module_name.to_owned())
-            } else if !module.deps.is_disjoint(&deleted_module_names) {
-                module.compile_dirty = true;
                 Some(module_name.to_owned())
             } else {
                 None
             }
         })
         .collect::<AHashSet<String>>();
+
+    // println!("{} dirty modules", dirty_modules.len());
+    // let mut sorted_dirty_modules = dirty_modules.iter().collect::<Vec<&String>>();
+    // sorted_dirty_modules.sort();
+    // sorted_dirty_modules
+    //     .iter()
+    //     .for_each(|m| println!("dirty module: {}", m));
 
     // for sure clean modules -- after checking the hash of the cmi
     let mut clean_modules = AHashSet::<String>::new();
@@ -1381,10 +1451,6 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let mut num_compiled_modules = 0;
     let mut sorted_modules = build_state.module_names.iter().collect::<Vec<&String>>();
     sorted_modules.sort();
-
-    // for module in dirty_modules.clone() {
-    //     println!("dirty module: {}", module);
-    // }
 
     // this is the whole "compile universe" all modules that might be dirty
     // we get this by traversing from the dirty modules to all the modules that
@@ -1406,6 +1472,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             break;
         }
     }
+
     let pb = ProgressBar::new(compile_universe.len().try_into().unwrap());
     pb.set_style(
         ProgressStyle::with_template(&format!(
@@ -1591,9 +1658,10 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
 
                     // if not clean -- compile modules that depend on this module
                     for dep in module_dependents.iter() {
-                        let dep_module = build_state.modules.get_mut(dep).unwrap();
                         //  mark the reverse dep as dirty when the source is not clean
                         if !*is_clean {
+                            let dep_module = build_state.modules.get_mut(dep).unwrap();
+                            //  mark the reverse dep as dirty when the source is not clean
                             dep_module.compile_dirty = true;
                         }
                         if !compiled_modules.contains(dep) {
