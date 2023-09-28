@@ -3,12 +3,8 @@ use regex::Regex;
 
 pub mod bsconfig;
 pub mod build;
-pub mod build_types;
-pub mod clean;
 pub mod cmd;
 pub mod helpers;
-pub mod logs;
-pub mod package_tree;
 pub mod queue;
 pub mod watcher;
 
@@ -61,7 +57,7 @@ fn main() {
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
 
     match command {
-        Command::Clean => build::clean(&folder),
+        Command::Clean => build::clean::clean(&folder),
         Command::Build => {
             match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
                 Err(()) => std::process::exit(1),

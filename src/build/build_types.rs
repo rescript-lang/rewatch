@@ -1,4 +1,4 @@
-use crate::package_tree::Package;
+use crate::build::packages::{Namespace, Package};
 use ahash::{AHashMap, AHashSet};
 use std::time::SystemTime;
 
@@ -70,6 +70,12 @@ impl Module {
             _ => false,
         }
     }
+    pub fn get_interface<'a>(&'a self) -> &'a Option<Interface> {
+        match &self.source_type {
+            SourceType::SourceFile(source_file) => &source_file.interface,
+            _ => &None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -102,4 +108,22 @@ impl BuildState {
         self.modules.insert(module_name.to_owned(), module);
         self.module_names.insert(module_name.to_owned());
     }
+}
+
+pub struct AstModule {
+    pub module_name: String,
+    pub package_name: String,
+    pub namespace: Namespace,
+    pub last_modified: SystemTime,
+    pub ast_file_path: String,
+    pub is_root: bool,
+    pub suffix: Option<crate::bsconfig::Suffix>,
+}
+
+pub struct CompileAssetsState {
+    pub ast_modules: AHashMap<String, AstModule>,
+    pub cmi_modules: AHashMap<String, SystemTime>,
+    pub cmt_modules: AHashMap<String, SystemTime>,
+    pub ast_rescript_file_locations: AHashSet<String>,
+    pub rescript_file_locations: AHashSet<String>,
 }

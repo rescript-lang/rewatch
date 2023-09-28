@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rewatch::build;
+use rewatch::build::packages;
 use rewatch::helpers;
-use rewatch::package_tree;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -13,7 +13,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let project_root = helpers::get_abs_path(folder);
 
         b.iter(|| {
-            package_tree::make(&project_root);
+            packages::make(&project_root);
         })
     });
 
