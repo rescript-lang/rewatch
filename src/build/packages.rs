@@ -706,3 +706,256 @@ impl Package {
         }
     }
 }
+
+fn get_unallowed_dependents(
+    packages: &AHashMap<String, Package>,
+    package_name: &String,
+    dependencies: &Vec<String>,
+) -> Option<String> {
+    for deps_package_name in dependencies {
+        if let Some(deps_package) = packages.get(deps_package_name) {
+            let deps_allowed_dependents = deps_package.bsconfig.allowed_dependents.to_owned();
+            if let Some(allowed_dependents) = deps_allowed_dependents {
+                if !allowed_dependents.contains(package_name) {
+                    return Some(deps_package_name.to_string());
+                }
+            }
+        }
+    }
+    return None;
+}
+#[derive(Debug, Clone)]
+struct UnallowedDependency {
+    bs_deps: Vec<String>,
+    pinned_deps: Vec<String>,
+    bs_dev_deps: Vec<String>,
+}
+
+pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> bool {
+    let mut detected_unallowed_dependencies: AHashMap<String, UnallowedDependency> = AHashMap::new();
+
+    for (package_name, package) in packages {
+        let bs_dependencies = &package.bsconfig.bs_dependencies.to_owned().unwrap_or(vec![]);
+        let pinned_dependencies = &package.bsconfig.pinned_dependencies.to_owned().unwrap_or(vec![]);
+        let dev_dependencies = &package.bsconfig.bs_dev_dependencies.to_owned().unwrap_or(vec![]);
+
+        vec![
+            ("bs-dependencies", bs_dependencies),
+            ("pinned-dependencies", pinned_dependencies),
+            ("bs-dev-dependencies", dev_dependencies),
+        ]
+        .iter()
+        .for_each(|(dependency_type, dependencies)| {
+            if let Some(unallowed_dependency_name) = get_unallowed_dependents(packages, package_name, dependencies) {
+                let empty_unallowed_deps = UnallowedDependency{
+                   bs_deps: vec![],
+                   pinned_deps: vec![],
+                   bs_dev_deps: vec![],
+                };
+                
+                let unallowed_dependency = detected_unallowed_dependencies.entry(String::from(package_name));
+                let value = unallowed_dependency
+                .or_insert_with(||empty_unallowed_deps);
+                match dependency_type {
+                    &"bs-dependencies" => value.bs_deps.push(String::from(unallowed_dependency_name)),
+                    &"pinned-dependencies" => value.pinned_deps.push(String::from(unallowed_dependency_name)),
+                    &"bs-dev-dependencies" => value.bs_dev_deps.push(String::from(unallowed_dependency_name)),
+                    _ => (),
+                }
+            
+            }
+        });
+    }
+    for (package_name, unallowed_deps) in detected_unallowed_dependencies.iter() {
+        println!(
+            "\n{}: {} has the following unallowed dependencies:",
+            console::style("Error").red(),
+            console::style(package_name).bold()
+        );
+        
+        vec![
+            ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
+            ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
+            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned()),
+        ]
+        .iter()
+        .for_each(|(deps_type, map)| {
+            if map.len() > 0 {
+                println!(
+                    "{} dependencies: {}",
+                    console::style(deps_type).bold().dim(),
+                    console::style(map.join(" \n -")).bold().dim()
+                );
+            }
+        });
+    }
+    let has_any_unallowed_dependent = detected_unallowed_dependencies.len() > 0;
+
+    if has_any_unallowed_dependent {
+        println!("\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
+        console::style("unallowed_dependents").bold().dim(),
+        console::style("bsconfig.json").bold().dim() 
+        )
+    }
+    return !has_any_unallowed_dependent;
+}
+
+#[cfg(test)]
+mod test {
+    use crate::bsconfig::Source;
+    use ahash::{AHashMap, AHashSet};
+
+    use super::{Package, Namespace};
+
+    fn create_package(
+        name: String,
+        bs_deps: Vec<String>,
+        pinned_deps: Vec<String>,
+        dev_deps: Vec<String>,
+        allowed_dependents: Option<Vec<String>>,
+    ) -> Package {
+        return Package {
+            name: name.clone(),
+            bsconfig: crate::bsconfig::T {
+                name: name.clone(),
+                sources: crate::bsconfig::OneOrMore::Single(Source::Shorthand(String::from("Source"))),
+                package_specs: None,
+                warnings: None,
+                suffix: None,
+                pinned_dependencies: Some(pinned_deps),
+                bs_dependencies: Some(bs_deps),
+                bs_dev_dependencies: Some(dev_deps),
+                ppx_flags: None,
+                bsc_flags: None,
+                reason: None,
+                namespace: None,
+                jsx: None,
+                uncurried: None,
+                namespace_entry: None,
+                allowed_dependents,
+            },
+            source_folders: AHashSet::new(),
+            source_files: None,
+            namespace: Namespace::Namespace(String::from("Package1")),
+            modules: None,
+            package_dir: String::from("./something"),
+            dirs: None,
+            is_pinned_dep: false,
+            is_root: false,
+        };
+    }
+    #[test]
+    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_bs_dependencies(
+    ) {
+        let mut packages: AHashMap<String, Package> = AHashMap::new();
+        packages.insert(
+            String::from("Package1"),
+            create_package(
+                String::from("Package1"),
+                vec![String::from("Package2")],
+                vec![],
+                vec![],
+                None,
+            ),
+        );
+        packages.insert(
+            String::from("Package2"),
+            create_package(
+                String::from("Package2"),
+                vec![],
+                vec![],
+                vec![],
+                Some(vec![String::from("Package3")]),
+            ),
+        );
+
+        let is_valid = super::validate_packages_dependencies(&packages);
+        assert_eq!(is_valid, false)
+    }
+
+    #[test]
+    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_pinned_dependencies(
+    ) {
+        let mut packages: AHashMap<String, Package> = AHashMap::new();
+        packages.insert(
+            String::from("Package1"),
+            create_package(
+                String::from("Package1"),
+                vec![],
+                vec![String::from("Package2")],
+                vec![],
+                None,
+            ),
+        );
+        packages.insert(
+            String::from("Package2"),
+            create_package(
+                String::from("Package2"),
+                vec![],
+                vec![],
+                vec![],
+                Some(vec![String::from("Package3")]),
+            ),
+        );
+
+        let is_valid = super::validate_packages_dependencies(&packages);
+        assert_eq!(is_valid, false)
+    }
+
+    #[test]
+    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_dev_dependencies(
+    ) {
+        let mut packages: AHashMap<String, Package> = AHashMap::new();
+        packages.insert(
+            String::from("Package1"),
+            create_package(
+                String::from("Package1"),
+                vec![],
+                vec![],
+                vec![String::from("Package2")],
+                None,
+            ),
+        );
+        packages.insert(
+            String::from("Package2"),
+            create_package(
+                String::from("Package2"),
+                vec![],
+                vec![],
+                vec![],
+                Some(vec![String::from("Package3")]),
+            ),
+        );
+
+        let is_valid = super::validate_packages_dependencies(&packages);
+        assert_eq!(is_valid, false)
+    }
+
+    #[test]
+    fn test_validate_packages_dependencies_unallowed_dependents_should_return_true_with_no_invalid_parent() {
+        let mut packages: AHashMap<String, Package> = AHashMap::new();
+        packages.insert(
+            String::from("Package1"),
+            create_package(
+                String::from("Package1"),
+                vec![String::from("Package2")],
+                vec![],
+                vec![],
+                None,
+            ),
+        );
+        packages.insert(
+            String::from("Package2"),
+            create_package(
+                String::from("Package2"),
+                vec![],
+                vec![],
+                vec![],
+                Some(vec![String::from("Package1")]),
+            ),
+        );
+
+        let is_valid = super::validate_packages_dependencies(&packages);
+        assert_eq!(is_valid, true)
+    }
+}
