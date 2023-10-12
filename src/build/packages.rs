@@ -173,10 +173,20 @@ fn get_package_dir(package_name: &str, is_root: bool) -> String {
 }
 
 fn read_bsconfig(package_dir: &str) -> bsconfig::T {
-    if package_dir == "" {
-        return bsconfig::read("bsconfig.json".to_string());
+    let prefix = if package_dir == "" {
+        "".to_string()
+    } else {
+        package_dir.to_string() + "/"
+    };
+
+    let rescript_json_path = prefix.to_string() + "rescript.json";
+    let bsconfig_json_path = prefix.to_string() + "bsconfig.json";
+
+    if Path::new(&rescript_json_path).exists() {
+        bsconfig::read(rescript_json_path)
+    } else {
+        bsconfig::read(bsconfig_json_path)
     }
-    bsconfig::read(package_dir.to_string() + "/bsconfig.json")
 }
 
 /// # Make Package
