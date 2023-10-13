@@ -437,7 +437,7 @@ fn compile_file(
     let jsx_args = root_package.get_jsx_args();
     let jsx_module_args = root_package.get_jsx_module_args();
     let jsx_mode_args = root_package.get_jsx_mode_args();
-    let uncurried_args = package.get_uncurried_args(version, &root_package);
+    let uncurried_args = root_package.get_uncurried_args(version, &root_package);
 
     let warning_args: Vec<String> = match package.bsconfig.warnings.to_owned() {
         None => vec![],
