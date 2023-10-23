@@ -64,10 +64,10 @@ fn main() {
             eprintln!("Error while trying to get lock: {}", e.to_string());
             std::process::exit(1)
         }
-        (lock::Lock::Locked(_), Command::Clean) => {
+        (lock::Lock::Aquired(_), Command::Clean) => {
             build::clean::clean(&folder);
         }
-        (lock::Lock::Locked(_), Command::Build) => {
+        (lock::Lock::Aquired(_), Command::Build) => {
             match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
                 Err(()) => std::process::exit(1),
                 Ok(_) => {
@@ -76,7 +76,7 @@ fn main() {
                 }
             };
         }
-        (lock::Lock::Locked(_), Command::Watch) => {
+        (lock::Lock::Aquired(_), Command::Watch) => {
             let _initial_build = build::build(&filter, &folder, false);
             args.after_build.clone().map(|command| cmd::run(command));
             watcher::start(&filter, &folder, args.after_build);
