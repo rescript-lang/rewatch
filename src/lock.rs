@@ -30,7 +30,7 @@ impl std::fmt::Display for Error {
 }
 
 pub enum Lock {
-    Locked(u32),
+    Aquired(u32),
     Error(Error),
 }
 
@@ -43,7 +43,7 @@ fn exists(to_check_pid: u32) -> bool {
 
 fn create(pid: u32) -> Lock {
     File::create(LOCKFILE)
-        .and_then(|mut file| file.write(pid.to_string().as_bytes()).map(|_| Lock::Locked(pid)))
+        .and_then(|mut file| file.write(pid.to_string().as_bytes()).map(|_| Lock::Aquired(pid)))
         .unwrap_or_else(|e| Lock::Error(Error::WritingLockfile(e)))
 }
 
