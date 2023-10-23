@@ -5,6 +5,7 @@ pub mod bsconfig;
 pub mod build;
 pub mod cmd;
 pub mod helpers;
+pub mod lock;
 pub mod queue;
 pub mod watcher;
 
@@ -56,9 +57,17 @@ fn main() {
         .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
 
-    match command {
-        Command::Clean => build::clean::clean(&folder),
-        Command::Build => {
+    let lock = lock::get();
+
+    match (lock, command) {
+        (lock::Lock::Error(ref e), _) => {
+            eprintln!("Error while trying to get lock: {}", e.to_string());
+            std::process::exit(1)
+        }
+        (lock::Lock::Locked(_), Command::Clean) => {
+            build::clean::clean(&folder);
+        }
+        (lock::Lock::Locked(_), Command::Build) => {
             match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
                 Err(()) => std::process::exit(1),
                 Ok(_) => {
@@ -67,7 +76,7 @@ fn main() {
                 }
             };
         }
-        Command::Watch => {
+        (lock::Lock::Locked(_), Command::Watch) => {
             let _initial_build = build::build(&filter, &folder, false);
             args.after_build.clone().map(|command| cmd::run(command));
             watcher::start(&filter, &folder, args.after_build);
