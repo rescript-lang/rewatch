@@ -21,6 +21,7 @@ regex = "1.7.1"
 futures = "0.3.25"
 futures-timer = "3.0.2"
 clap = { version = "4.3.17", features = ["derive"] }
+sysinfo = "0.29.10"
 
 
 [profile.release]
