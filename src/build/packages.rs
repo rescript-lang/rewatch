@@ -746,23 +746,23 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         ]
         .iter()
         .for_each(|(dependency_type, dependencies)| {
-            if let Some(unallowed_dependency_name) = get_unallowed_dependents(packages, package_name, dependencies) {
-                let empty_unallowed_deps = UnallowedDependency{
-                   bs_deps: vec![],
-                   pinned_deps: vec![],
-                   bs_dev_deps: vec![],
+            if let Some(unallowed_dependency_name) =
+                get_unallowed_dependents(packages, package_name, dependencies)
+            {
+                let empty_unallowed_deps = UnallowedDependency {
+                    bs_deps: vec![],
+                    pinned_deps: vec![],
+                    bs_dev_deps: vec![],
                 };
-                
+
                 let unallowed_dependency = detected_unallowed_dependencies.entry(String::from(package_name));
-                let value = unallowed_dependency
-                .or_insert_with(||empty_unallowed_deps);
+                let value = unallowed_dependency.or_insert_with(|| empty_unallowed_deps);
                 match dependency_type {
                     &"bs-dependencies" => value.bs_deps.push(String::from(unallowed_dependency_name)),
                     &"pinned-dependencies" => value.pinned_deps.push(String::from(unallowed_dependency_name)),
                     &"bs-dev-dependencies" => value.bs_dev_deps.push(String::from(unallowed_dependency_name)),
                     _ => (),
                 }
-            
             }
         });
     }
@@ -772,7 +772,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
             console::style("Error").red(),
             console::style(package_name).bold()
         );
-        
+
         vec![
             ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
             ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
@@ -792,9 +792,10 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
     let has_any_unallowed_dependent = detected_unallowed_dependencies.len() > 0;
 
     if has_any_unallowed_dependent {
-        println!("\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
-        console::style("unallowed_dependents").bold().dim(),
-        console::style("bsconfig.json").bold().dim() 
+        println!(
+            "\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
+            console::style("unallowed_dependents").bold().dim(),
+            console::style("bsconfig.json").bold().dim()
         )
     }
     return !has_any_unallowed_dependent;
@@ -805,7 +806,7 @@ mod test {
     use crate::bsconfig::Source;
     use ahash::{AHashMap, AHashSet};
 
-    use super::{Package, Namespace};
+    use super::{Namespace, Package};
 
     fn create_package(
         name: String,
