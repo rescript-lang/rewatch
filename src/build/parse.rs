@@ -13,7 +13,7 @@ use std::process::Command;
 pub fn generate_asts(
     version: &str,
     build_state: &mut BuildState,
-    inc: impl Fn() -> () + std::marker::Sync,
+    inc: impl Fn() + std::marker::Sync,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -50,7 +50,7 @@ pub fn generate_asts(
                         package.is_root,
                     );
                     let mlmap_hash = helpers::compute_file_hash(&compile_path);
-                    namespaces::compile_mlmap(&package, module_name, &build_state.project_root);
+                    namespaces::compile_mlmap(package, module_name, &build_state.project_root);
                     let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
 
                     let is_dirty = match (mlmap_hash, mlmap_hash_after) {
@@ -74,7 +74,7 @@ pub fn generate_asts(
                             root_package.to_owned(),
                             &source_file.implementation.path.to_owned(),
                             &build_state.project_root,
-                            &version,
+                            version,
                         );
 
                         let iast_result = match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
@@ -83,9 +83,9 @@ pub fn generate_asts(
                                 root_package.to_owned(),
                                 &interface_file_path.to_owned(),
                                 &build_state.project_root,
-                                &version,
+                                version,
                             )
-                            .map(|result| Some(result)),
+                            .map(Some),
                             _ => Ok(None),
                         };
 
@@ -177,10 +177,9 @@ pub fn generate_asts(
                     Err(err) => {
                         match module.source_type {
                             SourceType::SourceFile(ref mut source_file) => {
-                                source_file
-                                    .interface
-                                    .as_mut()
-                                    .map(|interface| interface.parse_state = ParseState::ParseError);
+                                if let Some(interface) = source_file.interface.as_mut() {
+                                    interface.parse_state = ParseState::ParseError
+                                }
                             }
                             _ => (),
                         }
@@ -249,7 +248,7 @@ fn generate_ast(
 
     /* Create .ast */
     if let Some(res_to_ast) = Some(file).map(|file| {
-        Command::new(helpers::get_bsc(&root_path))
+        Command::new(helpers::get_bsc(root_path))
             .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
             .args(res_to_ast_args(file))
             .output()
@@ -260,7 +259,7 @@ fn generate_ast(
             if res_to_ast.status.success() {
                 Ok((ast_path, Some(stderr.to_string())))
             } else {
-                println!("err: {}", stderr.to_string());
+                println!("err: {}", stderr);
                 Err(stderr.to_string())
             }
         } else {
@@ -268,20 +267,20 @@ fn generate_ast(
         }
     } else {
         println!("Parsing file {}...", file);
-        return Err(format!(
+        Err(format!(
             "Could not find canonicalize_string_path for file {} in package {}",
             file, package.name
-        ));
+        ))
     }
 }
 
 fn path_to_ast_extension(path: &Path) -> &str {
     let extension = path.extension().unwrap().to_str().unwrap();
-    return if helpers::is_interface_ast_file(extension) {
+    if helpers::is_interface_ast_file(extension) {
         ".iast"
     } else {
         ".ast"
-    };
+    }
 }
 
 fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
@@ -290,20 +289,15 @@ fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<On
         Ok(_) => None,
         Err(_) => Some("bisect"),
     };
-    match ppx_flags {
-        Some(flags) => Some(
-            flags
-                .iter()
-                .filter(|flag| match (flag, filter) {
-                    (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
-                    (bsconfig::OneOrMore::Multiple(str), Some(filter)) => {
-                        !str.first().unwrap().contains(filter)
-                    }
-                    _ => true,
-                })
-                .map(|x| x.to_owned())
-                .collect::<Vec<OneOrMore<String>>>(),
-        ),
-        None => None,
-    }
+    ppx_flags.as_ref().map(|flags| {
+        flags
+            .iter()
+            .filter(|flag| match (flag, filter) {
+                (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
+                (bsconfig::OneOrMore::Multiple(str), Some(filter)) => !str.first().unwrap().contains(filter),
+                _ => true,
+            })
+            .map(|x| x.to_owned())
+            .collect::<Vec<OneOrMore<String>>>()
+    })
 }

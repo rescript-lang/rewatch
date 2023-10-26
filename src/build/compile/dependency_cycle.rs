@@ -13,9 +13,9 @@ pub fn find(modules: &Vec<(&String, &Module)>) -> Vec<String> {
         .map(|(name, _)| name.to_string())
         .collect::<Vec<String>>();
 
-    module_names.sort_by(|a, b| a.cmp(b));
+    module_names.sort();
     for module_name in module_names {
-        if find_dependency_cycle_helper(&module_name, &modules, &mut visited, &mut stack) {
+        if find_dependency_cycle_helper(&module_name, modules, &mut visited, &mut stack) {
             return stack;
         }
         visited.clear();

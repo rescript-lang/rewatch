@@ -36,7 +36,7 @@ impl LexicalAbsolute for Path {
                 Component::ParentDir => {
                     absolute.pop();
                 }
-                component @ _ => absolute.push(component.as_os_str()),
+                component => absolute.push(component.as_os_str()),
             }
         }
         Ok(absolute)
@@ -154,7 +154,7 @@ pub fn contains_ascii_characters(str: &str) -> bool {
             return true;
         }
     }
-    return false;
+    false
 }
 
 pub fn create_build_path(build_path: &str) {
@@ -176,7 +176,7 @@ pub fn get_bsc(root_path: &str) -> String {
     get_node_modules_path(root_path) + "/rescript/" + subfolder + "/bsc.exe"
 }
 
-pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
+pub fn string_ends_with_any(s: &Path, suffixes: &[&str]) -> bool {
     suffixes
         .iter()
         .any(|&suffix| s.extension().unwrap_or(&OsString::new()).to_str().unwrap_or("") == suffix)
@@ -219,7 +219,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&get_bs_build_path(root_path, &package_name, is_root))
+    std::path::Path::new(&get_bs_build_path(root_path, package_name, is_root))
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()
@@ -228,7 +228,7 @@ pub fn get_bs_compiler_asset(
 }
 
 pub fn get_namespace_from_module_name(module_name: &str) -> Option<String> {
-    let mut split = module_name.split("-");
+    let mut split = module_name.split('-');
     let _ = split.next();
     split.next().map(|s| s.to_string())
 }
@@ -279,17 +279,11 @@ pub fn get_system_time() -> u128 {
 }
 
 pub fn is_interface_file(extension: &str) -> bool {
-    match extension {
-        "resi" | "mli" | "rei" => true,
-        _ => false,
-    }
+    matches!(extension, "resi" | "mli" | "rei")
 }
 
 pub fn is_implementation_file(extension: &str) -> bool {
-    match extension {
-        "res" | "ml" | "re" => true,
-        _ => false,
-    }
+    matches!(extension, "res" | "ml" | "re")
 }
 
 pub fn is_source_file(extension: &str) -> bool {
@@ -301,7 +295,7 @@ pub fn is_non_exotic_module_name(module_name: &str) -> bool {
     if chars.next().unwrap().is_ascii_uppercase() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return true;
     }
-    return false;
+    false
 }
 
 pub fn get_extension(path: &str) -> String {
@@ -317,14 +311,14 @@ pub fn get_extension(path: &str) -> String {
 pub fn format_namespaced_module_name(module_name: &str) -> String {
     // from ModuleName-Namespace to Namespace.ModuleName
     // also format ModuleName-@Namespace to Namespace.ModuleName
-    let mut split = module_name.split("-");
+    let mut split = module_name.split('-');
     let module_name = split.next().unwrap();
     let namespace = split.next();
-    let namespace = namespace.map(|ns| ns.trim_start_matches("@"));
-    return match namespace {
+    let namespace = namespace.map(|ns| ns.trim_start_matches('@'));
+    match namespace {
         None => module_name.to_string(),
         Some(ns) => ns.to_string() + "." + module_name,
-    };
+    }
 }
 
 pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {

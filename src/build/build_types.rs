@@ -70,7 +70,7 @@ impl Module {
             _ => false,
         }
     }
-    pub fn get_interface<'a>(&'a self) -> &'a Option<Interface> {
+    pub fn get_interface(&self) -> &Option<Interface> {
         match &self.source_type {
             SourceType::SourceFile(source_file) => &source_file.interface,
             _ => &None,
@@ -99,9 +99,9 @@ impl BuildState {
         Self {
             module_names: AHashSet::new(),
             modules: AHashMap::new(),
-            packages: packages,
-            project_root: project_root,
-            root_config_name: root_config_name,
+            packages,
+            project_root,
+            root_config_name,
         }
     }
     pub fn insert_module(&mut self, module_name: &str, module: Module) {

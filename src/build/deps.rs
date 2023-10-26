@@ -47,12 +47,12 @@ fn get_dep_modules(
                         Some(dep_second) if dep_first == namespace => dep_second,
                         _ => dep_first,
                     };
-                    let namespaced_name = dep.to_owned() + "-" + &namespace;
+                    let namespaced_name = dep.to_owned() + "-" + namespace;
                     if package_modules.contains(&namespaced_name) {
-                        return namespaced_name;
+                        namespaced_name
                     } else {
-                        return dep.to_string();
-                    };
+                        dep.to_string()
+                    }
                 }
                 None => dep_first.to_string(),
             }
@@ -88,7 +88,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                 let mut deps = get_dep_modules(
                     &ast_path,
                     package.namespace.to_suffix(),
-                    &package.modules.as_ref().unwrap(),
+                    package.modules.as_ref().unwrap(),
                     all_mod,
                 );
 
@@ -104,7 +104,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                         deps.extend(get_dep_modules(
                             &iast_path,
                             package.namespace.to_suffix(),
-                            &package.modules.as_ref().unwrap(),
+                            package.modules.as_ref().unwrap(),
                             all_mod,
                         ))
                     }

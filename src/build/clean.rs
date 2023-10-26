@@ -100,11 +100,11 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
                     .expect("Could not find root package");
                 Some((
                     std::path::PathBuf::from(helpers::get_package_path(
-                        &project_root,
+                        project_root,
                         &module.package_name,
                         package.is_root,
                     ))
-                    .join(source_file.implementation.path.to_string())
+                    .join(&source_file.implementation.path)
                     .to_string_lossy()
                     .to_string(),
                     root_package
@@ -120,7 +120,7 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
 
     rescript_file_locations
         .par_iter()
-        .for_each(|(rescript_file_location, suffix)| remove_mjs_file(&rescript_file_location, &suffix));
+        .for_each(|(rescript_file_location, suffix)| remove_mjs_file(rescript_file_location, suffix));
 }
 
 // TODO: change to scan_previous_build => CompileAssetsState
@@ -166,7 +166,7 @@ pub fn cleanup_previous_build(
                 *is_root,
             );
             remove_mjs_file(
-                &res_file_location,
+                res_file_location,
                 &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
             );
             remove_iast(
@@ -195,7 +195,6 @@ pub fn cleanup_previous_build(
     compile_assets_state
         .ast_rescript_file_locations
         .intersection(&compile_assets_state.rescript_file_locations)
-        .into_iter()
         .for_each(|res_file_location| {
             let AstModule {
                 module_name,
@@ -216,7 +215,7 @@ pub fn cleanup_previous_build(
                 let last_modified = Some(ast_last_modified);
 
                 if let Some(last_modified) = last_modified {
-                    if compile_dirty > &last_modified && !deleted_interfaces.contains(module_name) {
+                    if compile_dirty > last_modified && !deleted_interfaces.contains(module_name) {
                         module.compile_dirty = false;
                     }
                 }
@@ -252,18 +251,18 @@ pub fn cleanup_previous_build(
         .cmi_modules
         .iter()
         .for_each(|(module_name, last_modified)| {
-            build_state.modules.get_mut(module_name).map(|module| {
+            if let Some(module) = build_state.modules.get_mut(module_name) {
                 module.last_compiled_cmi = Some(*last_modified);
-            });
+            }
         });
 
     compile_assets_state
         .cmt_modules
         .iter()
         .for_each(|(module_name, last_modified)| {
-            build_state.modules.get_mut(module_name).map(|module| {
+            if let Some(module) = build_state.modules.get_mut(module_name) {
                 module.last_compiled_cmt = Some(*last_modified);
-            });
+            }
         });
 
     let ast_module_names = compile_assets_state
@@ -284,11 +283,7 @@ pub fn cleanup_previous_build(
         )
         .collect::<AHashSet<&String>>();
 
-    let all_module_names = build_state
-        .modules
-        .keys()
-        .map(|module_name| module_name)
-        .collect::<AHashSet<&String>>();
+    let all_module_names = build_state.modules.keys().collect::<AHashSet<&String>>();
 
     let deleted_module_names = ast_module_names
         .difference(&all_module_names)
@@ -297,7 +292,7 @@ pub fn cleanup_previous_build(
             if let Some(namespace) = helpers::get_namespace_from_module_name(module_name) {
                 return namespace;
             }
-            return module_name.to_string();
+            module_name.to_string()
         })
         .collect::<AHashSet<String>>();
 

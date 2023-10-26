@@ -20,9 +20,8 @@ async fn async_watch(
         Delay::new(Duration::from_millis(50)).await;
         let mut events: Vec<Event> = vec![];
         while !q.is_empty() {
-            match q.pop() {
-                Ok(event) => events.push(event),
-                Err(_) => (),
+            if let Ok(event) = q.pop() {
+                events.push(event)
             }
         }
 
@@ -44,8 +43,7 @@ async fn async_watch(
                 let extension = path_buf.extension().and_then(|ext| ext.to_str());
                 match (is_in_bs_build_path, extension) {
                     (false, Some(extension)) => {
-                        (helpers::is_implementation_file(&extension)
-                            || helpers::is_interface_file(&extension))
+                        (helpers::is_implementation_file(extension) || helpers::is_interface_file(extension))
                             && filter.as_ref().map(|re| !re.is_match(&name)).unwrap_or(true)
                     }
 
@@ -64,7 +62,9 @@ async fn async_watch(
             }
 
             let _ = build::build(filter, path, false);
-            after_build.clone().map(|command| cmd::run(command));
+            if let Some(a) = after_build.clone() {
+                cmd::run(a)
+            }
         }
     }
 }

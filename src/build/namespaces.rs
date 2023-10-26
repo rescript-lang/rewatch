@@ -55,7 +55,7 @@ pub fn compile_mlmap(package: &packages::Package, namespace: &str, root_path: &s
     let mlmap_name = format!("{}.mlmap", namespace);
     let args = vec!["-w", "-49", "-color", "always", "-no-alias-deps", &mlmap_name];
 
-    let _ = Command::new(helpers::get_bsc(&root_path))
+    let _ = Command::new(helpers::get_bsc(root_path))
         .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
         .args(args)
         .output()

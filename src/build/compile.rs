@@ -14,16 +14,16 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn compile(
-    mut build_state: &mut BuildState,
+    build_state: &mut BuildState,
     deleted_module_names: &AHashSet<String>,
     rescript_version: &str,
-    inc: impl Fn() -> () + std::marker::Sync,
-    set_length: impl Fn(u64) -> (),
+    inc: impl Fn() + std::marker::Sync,
+    set_length: impl Fn(u64),
 ) -> (String, String, usize) {
     let mut compiled_modules = AHashSet::<String>::new();
 
-    mark_modules_with_deleted_deps_dirty(&mut build_state, &deleted_module_names);
-    mark_modules_with_expired_deps_dirty(&mut build_state);
+    mark_modules_with_deleted_deps_dirty(build_state, deleted_module_names);
+    mark_modules_with_expired_deps_dirty(build_state);
 
     let dirty_modules = build_state
         .modules
@@ -90,7 +90,7 @@ pub fn compile(
     let mut in_progress_modules = compile_universe
         .iter()
         .filter(|module_name| {
-            let module = build_state.get_module(*module_name).unwrap();
+            let module = build_state.get_module(module_name).unwrap();
             module.deps.intersection(&compile_universe).count() == 0
         })
         .map(|module_name| module_name.to_string())
@@ -162,8 +162,8 @@ pub fn compile(
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
-                                        &package,
-                                        &root_package,
+                                        package,
+                                        root_package,
                                         &helpers::get_iast_path(
                                             &path,
                                             &package.name,
@@ -172,7 +172,7 @@ pub fn compile(
                                         ),
                                         module,
                                         &build_state.project_root,
-                                        &rescript_version,
+                                        rescript_version,
                                         true,
                                     );
                                     Some(result)
@@ -180,8 +180,8 @@ pub fn compile(
                                 _ => None,
                             };
                             let result = compile_file(
-                                &package,
-                                &root_package,
+                                package,
+                                root_package,
                                 &helpers::get_ast_path(
                                     &source_file.implementation.path,
                                     &package.name,
@@ -190,7 +190,7 @@ pub fn compile(
                                 ),
                                 module,
                                 &build_state.project_root,
-                                &rescript_version,
+                                rescript_version,
                                 false,
                             );
                             // if let Err(error) = result.to_owned() {
@@ -291,9 +291,9 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
-                                        &err,
+                                        err,
                                     );
-                                    compile_warnings.push_str(&err);
+                                    compile_warnings.push_str(err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
@@ -302,9 +302,9 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
-                                        &err,
+                                        err,
                                     );
-                                    compile_errors.push_str(&err);
+                                    compile_errors.push_str(err);
                                 }
                             };
                             match interface_result {
@@ -315,9 +315,9 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
-                                        &err,
+                                        err,
                                     );
-                                    compile_warnings.push_str(&err);
+                                    compile_warnings.push_str(err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
@@ -327,9 +327,9 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
-                                        &err,
+                                        err,
                                     );
-                                    compile_errors.push_str(&err);
+                                    compile_errors.push_str(err);
                                 }
                                 _ => (),
                             };
@@ -358,7 +358,7 @@ pub fn compile(
                 dependency_cycle::format(&cycle)
             ))
         }
-        if compile_errors.len() > 0 {
+        if !compile_errors.is_empty() {
             break;
         };
     }
@@ -437,7 +437,7 @@ fn compile_file(
     let jsx_args = root_package.get_jsx_args();
     let jsx_module_args = root_package.get_jsx_module_args();
     let jsx_mode_args = root_package.get_jsx_mode_args();
-    let uncurried_args = package.get_uncurried_args(version, &root_package);
+    let uncurried_args = package.get_uncurried_args(version, root_package);
 
     let warning_args: Vec<String> = match package.bsconfig.warnings.to_owned() {
         None => vec![],
@@ -527,7 +527,7 @@ fn compile_file(
     ]
     .concat();
 
-    let to_mjs = Command::new(helpers::get_bsc(&root_path))
+    let to_mjs = Command::new(helpers::get_bsc(root_path))
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)
         .output();
@@ -559,7 +559,7 @@ fn compile_file(
                     // because editor tooling doesn't support namespace entries yet
                     // we just remove the @ for now. This makes sure the editor support
                     // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmi"),
+                    .join(module_name.to_owned().replace('@', "") + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
@@ -582,7 +582,7 @@ fn compile_file(
                     // because editor tooling doesn't support namespace entries yet
                     // we just remove the @ for now. This makes sure the editor support
                     // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmt"),
+                    .join(module_name.to_owned().replace('@', "") + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(

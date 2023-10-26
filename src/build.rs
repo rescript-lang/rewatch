@@ -18,14 +18,14 @@ use std::process::Command;
 use std::time::Instant;
 
 pub fn get_version(project_root: &str) -> String {
-    let version_cmd = Command::new(helpers::get_bsc(&project_root))
+    let version_cmd = Command::new(helpers::get_bsc(project_root))
         .args(["-v"])
         .output()
         .expect("failed to find version");
 
     std::str::from_utf8(&version_cmd.stdout)
         .expect("Could not read version from rescript")
-        .replace("\n", "")
+        .replace('\n', "")
         .replace("ReScript ", "")
 }
 
@@ -44,7 +44,13 @@ fn is_dirty(module: &Module) -> bool {
     }
 }
 
-pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
+pub enum BuildError {
+    PackageValidation,
+    ParseError,
+    CompileError,
+}
+
+pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, BuildError> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
     let rescript_version = get_version(&project_root);
@@ -62,7 +68,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
-    let packages = packages::make(&filter, &project_root);
+    let packages = packages::make(filter, &project_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     println!(
@@ -76,9 +82,9 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     if !packages::validate_packages_dependencies(&packages) {
-        return Err(());
+        return Err(BuildError::PackageValidation);
     }
-    
+
     let timing_source_files = Instant::now();
 
     print!(
@@ -160,7 +166,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             );
             print!("{}", &err);
             clean::cleanup_after_build(&build_state);
-            return Err(());
+            return Err(BuildError::ParseError);
         }
     }
 
@@ -198,7 +204,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     logs::finalize(&build_state.project_root, &build_state.packages);
     pb.finish();
     clean::cleanup_after_build(&build_state);
-    if compile_errors.len() > 0 {
+    if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
         }
@@ -211,7 +217,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
         print!("{}", &compile_errors);
-        return Err(());
+        return Err(BuildError::CompileError);
     } else {
         println!(
             "{}\r{} {}Compiled {} modules in {:.2}s",

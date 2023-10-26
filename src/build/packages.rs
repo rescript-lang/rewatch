@@ -61,7 +61,7 @@ impl PartialEq for Package {
 impl Eq for Package {}
 impl Hash for Package {
     fn hash<H: Hasher>(&self, _state: &mut H) {
-        blake3::hash(&self.name.as_bytes());
+        blake3::hash(self.name.as_bytes());
     }
 }
 
@@ -80,7 +80,7 @@ pub fn read_folders(
 ) -> Result<AHashMap<String, SourceFileMeta>, Box<dyn error::Error>> {
     let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
     let path_buf = PathBuf::from(path);
-    let meta = fs::metadata(package_dir.join(&path));
+    let meta = fs::metadata(package_dir.join(path));
     let path_with_meta = meta.map(|meta| {
         (
             path.to_owned(),
@@ -98,7 +98,7 @@ pub fn read_folders(
         let path_ext = entry_path_buf.extension().and_then(|x| x.to_str());
         let new_path = path_buf.join(&name);
         if metadata.file_type().is_dir() && recurse {
-            match read_folders(&filter, package_dir, &new_path, recurse) {
+            match read_folders(filter, package_dir, &new_path, recurse) {
                 Ok(s) => map.extend(s),
                 Err(e) => println!("Error reading directory: {}", e),
             }
@@ -168,12 +168,12 @@ fn get_package_dir(package_name: &str, is_root: bool) -> String {
     if is_root {
         "".to_string()
     } else {
-        helpers::get_relative_package_path(&package_name, is_root)
+        helpers::get_relative_package_path(package_name, is_root)
     }
 }
 
 fn read_bsconfig(package_dir: &str) -> bsconfig::T {
-    let prefix = if package_dir == "" {
+    let prefix = if package_dir.is_empty() {
         "".to_string()
     } else {
         package_dir.to_string() + "/"
@@ -234,7 +234,7 @@ fn build_package<'a>(
                 (Some(bsconfig::Namespace::Bool(true)), None) => Namespace::Namespace(namespace_from_package),
                 (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => Namespace::NamespaceWithEntry {
                     namespace: namespace_from_package,
-                    entry: entry,
+                    entry,
                 },
                 (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
                     "true" => Namespace::Namespace(namespace_from_package),
@@ -250,7 +250,7 @@ fn build_package<'a>(
                     },
                     namespace if namespace.is_case(Case::UpperFlat) => Namespace::NamespaceWithEntry {
                         namespace: namespace.to_string(),
-                        entry: entry,
+                        entry,
                     },
                     namespace => Namespace::NamespaceWithEntry {
                         namespace: namespace.to_string().to_case(Case::Pascal),
@@ -261,7 +261,7 @@ fn build_package<'a>(
             modules: None,
             package_dir: package_dir.to_string(),
             dirs: None,
-            is_pinned_dep: is_pinned_dep,
+            is_pinned_dep,
             is_root,
         }
     });
@@ -279,7 +279,7 @@ fn build_package<'a>(
                         "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
                         style("[1/2]").bold().dim(),
                         CROSS,
-                        e.to_string()
+                        e
                     );
                     std::process::exit(2)
                 }
@@ -301,8 +301,8 @@ fn build_package<'a>(
             build_package(
                 map,
                 child_bsconfig.to_owned(),
-                &package_dir,
-                &project_root,
+                package_dir,
+                project_root,
                 bsconfig
                     .pinned_dependencies
                     .as_ref()
@@ -340,7 +340,7 @@ pub fn get_source_files(
     let path_dir = Path::new(&source.dir);
     // don't include dev sources for now
     if type_ != &Some("dev".to_string()) {
-        match read_folders(&filter, package_dir, path_dir, recurse) {
+        match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
                 println!(
@@ -358,8 +358,8 @@ pub fn get_source_files(
 pub fn namespace_from_package_name(package_name: &str) -> String {
     package_name
         .to_owned()
-        .replace("@", "")
-        .replace("/", "_")
+        .replace('@', "")
+        .replace('/', "_")
         .to_case(Case::Pascal)
 }
 
@@ -374,7 +374,7 @@ fn extend_with_children(
         value
             .source_folders
             .par_iter()
-            .map(|source| get_source_files(Path::new(&value.package_dir), &filter, source))
+            .map(|source| get_source_files(Path::new(&value.package_dir), filter, source))
             .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -420,28 +420,25 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
     build_package(&mut map, bsconfig, &package_dir, root_folder, true, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
-    let result = extend_with_children(&filter, map);
-    result
-        .values()
-        .into_iter()
-        .for_each(|package| match &package.dirs {
-            Some(dirs) => dirs.iter().for_each(|dir| {
-                let _ = std::fs::create_dir_all(
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_folder,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir),
-                );
-            }),
-            None => (),
-        });
+    let result = extend_with_children(filter, map);
+    result.values().for_each(|package| match &package.dirs {
+        Some(dirs) => dirs.iter().for_each(|dir| {
+            let _ = std::fs::create_dir_all(
+                std::path::Path::new(&helpers::get_bs_build_path(
+                    root_folder,
+                    &package.name,
+                    package.is_root,
+                ))
+                .join(dir),
+            );
+        }),
+        None => (),
+    });
     result
 }
 
 pub fn get_package_name(path: &str) -> String {
-    let bsconfig = read_bsconfig(&path);
+    let bsconfig = read_bsconfig(path);
     bsconfig.name
 }
 
@@ -482,7 +479,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 
                 let depending_modules = source_files
                     .iter()
-                    .map(|path| helpers::file_path_to_module_name(&path, &packages::Namespace::NoNamespace))
+                    .map(|path| helpers::file_path_to_module_name(path, &packages::Namespace::NoNamespace))
                     .filter(|module_name| {
                         if let Some(entry) = entry {
                             module_name != entry
@@ -494,7 +491,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .collect::<AHashSet<String>>();
 
                 let mlmap =
-                    namespaces::gen_mlmap(&package, namespace, &depending_modules, &build_state.project_root);
+                    namespaces::gen_mlmap(package, namespace, &depending_modules, &build_state.project_root);
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
@@ -502,11 +499,11 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .iter()
                     .filter(|path| {
                         helpers::is_non_exotic_module_name(&helpers::file_path_to_module_name(
-                            &path,
+                            path,
                             &packages::Namespace::NoNamespace,
                         ))
                     })
-                    .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
+                    .map(|path| helpers::file_path_to_module_name(path, &package.namespace))
                     .filter(|module_name| {
                         if let Some(entry) = entry {
                             module_name != entry
@@ -638,7 +635,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 }
 
 fn check_if_rescript11_or_higher(version: &str) -> bool {
-    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
+    version.split('.').next().unwrap().parse::<usize>().unwrap() >= 11
 }
 
 impl Package {
@@ -722,7 +719,7 @@ fn get_unallowed_dependents(
             }
         }
     }
-    return None;
+    None
 }
 #[derive(Debug, Clone)]
 struct UnallowedDependency {
@@ -746,23 +743,23 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         ]
         .iter()
         .for_each(|(dependency_type, dependencies)| {
-            if let Some(unallowed_dependency_name) = get_unallowed_dependents(packages, package_name, dependencies) {
-                let empty_unallowed_deps = UnallowedDependency{
-                   bs_deps: vec![],
-                   pinned_deps: vec![],
-                   bs_dev_deps: vec![],
+            if let Some(unallowed_dependency_name) =
+                get_unallowed_dependents(packages, package_name, dependencies)
+            {
+                let empty_unallowed_deps = UnallowedDependency {
+                    bs_deps: vec![],
+                    pinned_deps: vec![],
+                    bs_dev_deps: vec![],
                 };
-                
+
                 let unallowed_dependency = detected_unallowed_dependencies.entry(String::from(package_name));
-                let value = unallowed_dependency
-                .or_insert_with(||empty_unallowed_deps);
+                let value = unallowed_dependency.or_insert_with(|| empty_unallowed_deps);
                 match dependency_type {
-                    &"bs-dependencies" => value.bs_deps.push(String::from(unallowed_dependency_name)),
-                    &"pinned-dependencies" => value.pinned_deps.push(String::from(unallowed_dependency_name)),
-                    &"bs-dev-dependencies" => value.bs_dev_deps.push(String::from(unallowed_dependency_name)),
+                    &"bs-dependencies" => value.bs_deps.push(unallowed_dependency_name),
+                    &"pinned-dependencies" => value.pinned_deps.push(unallowed_dependency_name),
+                    &"bs-dev-dependencies" => value.bs_dev_deps.push(unallowed_dependency_name),
                     _ => (),
                 }
-            
             }
         });
     }
@@ -772,7 +769,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
             console::style("Error").red(),
             console::style(package_name).bold()
         );
-        
+
         vec![
             ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
             ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
@@ -780,7 +777,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         ]
         .iter()
         .for_each(|(deps_type, map)| {
-            if map.len() > 0 {
+            if !map.is_empty() {
                 println!(
                     "{} dependencies: {}",
                     console::style(deps_type).bold().dim(),
@@ -792,12 +789,13 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
     let has_any_unallowed_dependent = detected_unallowed_dependencies.len() > 0;
 
     if has_any_unallowed_dependent {
-        println!("\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
-        console::style("unallowed_dependents").bold().dim(),
-        console::style("bsconfig.json").bold().dim() 
+        println!(
+            "\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
+            console::style("unallowed_dependents").bold().dim(),
+            console::style("bsconfig.json").bold().dim()
         )
     }
-    return !has_any_unallowed_dependent;
+    !has_any_unallowed_dependent
 }
 
 #[cfg(test)]
@@ -805,7 +803,7 @@ mod test {
     use crate::bsconfig::Source;
     use ahash::{AHashMap, AHashSet};
 
-    use super::{Package, Namespace};
+    use super::{Namespace, Package};
 
     fn create_package(
         name: String,
@@ -814,7 +812,7 @@ mod test {
         dev_deps: Vec<String>,
         allowed_dependents: Option<Vec<String>>,
     ) -> Package {
-        return Package {
+        Package {
             name: name.clone(),
             bsconfig: crate::bsconfig::T {
                 name: name.clone(),
@@ -842,7 +840,7 @@ mod test {
             dirs: None,
             is_pinned_dep: false,
             is_root: false,
-        };
+        }
     }
     #[test]
     fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_bs_dependencies(
@@ -870,7 +868,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -899,7 +897,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -928,7 +926,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -956,6 +954,6 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, true)
+        assert!(is_valid)
     }
 }
