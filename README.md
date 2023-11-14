@@ -48,9 +48,10 @@ This project should be considered Alpha Status. Currently used to solve a very s
   - [NodeJS](https://nodejs.org/en/) - For running testscripts only
   - [Yarn](https://yarnpkg.com/) or [Npm](https://www.npmjs.com/) - Npm probably comes with your node installation
 
-1. `cd testrepo && yarn` (install dependencies for submodule)
+  1. `cd testrepo && yarn` (install dependencies for submodule)
   2. `cargo run`
 
   Running tests:
 
-  1. `./tests/suite.sh`
+  1. `cargo build --release`
+  2. `./tests/suite.sh`
