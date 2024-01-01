@@ -18,14 +18,14 @@ const installMacLinuxBinary = (binary) => {
 };
 
 const installWindowsBinary = () => {
-  const source = path.join(__dirname, "ppx-windows.exe");
+  const source = path.join(__dirname, "rewatch-windows.exe");
   if (fs.existsSync(source)) {
     const target = path.join(__dirname, "rewatch.exe");
     fs.renameSync(source, target);
 
     // windows scripts use a different file extension to executables
     // so we delete the script to make sure windows uses the exe now
-    const windowsScript = path.join(__dirname, "ppx.cmd");
+    const windowsScript = path.join(__dirname, "rewatch.cmd");
     fs.unlinkSync(windowsScript);
   } else {
     // assume we're in dev mode - nothing will break if the script
