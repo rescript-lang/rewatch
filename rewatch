@@ -3,7 +3,10 @@
 # Get the directory of the script to work from.
 DIR=$(dirname "$0")
 
-if [ "$(uname)" = "Darwin" ]; then
+if [ -f $DIR/target/debug/rewatch ]; then
+    # Use the debug build - assume we're in dev mode
+    $DIR/target/debug/rewatch $@
+elif [ "$(uname)" = "Darwin" ]; then
     # Run the Mac Version
     $DIR/rewatch-macos.exe $@
 elif [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
