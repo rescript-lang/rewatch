@@ -1,6 +1,7 @@
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 use std::process;
 use sysinfo::{PidExt, System, SystemExt};
 
@@ -41,20 +42,31 @@ fn exists(to_check_pid: u32) -> bool {
         .any(|(pid, _process)| pid.as_u32() == to_check_pid)
 }
 
-fn create(pid: u32) -> Lock {
-    File::create(LOCKFILE)
+fn create(lockfile_location: &Path, pid: u32) -> Lock {
+    // Create /lib if not exists
+    match lockfile_location
+        .parent()
+        .map(|folder| fs::create_dir_all(folder))
+    {
+        Some(Err(e)) => return Lock::Error(Error::WritingLockfile(e)),
+        _ => (),
+    };
+
+    File::create(lockfile_location)
         .and_then(|mut file| file.write(pid.to_string().as_bytes()).map(|_| Lock::Aquired(pid)))
         .unwrap_or_else(|e| Lock::Error(Error::WritingLockfile(e)))
 }
 
-pub fn get() -> Lock {
+pub fn get(folder: &str) -> Lock {
+    let location = format!("{}/lib/{}", folder, LOCKFILE);
+    let path = Path::new(&location);
     let pid = process::id();
 
-    match fs::read_to_string(LOCKFILE) {
-        Err(e) if (e.kind() == std::io::ErrorKind::NotFound) => create(pid),
+    match fs::read_to_string(&location) {
+        Err(e) if (e.kind() == std::io::ErrorKind::NotFound) => create(&path, pid),
         Err(e) => Lock::Error(Error::ReadingLockfile(e)),
         Ok(s) => match s.parse::<u32>() {
-            Ok(parsed_pid) if !exists(parsed_pid) => create(pid),
+            Ok(parsed_pid) if !exists(parsed_pid) => create(&path, pid),
             Ok(parsed_pid) => Lock::Error(Error::Locked(parsed_pid)),
             Err(e) => Lock::Error(Error::ParsingLockfile(e)),
         },

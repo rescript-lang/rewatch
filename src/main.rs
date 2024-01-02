@@ -57,9 +57,7 @@ fn main() {
         .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
 
-    let lock = lock::get();
-
-    match (lock, command) {
+    match (lock::get(&folder), command) {
         (lock::Lock::Error(ref e), _) => {
             eprintln!("Error while trying to get lock: {}", e.to_string());
             std::process::exit(1)

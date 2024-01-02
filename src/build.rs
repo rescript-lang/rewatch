@@ -78,7 +78,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     if !packages::validate_packages_dependencies(&packages) {
         return Err(());
     }
-    
+
     let timing_source_files = Instant::now();
 
     print!(
