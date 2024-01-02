@@ -57,27 +57,27 @@ fn main() {
         .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
 
-    match (lock::get(&folder), command) {
-        (lock::Lock::Error(ref e), _) => {
+    match lock::get(&folder) {
+        lock::Lock::Error(ref e) => {
             eprintln!("Error while trying to get lock: {}", e.to_string());
             std::process::exit(1)
         }
-        (lock::Lock::Aquired(_), Command::Clean) => {
-            build::clean::clean(&folder);
-        }
-        (lock::Lock::Aquired(_), Command::Build) => {
-            match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
-                Err(()) => std::process::exit(1),
-                Ok(_) => {
-                    args.after_build.map(|command| cmd::run(command));
-                    std::process::exit(0)
-                }
-            };
-        }
-        (lock::Lock::Aquired(_), Command::Watch) => {
-            let _initial_build = build::build(&filter, &folder, false);
-            args.after_build.clone().map(|command| cmd::run(command));
-            watcher::start(&filter, &folder, args.after_build);
-        }
+        lock::Lock::Aquired(_) => match command {
+            Command::Clean => build::clean::clean(&folder),
+            Command::Build => {
+                match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
+                    Err(()) => std::process::exit(1),
+                    Ok(_) => {
+                        args.after_build.map(|command| cmd::run(command));
+                        std::process::exit(0)
+                    }
+                };
+            }
+            Command::Watch => {
+                let _initial_build = build::build(&filter, &folder, false);
+                args.after_build.clone().map(|command| cmd::run(command));
+                watcher::start(&filter, &folder, args.after_build);
+            }
+        },
     }
 }
