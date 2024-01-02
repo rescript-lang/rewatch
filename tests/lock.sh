@@ -3,6 +3,8 @@ cd ../testrepo
 
 bold "Test: It should lock - when watching"
 
+sleep 1
+
 if rewatch clean &> /dev/null;
 then
   success "Repo Cleaned"
@@ -30,6 +32,8 @@ else
   exit_watcher
   exit 1
 fi
+
+sleep 1
 
 touch tmp.txt
 rewatch watch &> tmp.txt &
