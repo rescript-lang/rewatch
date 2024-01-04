@@ -38,6 +38,15 @@ impl Namespace {
 }
 
 #[derive(Debug, Clone)]
+struct Dependency {
+    name: String,
+    bsconfig: bsconfig::T,
+    path: String,
+    is_pinned: bool,
+    dependencies: Vec<Dependency>
+}
+
+#[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
     pub bsconfig: bsconfig::T,
@@ -164,14 +173,6 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
     source_folders
 }
 
-fn get_package_dir(package_name: &str, is_root: bool) -> String {
-    if is_root {
-        "".to_string()
-    } else {
-        helpers::get_relative_package_path(&package_name, is_root)
-    }
-}
-
 fn read_bsconfig(package_dir: &str) -> bsconfig::T {
     let prefix = if package_dir == "" {
         "".to_string()
@@ -190,127 +191,158 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 }
 
 /// # Make Package
-/// Given a directory that includes a bsconfig file, read it, and recursively find all other
-/// bsconfig files, and turn those into Packages as well.
-fn build_package<'a>(
-    map: &'a mut AHashMap<String, Package>,
-    bsconfig: bsconfig::T,
-    package_dir: &str,
-    project_root: &str,
-    is_pinned_dep: bool,
-    is_root: bool,
-) -> &'a mut AHashMap<String, Package> {
-    // let (package_dir, bsconfig) = read_bsconfig(package_name, project_root, is_root);
-    let copied_bsconfig = bsconfig.to_owned();
 
-    /* At this point in time we may have started encountering elements multiple times as there is
-     * no deduplication on the package level so far. Once we return this flat list of packages, do
-     * have this deduplication. From that point on, we can add the source files for every single
-     * one as that is an expensive operation IO wise and we don't want to duplicate that.*/
-    map.insert(copied_bsconfig.name.to_owned(), {
-        let source_folders = match bsconfig.sources.to_owned() {
-            bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
-            bsconfig::OneOrMore::Multiple(sources) => {
-                let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
-                sources
-                    .iter()
-                    .map(|source| get_source_dirs(source.to_owned(), None))
-                    .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
-                    .into_iter()
-                    .for_each(|source| source_folders.extend(source));
-                source_folders
-            }
-        };
-
-        let namespace_from_package = namespace_from_package_name(&bsconfig.name);
-        Package {
-            name: copied_bsconfig.name.to_owned(),
-            bsconfig: copied_bsconfig,
-            source_folders,
-            source_files: None,
-            namespace: match (bsconfig.namespace, bsconfig.namespace_entry) {
-                (Some(bsconfig::Namespace::Bool(false)), _) => Namespace::NoNamespace,
-                (None, _) => Namespace::NoNamespace,
-                (Some(bsconfig::Namespace::Bool(true)), None) => Namespace::Namespace(namespace_from_package),
-                (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => Namespace::NamespaceWithEntry {
-                    namespace: namespace_from_package,
-                    entry: entry,
-                },
-                (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
-                    "true" => Namespace::Namespace(namespace_from_package),
-                    namespace if namespace.is_case(Case::UpperFlat) => {
-                        Namespace::Namespace(namespace.to_string())
-                    }
-                    namespace => Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
-                },
-                (Some(bsconfig::Namespace::String(str)), Some(entry)) => match str.as_str() {
-                    "true" => Namespace::NamespaceWithEntry {
-                        namespace: namespace_from_package,
-                        entry,
-                    },
-                    namespace if namespace.is_case(Case::UpperFlat) => Namespace::NamespaceWithEntry {
-                        namespace: namespace.to_string(),
-                        entry: entry,
-                    },
-                    namespace => Namespace::NamespaceWithEntry {
-                        namespace: namespace.to_string().to_case(Case::Pascal),
-                        entry,
-                    },
-                },
-            },
-            modules: None,
-            package_dir: package_dir.to_string(),
-            dirs: None,
-            is_pinned_dep: is_pinned_dep,
-            is_root,
-        }
-    });
-
-    bsconfig
+/// Given a bsconfig, reqursively finds all dependencies.
+/// 1. It starts with registering dependencies and
+/// prevents the operation for the ones which are already
+/// registerd for the parent packages. Especially relevant for peerDependencies.
+/// 2. In parallel performs IO to read the dependencies bsconfig and
+/// recursively continues operation for their dependencies as well.
+fn read_dependencies<'a>(
+    registered_dependencies_set: &'a mut AHashSet<String>,
+    parent_bsconfig: bsconfig::T,
+) -> Vec<Dependency> {
+    return parent_bsconfig
         .bs_dependencies
         .to_owned()
         .unwrap_or(vec![])
         .iter()
         .filter_map(|package_name| {
-            let package_dir = match PathBuf::from(get_package_dir(package_name, false)).canonicalize() {
-                Ok(dir) => dir.to_string_lossy().to_string(),
-                Err(e) => {
-                    print!(
-                        "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
-                        style("[1/2]").bold().dim(),
-                        CROSS,
-                        e.to_string()
-                    );
-                    std::process::exit(2)
-                }
-            };
-
-            if !map.contains_key(package_name) {
-                Some(package_dir)
-            } else {
+            if registered_dependencies_set.contains(package_name) {
                 None
+            } else {
+                registered_dependencies_set.insert(package_name.to_owned());
+                Some(package_name.to_owned())
             }
         })
         .collect::<Vec<String>>()
-        // read all bsconfig files simultanously instead of blocking
+        // Read all bsconfig files in parallel instead of blocking
         .par_iter()
-        .map(|package_dir| (package_dir.to_owned(), read_bsconfig(package_dir)))
-        .collect::<Vec<(String, bsconfig::T)>>()
-        .iter()
-        .fold(map, |map, (package_dir, child_bsconfig)| {
-            build_package(
-                map,
-                child_bsconfig.to_owned(),
-                &package_dir,
-                &project_root,
-                bsconfig
-                    .pinned_dependencies
-                    .as_ref()
-                    .map(|p| p.contains(&child_bsconfig.name))
-                    .unwrap_or(false),
-                false,
-            )
-        })
+        .map(|package_name| {
+            let path =
+                match PathBuf::from(helpers::get_relative_package_path(package_name, false)).canonicalize() {
+                    Ok(dir) => dir.to_string_lossy().to_string(),
+                    Err(e) => {
+                        print!(
+                          "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
+                          style("[1/2]").bold().dim(),
+                          CROSS,
+                          e.to_string()
+                        );
+                        std::process::exit(2)
+                    }
+                };
+
+            let bsconfig = read_bsconfig(&path);
+            let is_pinned = parent_bsconfig
+            .pinned_dependencies
+            .as_ref()
+            .map(|p| p.contains(&bsconfig.name))
+            .unwrap_or(false);
+
+            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned());
+
+            Dependency {
+              name: package_name.to_owned(),
+              bsconfig,
+              path,
+              is_pinned,
+              dependencies,
+            }
+        }) 
+        .collect::<Vec<Dependency>>();
+}
+
+fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
+    let mut flattened: Vec<Dependency> = Vec::new();
+    for dep in dependencies {
+        flattened.push(dep.clone());
+        let nested_flattened = flatten_dependencies(dep.dependencies);
+        flattened.extend(nested_flattened);
+    }
+    flattened
+}
+
+fn make_package (
+    bsconfig: bsconfig::T,
+    package_dir: &str,
+    is_pinned_dep: bool,
+    is_root: bool
+) -> Package {
+    let source_folders = match bsconfig.sources.to_owned() {
+        bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
+        bsconfig::OneOrMore::Multiple(sources) => {
+            let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
+            sources
+                .iter()
+                .map(|source| get_source_dirs(source.to_owned(), None))
+                .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
+                .into_iter()
+                .for_each(|source| source_folders.extend(source));
+            source_folders
+        }
+    };
+
+    let namespace_from_package = namespace_from_package_name(&bsconfig.name);
+    Package {
+        name: bsconfig.name.to_owned(),
+        bsconfig: bsconfig.to_owned(),
+        source_folders,
+        source_files: None,
+        namespace: match (bsconfig.namespace, bsconfig.namespace_entry) {
+            (Some(bsconfig::Namespace::Bool(false)), _) => Namespace::NoNamespace,
+            (None, _) => Namespace::NoNamespace,
+            (Some(bsconfig::Namespace::Bool(true)), None) => Namespace::Namespace(namespace_from_package),
+            (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => Namespace::NamespaceWithEntry {
+                namespace: namespace_from_package,
+                entry: entry,
+            },
+            (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
+                "true" => Namespace::Namespace(namespace_from_package),
+                namespace if namespace.is_case(Case::UpperFlat) => {
+                    Namespace::Namespace(namespace.to_string())
+                }
+                namespace => Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
+            },
+            (Some(bsconfig::Namespace::String(str)), Some(entry)) => match str.as_str() {
+                "true" => Namespace::NamespaceWithEntry {
+                    namespace: namespace_from_package,
+                    entry,
+                },
+                namespace if namespace.is_case(Case::UpperFlat) => Namespace::NamespaceWithEntry {
+                    namespace: namespace.to_string(),
+                    entry: entry,
+                },
+                namespace => Namespace::NamespaceWithEntry {
+                    namespace: namespace.to_string().to_case(Case::Pascal),
+                    entry,
+                },
+            },
+        },
+        modules: None,
+        package_dir: package_dir.to_string(),
+        dirs: None,
+        is_pinned_dep: is_pinned_dep,
+        is_root,
+    }
+}
+
+fn read_packages(project_root: &str) -> AHashMap<String, Package> {
+    let root_bsconfig = read_bsconfig(project_root);
+
+    // Store all packages and completely deduplicate them
+    let mut map: AHashMap<String, Package> = AHashMap::new();
+    map.insert(root_bsconfig.name.to_owned(), make_package(root_bsconfig.to_owned(), project_root, false, true));
+
+    let mut registered_dependencies_set: AHashSet<String> = AHashSet::new();
+    let dependencies = flatten_dependencies(read_dependencies(&mut registered_dependencies_set, root_bsconfig.to_owned()));
+    dependencies.iter().for_each(|d| {
+      if !map.contains_key(&d.name) {
+        map.insert(d.name.to_owned(), make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false));
+      }
+    });
+
+    return map;
 }
 
 /// `get_source_files` is essentially a wrapper around `read_structure`, which read a
@@ -411,13 +443,8 @@ fn extend_with_children(
 ///    interface files.
 /// The two step process is there to reduce IO overhead
 pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String, Package> {
-    /* The build_package get's called recursively. By using extend, we deduplicate all the packages
-     * */
-    let mut map: AHashMap<String, Package> = AHashMap::new();
+    let map = read_packages(root_folder);
 
-    let package_dir = get_package_dir("", true);
-    let bsconfig = read_bsconfig(&package_dir);
-    build_package(&mut map, bsconfig, &package_dir, root_folder, true, true);
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(&filter, map);
