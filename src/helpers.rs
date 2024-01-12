@@ -50,13 +50,6 @@ pub fn get_relative_package_path(package_name: &str, is_root: bool) -> String {
     }
 }
 
-pub fn get_package_path(root: &str, package_name: &str, is_root: bool) -> String {
-    match is_root {
-        true => root.to_string(),
-        false => format!("{}/node_modules/{}", root, package_name),
-    }
-}
-
 pub fn get_build_path(root: &str, package_name: &str, is_root: bool) -> String {
     match is_root {
         true => format!("{}/lib/ocaml", root),

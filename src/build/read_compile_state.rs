@@ -20,16 +20,12 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                 let package = build_state.packages.get(&module.package_name).unwrap();
 
                 Some(
-                    PathBuf::from(helpers::get_package_path(
-                        &build_state.project_root,
-                        &module.package_name,
-                        package.is_root,
-                    ))
-                    .canonicalize()
-                    .expect("Could not canonicalize")
-                    .join(source_file.implementation.path.to_owned())
-                    .to_string_lossy()
-                    .to_string(),
+                    PathBuf::from(&package.package_dir)
+                        .canonicalize()
+                        .expect("Could not canonicalize")
+                        .join(source_file.implementation.path.to_owned())
+                        .to_string_lossy()
+                        .to_string(),
                 )
             }
             _ => None,
@@ -43,16 +39,12 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
             .filter_map(|module| {
                 let package = build_state.packages.get(&module.package_name).unwrap();
                 module.get_interface().as_ref().map(|interface| {
-                    PathBuf::from(helpers::get_package_path(
-                        &build_state.project_root,
-                        &module.package_name,
-                        package.is_root,
-                    ))
-                    .canonicalize()
-                    .expect("Could not canonicalize")
-                    .join(interface.path.to_owned())
-                    .to_string_lossy()
-                    .to_string()
+                    PathBuf::from(&package.package_dir)
+                        .canonicalize()
+                        .expect("Could not canonicalize")
+                        .join(interface.path.to_owned())
+                        .to_string_lossy()
+                        .to_string()
                 })
             })
             .collect::<AHashSet<String>>(),
