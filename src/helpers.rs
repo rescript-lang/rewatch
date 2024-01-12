@@ -43,13 +43,6 @@ impl LexicalAbsolute for Path {
     }
 }
 
-pub fn get_relative_package_path(package_name: &str, is_root: bool) -> String {
-    match is_root {
-        true => "".to_string(),
-        false => format!("node_modules/{}", package_name),
-    }
-}
-
 pub fn get_build_path(root: &str, package_name: &str, is_root: bool) -> String {
     match is_root {
         true => format!("{}/lib/ocaml", root),
@@ -61,13 +54,6 @@ pub fn get_bs_build_path(root: &str, package_name: &str, is_root: bool) -> Strin
     match is_root {
         true => format!("{}/lib/bs", root),
         false => format!("{}/node_modules/{}/lib/bs", root, package_name),
-    }
-}
-
-pub fn get_path(root: &str, package_name: &str, file: &str, is_root: bool) -> String {
-    match is_root {
-        true => format!("{}/{}", root, file),
-        false => format!("{}/node_modules/{}/{}", root, package_name, file),
     }
 }
 
