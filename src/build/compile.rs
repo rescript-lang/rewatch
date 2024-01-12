@@ -609,12 +609,7 @@ fn compile_file(
                     // editor tools expects the source file in lib/bs for finding the current package
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
-                        std::path::Path::new(&helpers::get_package_path(
-                            root_path,
-                            &package.name,
-                            package.is_root,
-                        ))
-                        .join(path),
+                        std::path::Path::new(&package.package_dir).join(path),
                         std::path::Path::new(&helpers::get_bs_build_path(
                             root_path,
                             &package.name,
@@ -625,12 +620,7 @@ fn compile_file(
                     .expect("copying source file failed");
 
                     let _ = std::fs::copy(
-                        std::path::Path::new(&helpers::get_package_path(
-                            root_path,
-                            &package.name,
-                            package.is_root,
-                        ))
-                        .join(path),
+                        std::path::Path::new(&package.package_dir).join(path),
                         std::path::Path::new(&helpers::get_build_path(
                             root_path,
                             &package.name,

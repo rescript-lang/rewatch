@@ -86,7 +86,7 @@ pub fn remove_compile_assets(
     }
 }
 
-pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
+pub fn clean_mjs_files(build_state: &BuildState) {
     // get all rescript file locations
     let rescript_file_locations = build_state
         .modules
@@ -99,14 +99,10 @@ pub fn clean_mjs_files(build_state: &BuildState, project_root: &str) {
                     .get(&build_state.root_config_name)
                     .expect("Could not find root package");
                 Some((
-                    std::path::PathBuf::from(helpers::get_package_path(
-                        &project_root,
-                        &module.package_name,
-                        package.is_root,
-                    ))
-                    .join(source_file.implementation.path.to_string())
-                    .to_string_lossy()
-                    .to_string(),
+                    std::path::PathBuf::from(package.package_dir.to_string())
+                        .join(source_file.implementation.path.to_string())
+                        .to_string_lossy()
+                        .to_string(),
                     root_package
                         .bsconfig
                         .suffix
@@ -444,7 +440,7 @@ pub fn clean(path: &str) {
     std::io::stdout().flush().unwrap();
     let mut build_state = BuildState::new(project_root.to_owned(), root_config_name, packages);
     packages::parse_packages(&mut build_state);
-    clean_mjs_files(&build_state, &project_root);
+    clean_mjs_files(&build_state);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
         "{}\r{} {}Cleaned mjs files in {:.2}s",
