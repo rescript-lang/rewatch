@@ -9,10 +9,10 @@ use rayon::prelude::*;
 use std::io::Write;
 use std::time::Instant;
 
-fn remove_ast(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
+fn remove_ast(source_file: &str, package_path: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
-        package_name,
+        package_path,
         &packages::Namespace::NoNamespace,
         root_path,
         "ast",
@@ -20,10 +20,10 @@ fn remove_ast(source_file: &str, package_name: &str, root_path: &str, is_root: b
     ));
 }
 
-fn remove_iast(source_file: &str, package_name: &str, root_path: &str, is_root: bool) {
+fn remove_iast(source_file: &str, package_path: &str, root_path: &str, is_root: bool) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
-        package_name,
+        package_path,
         &packages::Namespace::NoNamespace,
         root_path,
         "iast",
@@ -41,7 +41,7 @@ fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
 
 fn remove_compile_asset(
     source_file: &str,
-    package_name: &str,
+    package_path: &str,
     namespace: &packages::Namespace,
     root_path: &str,
     is_root: bool,
@@ -49,7 +49,7 @@ fn remove_compile_asset(
 ) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         source_file,
-        package_name,
+        package_path,
         namespace,
         root_path,
         extension,
@@ -57,7 +57,7 @@ fn remove_compile_asset(
     ));
     let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
         source_file,
-        package_name,
+        package_path,
         namespace,
         root_path,
         extension,
@@ -67,7 +67,7 @@ fn remove_compile_asset(
 
 pub fn remove_compile_assets(
     source_file: &str,
-    package_name: &str,
+    package_path: &str,
     namespace: &packages::Namespace,
     root_path: &str,
     is_root: bool,
@@ -77,7 +77,7 @@ pub fn remove_compile_assets(
     for extension in &["cmj", "cmi", "cmt", "cmti"] {
         remove_compile_asset(
             source_file,
-            package_name,
+            package_path,
             namespace,
             root_path,
             is_root,
@@ -154,9 +154,14 @@ pub fn cleanup_previous_build(
                 .ast_modules
                 .get(&res_file_location.to_string())
                 .expect("Could not find module name for ast file");
+
+            let package = build_state
+                .packages
+                .get(package_name)
+                .expect("Could not find package");
             remove_compile_assets(
                 res_file_location,
-                package_name,
+                &package.package_dir,
                 package_namespace,
                 &build_state.project_root,
                 *is_root,
@@ -167,13 +172,13 @@ pub fn cleanup_previous_build(
             );
             remove_iast(
                 res_file_location,
-                package_name,
+                &package.package_dir,
                 &build_state.project_root,
                 *is_root,
             );
             remove_ast(
                 res_file_location,
-                package_name,
+                &package.package_dir,
                 &build_state.project_root,
                 *is_root,
             );
@@ -356,13 +361,13 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                 SourceType::SourceFile(source_file) => {
                     remove_iast(
                         &source_file.implementation.path,
-                        &module.package_name,
+                        &package.package_dir,
                         &build_state.project_root,
                         package.is_root,
                     );
                     remove_ast(
                         &source_file.implementation.path,
-                        &module.package_name,
+                        &package.package_dir,
                         &build_state.project_root,
                         package.is_root,
                     );
@@ -381,7 +386,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                     // unecessary mark all the dependents as dirty, when there is no change in the interface
                     remove_compile_asset(
                         &source_file.implementation.path,
-                        &module.package_name,
+                        &package.package_dir,
                         &package.namespace,
                         &build_state.project_root,
                         package.is_root,
@@ -396,7 +401,8 @@ pub fn cleanup_after_build(build_state: &BuildState) {
 
 pub fn clean(path: &str) {
     let project_root = helpers::get_abs_path(path);
-    let packages = packages::make(&None, &project_root);
+    let workspace_root = helpers::get_workspace_root(&project_root);
+    let packages = packages::make(&None, &project_root, workspace_root);
     let root_config_name = packages::get_package_name(&project_root);
 
     let timing_clean_compiler_assets = Instant::now();
@@ -416,11 +422,11 @@ pub fn clean(path: &str) {
         );
         std::io::stdout().flush().unwrap();
 
-        let path_str = helpers::get_build_path(&project_root, &package.name, package.is_root);
+        let path_str = helpers::get_build_path(&project_root, &package.package_dir, package.is_root);
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
 
-        let path_str = helpers::get_bs_build_path(&project_root, &package.name, package.is_root);
+        let path_str = helpers::get_bs_build_path(&project_root, &package.package_dir, package.is_root);
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
     });

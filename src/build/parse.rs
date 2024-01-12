@@ -14,6 +14,8 @@ pub fn generate_asts(
     version: &str,
     build_state: &mut BuildState,
     inc: impl Fn() -> () + std::marker::Sync,
+    bsc_path: &str,
+    workspace_root: Option<String>,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -33,7 +35,7 @@ pub fn generate_asts(
                     // specific to compiling mlmaps
                     let path = helpers::get_mlmap_path(
                         &build_state.project_root,
-                        &module.package_name,
+                        &package.package_dir,
                         &package
                             .namespace
                             .to_suffix()
@@ -42,7 +44,7 @@ pub fn generate_asts(
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
                         &build_state.project_root,
-                        &module.package_name,
+                        &package.package_dir,
                         &package
                             .namespace
                             .to_suffix()
@@ -50,7 +52,7 @@ pub fn generate_asts(
                         package.is_root,
                     );
                     let mlmap_hash = helpers::compute_file_hash(&compile_path);
-                    namespaces::compile_mlmap(&package, module_name, &build_state.project_root);
+                    namespaces::compile_mlmap(&package, module_name, &build_state.project_root, bsc_path);
                     let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
 
                     let is_dirty = match (mlmap_hash, mlmap_hash_after) {
@@ -75,6 +77,8 @@ pub fn generate_asts(
                             &source_file.implementation.path.to_owned(),
                             &build_state.project_root,
                             &version,
+                            bsc_path,
+                            workspace_root.to_owned(),
                         );
 
                         let iast_result = match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
@@ -84,6 +88,8 @@ pub fn generate_asts(
                                 &interface_file_path.to_owned(),
                                 &build_state.project_root,
                                 &version,
+                                bsc_path,
+                                workspace_root.to_owned(),
                             )
                             .map(|result| Some(result)),
                             _ => Ok(None),
@@ -137,7 +143,13 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                                logs::append(
+                                    &build_state.project_root,
+                                    package.is_root,
+                                    &package.name,
+                                    &package.package_dir,
+                                    &err,
+                                );
                                 stderr.push_str(&err);
                             }
                         }
@@ -149,7 +161,13 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                        logs::append(
+                            &build_state.project_root,
+                            package.is_root,
+                            &package.name,
+                            &package.package_dir,
+                            &err,
+                        );
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -168,7 +186,13 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                                logs::append(
+                                    &build_state.project_root,
+                                    package.is_root,
+                                    &package.name,
+                                    &package.package_dir,
+                                    &err,
+                                );
                                 stderr.push_str(&err);
                             }
                         }
@@ -184,7 +208,13 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                        logs::append(
+                            &build_state.project_root,
+                            package.is_root,
+                            &package.name,
+                            &package.package_dir,
+                            &err,
+                        );
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -205,17 +235,22 @@ fn generate_ast(
     filename: &str,
     root_path: &str,
     version: &str,
+    bsc_path: &str,
+    workspace_root: Option<String>,
 ) -> Result<(String, Option<String>), String> {
     let file = &filename.to_string();
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = helpers::get_build_path(root_path, &package.package_dir, package.is_root);
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
 
     let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
-    let abs_node_modules_path = helpers::get_node_modules_path(root_path);
 
     let ppx_flags = bsconfig::flatten_ppx_flags(
-        &abs_node_modules_path,
+        &if let Some(workspace_root) = workspace_root {
+            format!("{}/node_modules", &workspace_root)
+        } else {
+            format!("{}/node_modules", &root_path)
+        },
         &filter_ppx_flags(&package.bsconfig.ppx_flags),
         &package.name,
     );
@@ -249,7 +284,7 @@ fn generate_ast(
 
     /* Create .ast */
     if let Some(res_to_ast) = Some(file).map(|file| {
-        Command::new(helpers::get_bsc(&root_path))
+        Command::new(bsc_path)
             .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
             .args(res_to_ast_args(file))
             .output()

@@ -43,7 +43,7 @@ struct Dependency {
     bsconfig: bsconfig::T,
     path: String,
     is_pinned: bool,
-    dependencies: Vec<Dependency>
+    dependencies: Vec<Dependency>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,7 +200,9 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 /// recursively continues operation for their dependencies as well.
 fn read_dependencies<'a>(
     registered_dependencies_set: &'a mut AHashSet<String>,
-    parent_bsconfig: bsconfig::T,
+    parent_bsconfig: &bsconfig::T,
+    project_root: &str,
+    workspace_root: Option<String>,
 ) -> Vec<Dependency> {
     return parent_bsconfig
         .bs_dependencies
@@ -219,37 +221,47 @@ fn read_dependencies<'a>(
         // Read all bsconfig files in parallel instead of blocking
         .par_iter()
         .map(|package_name| {
-            let path =
-                match PathBuf::from(helpers::get_relative_package_path(package_name, false)).canonicalize() {
-                    Ok(dir) => dir.to_string_lossy().to_string(),
-                    Err(e) => {
-                        print!(
-                          "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
+            let path = match (
+                PathBuf::from(helpers::package_path(project_root, package_name, false)).canonicalize(),
+                workspace_root.as_ref().map(|workspace_root| {
+                    PathBuf::from(helpers::package_path(&workspace_root, package_name, false)).canonicalize()
+                }),
+            ) {
+                (Ok(dir), _) => dir.to_string_lossy().to_string(),
+                (_, Some(Ok(dir))) => dir.to_string_lossy().to_string(),
+                (Err(e), _) => {
+                    print!(
+        "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
                           style("[1/2]").bold().dim(),
                           CROSS,
                           e.to_string()
                         );
-                        std::process::exit(2)
-                    }
-                };
+                    std::process::exit(2)
+                }
+            };
 
             let bsconfig = read_bsconfig(&path);
             let is_pinned = parent_bsconfig
-            .pinned_dependencies
-            .as_ref()
-            .map(|p| p.contains(&bsconfig.name))
-            .unwrap_or(false);
+                .pinned_dependencies
+                .as_ref()
+                .map(|p| p.contains(&bsconfig.name))
+                .unwrap_or(false);
 
-            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned());
+            let dependencies = read_dependencies(
+                &mut registered_dependencies_set.to_owned(),
+                &bsconfig,
+                project_root,
+                workspace_root.to_owned(),
+            );
 
             Dependency {
-              name: package_name.to_owned(),
-              bsconfig,
-              path,
-              is_pinned,
-              dependencies,
+                name: package_name.to_owned(),
+                bsconfig,
+                path,
+                is_pinned,
+                dependencies,
             }
-        }) 
+        })
         .collect::<Vec<Dependency>>();
 }
 
@@ -263,12 +275,7 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package (
-    bsconfig: bsconfig::T,
-    package_dir: &str,
-    is_pinned_dep: bool,
-    is_root: bool
-) -> Package {
+fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match bsconfig.sources.to_owned() {
         bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
         bsconfig::OneOrMore::Multiple(sources) => {
@@ -327,19 +334,30 @@ fn make_package (
     }
 }
 
-fn read_packages(project_root: &str) -> AHashMap<String, Package> {
+fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap<String, Package> {
     let root_bsconfig = read_bsconfig(project_root);
 
     // Store all packages and completely deduplicate them
     let mut map: AHashMap<String, Package> = AHashMap::new();
-    map.insert(root_bsconfig.name.to_owned(), make_package(root_bsconfig.to_owned(), project_root, false, true));
+    map.insert(
+        root_bsconfig.name.to_owned(),
+        make_package(root_bsconfig.to_owned(), project_root, false, true),
+    );
 
     let mut registered_dependencies_set: AHashSet<String> = AHashSet::new();
-    let dependencies = flatten_dependencies(read_dependencies(&mut registered_dependencies_set, root_bsconfig.to_owned()));
+    let dependencies = flatten_dependencies(read_dependencies(
+        &mut registered_dependencies_set,
+        &root_bsconfig,
+        project_root,
+        workspace_root,
+    ));
     dependencies.iter().for_each(|d| {
-      if !map.contains_key(&d.name) {
-        map.insert(d.name.to_owned(), make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false));
-      }
+        if !map.contains_key(&d.name) {
+            map.insert(
+                d.name.to_owned(),
+                make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false),
+            );
+        }
     });
 
     return map;
@@ -442,8 +460,12 @@ fn extend_with_children(
 /// 2. Take the (by then deduplicated) packages, and find all the '.re', '.res', '.ml' and
 ///    interface files.
 /// The two step process is there to reduce IO overhead
-pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String, Package> {
-    let map = read_packages(root_folder);
+pub fn make(
+    filter: &Option<regex::Regex>,
+    root_folder: &str,
+    workspace_root: Option<String>,
+) -> AHashMap<String, Package> {
+    let map = read_packages(root_folder, workspace_root);
 
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
@@ -456,7 +478,7 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
                 let _ = std::fs::create_dir_all(
                     std::path::Path::new(&helpers::get_bs_build_path(
                         root_folder,
-                        &package.name,
+                        &package.package_dir,
                         package.is_root,
                     ))
                     .join(dir),
@@ -484,12 +506,9 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 None => (),
             }
             let build_path_abs =
-                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name, package.is_root);
-            let bs_build_path = helpers::get_bs_build_path(
-                &build_state.project_root,
-                &package.bsconfig.name,
-                package.is_root,
-            );
+                helpers::get_build_path(&build_state.project_root, &package.package_dir, package.is_root);
+            let bs_build_path =
+                helpers::get_bs_build_path(&build_state.project_root, &package.package_dir, package.is_root);
             helpers::create_build_path(&build_path_abs);
             helpers::create_build_path(&bs_build_path);
 
@@ -873,8 +892,7 @@ mod test {
         };
     }
     #[test]
-    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_bs_dependencies(
-    ) {
+    fn should_return_false_with_invalid_parents_as_bs_dependencies() {
         let mut packages: AHashMap<String, Package> = AHashMap::new();
         packages.insert(
             String::from("Package1"),
@@ -902,8 +920,7 @@ mod test {
     }
 
     #[test]
-    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_pinned_dependencies(
-    ) {
+    fn should_return_false_with_invalid_parents_as_pinned_dependencies() {
         let mut packages: AHashMap<String, Package> = AHashMap::new();
         packages.insert(
             String::from("Package1"),
@@ -931,8 +948,7 @@ mod test {
     }
 
     #[test]
-    fn test_validate_packages_dependencies_unallowed_dependents_should_return_false_with_invalid_parents_as_dev_dependencies(
-    ) {
+    fn should_return_false_with_invalid_parents_as_dev_dependencies() {
         let mut packages: AHashMap<String, Package> = AHashMap::new();
         packages.insert(
             String::from("Package1"),
@@ -960,7 +976,7 @@ mod test {
     }
 
     #[test]
-    fn test_validate_packages_dependencies_unallowed_dependents_should_return_true_with_no_invalid_parent() {
+    fn should_return_true_with_no_invalid_parent() {
         let mut packages: AHashMap<String, Package> = AHashMap::new();
         packages.insert(
             String::from("Package1"),
