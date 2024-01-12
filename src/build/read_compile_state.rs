@@ -54,7 +54,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
     for package in build_state.packages.values() {
         let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
             &build_state.project_root,
-            &package.name,
+            &package.package_dir,
             package.is_root,
         )))
         .unwrap();

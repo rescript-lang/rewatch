@@ -80,7 +80,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                     .expect("Package not found");
                 let ast_path = helpers::get_ast_path(
                     &source_file.implementation.path,
-                    &module.package_name,
+                    &package.package_dir,
                     &build_state.project_root,
                     package.is_root,
                 );
@@ -96,7 +96,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                     Some(interface) => {
                         let iast_path = helpers::get_iast_path(
                             &interface.path,
-                            &module.package_name,
+                            &package.package_dir,
                             &build_state.project_root,
                             package.is_root,
                         );

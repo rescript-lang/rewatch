@@ -5,7 +5,7 @@ use super::logs;
 use super::packages;
 use crate::bsconfig;
 use crate::helpers;
-use ahash::AHashSet;
+use ahash::{AHashMap, AHashSet};
 use console::style;
 use log::debug;
 use log::{info, log_enabled, Level::Info};
@@ -19,6 +19,7 @@ pub fn compile(
     rescript_version: &str,
     inc: impl Fn() -> () + std::marker::Sync,
     set_length: impl Fn(u64) -> (),
+    bsc_path: &str,
 ) -> (String, String, usize) {
     let mut compiled_modules = AHashSet::<String>::new();
 
@@ -166,7 +167,7 @@ pub fn compile(
                                         &root_package,
                                         &helpers::get_iast_path(
                                             &path,
-                                            &package.name,
+                                            &package.package_dir,
                                             &build_state.project_root,
                                             package.is_root,
                                         ),
@@ -174,6 +175,8 @@ pub fn compile(
                                         &build_state.project_root,
                                         &rescript_version,
                                         true,
+                                        bsc_path,
+                                        &build_state.packages,
                                     );
                                     Some(result)
                                 }
@@ -184,7 +187,7 @@ pub fn compile(
                                 &root_package,
                                 &helpers::get_ast_path(
                                     &source_file.implementation.path,
-                                    &package.name,
+                                    &package.package_dir,
                                     &build_state.project_root,
                                     package.is_root,
                                 ),
@@ -192,6 +195,8 @@ pub fn compile(
                                 &build_state.project_root,
                                 &rescript_version,
                                 false,
+                                bsc_path,
+                                &build_state.packages,
                             );
                             // if let Err(error) = result.to_owned() {
                             //     println!("{}", error);
@@ -291,6 +296,7 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
+                                        &package.package_dir,
                                         &err,
                                     );
                                     compile_warnings.push_str(&err);
@@ -302,6 +308,7 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
+                                        &package.package_dir,
                                         &err,
                                     );
                                     compile_errors.push_str(&err);
@@ -315,6 +322,7 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
+                                        &package.package_dir,
                                         &err,
                                     );
                                     compile_warnings.push_str(&err);
@@ -327,6 +335,7 @@ pub fn compile(
                                         &build_state.project_root,
                                         package.is_root,
                                         &package.name,
+                                        &package.package_dir,
                                         &err,
                                     );
                                     compile_errors.push_str(&err);
@@ -374,8 +383,10 @@ fn compile_file(
     root_path: &str,
     version: &str,
     is_interface: bool,
+    bsc_path: &str,
+    packages: &AHashMap<String, packages::Package>,
 ) -> Result<Option<String>, String> {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = helpers::get_build_path(root_path, &package.package_dir, package.is_root);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let normal_deps = package
@@ -398,10 +409,15 @@ fn compile_file(
         .concat()
         .into_iter()
         .map(|x| {
+            let package = &packages.get(&x).expect("expect package");
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x, package.is_root))
-                    .unwrap(),
+                helpers::canonicalize_string_path(&helpers::get_build_path(
+                    root_path,
+                    &package.package_dir,
+                    package.is_root,
+                ))
+                .unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -527,7 +543,7 @@ fn compile_file(
     ]
     .concat();
 
-    let to_mjs = Command::new(helpers::get_bsc(&root_path))
+    let to_mjs = Command::new(bsc_path)
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)
         .output();
@@ -552,7 +568,7 @@ fn compile_file(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
                     std::path::Path::new(&helpers::get_bs_build_path(
                         root_path,
-                        &package.name,
+                        &package.package_dir,
                         package.is_root,
                     ))
                     .join(dir)
@@ -565,7 +581,7 @@ fn compile_file(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
                     std::path::Path::new(&helpers::get_bs_build_path(
                         root_path,
-                        &package.name,
+                        &package.package_dir,
                         package.is_root,
                     ))
                     .join(dir)
@@ -575,7 +591,7 @@ fn compile_file(
                     build_path_abs.to_string() + "/" + &module_name + ".cmt",
                     std::path::Path::new(&helpers::get_bs_build_path(
                         root_path,
-                        &package.name,
+                        &package.package_dir,
                         package.is_root,
                     ))
                     .join(dir)
@@ -589,7 +605,7 @@ fn compile_file(
                     build_path_abs.to_string() + "/" + &module_name + ".cmti",
                     std::path::Path::new(&helpers::get_bs_build_path(
                         root_path,
-                        &package.name,
+                        &package.package_dir,
                         package.is_root,
                     ))
                     .join(dir)
@@ -612,7 +628,7 @@ fn compile_file(
                         std::path::Path::new(&package.package_dir).join(path),
                         std::path::Path::new(&helpers::get_bs_build_path(
                             root_path,
-                            &package.name,
+                            &package.package_dir,
                             package.is_root,
                         ))
                         .join(path),
@@ -623,7 +639,7 @@ fn compile_file(
                         std::path::Path::new(&package.package_dir).join(path),
                         std::path::Path::new(&helpers::get_build_path(
                             root_path,
-                            &package.name,
+                            &package.package_dir,
                             package.is_root,
                         ))
                         .join(std::path::Path::new(path).file_name().unwrap()),

@@ -17,8 +17,8 @@ use std::io::{stdout, Write};
 use std::process::Command;
 use std::time::Instant;
 
-pub fn get_version(project_root: &str) -> String {
-    let version_cmd = Command::new(helpers::get_bsc(&project_root))
+pub fn get_version(bsc_path: &str) -> String {
+    let version_cmd = Command::new(bsc_path)
         .args(["-v"])
         .output()
         .expect("failed to find version");
@@ -47,8 +47,10 @@ fn is_dirty(module: &Module) -> bool {
 pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
     let timing_total = Instant::now();
     let project_root = helpers::get_abs_path(path);
-    let rescript_version = get_version(&project_root);
+    let workspace_root = helpers::get_workspace_root(&project_root);
+    let bsc_path = helpers::get_bsc(&project_root, workspace_root.to_owned());
     let root_config_name = packages::get_package_name(&project_root);
+    let rescript_version = get_version(&bsc_path);
     let default_timing: Option<std::time::Duration> = if no_timing {
         Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
     } else {
@@ -62,7 +64,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
-    let packages = packages::make(&filter, &project_root);
+    let packages = packages::make(&filter, &project_root, workspace_root.to_owned());
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     println!(
@@ -134,7 +136,13 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     let timing_ast = Instant::now();
-    let result_asts = parse::generate_asts(&rescript_version, &mut build_state, || pb.inc(1));
+    let result_asts = parse::generate_asts(
+        &rescript_version,
+        &mut build_state,
+        || pb.inc(1),
+        &bsc_path,
+        workspace_root.to_owned(),
+    );
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
@@ -192,6 +200,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
         &rescript_version,
         || pb.inc(1),
         |size| pb.set_length(size),
+        &bsc_path,
     );
     let compile_duration = start_compiling.elapsed();
 
