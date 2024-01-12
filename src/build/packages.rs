@@ -43,7 +43,7 @@ struct Dependency {
     bsconfig: bsconfig::T,
     path: String,
     is_pinned: bool,
-    dependencies: Vec<Dependency>
+    dependencies: Vec<Dependency>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +201,7 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 fn read_dependencies<'a>(
     registered_dependencies_set: &'a mut AHashSet<String>,
     parent_bsconfig: bsconfig::T,
+    parent_path: String,
 ) -> Vec<Dependency> {
     return parent_bsconfig
         .bs_dependencies
@@ -219,19 +220,25 @@ fn read_dependencies<'a>(
         // Read all bsconfig files in parallel instead of blocking
         .par_iter()
         .map(|package_name| {
-            let path =
-                match PathBuf::from(helpers::get_relative_package_path(package_name, false)).canonicalize() {
-                    Ok(dir) => dir.to_string_lossy().to_string(),
-                    Err(e) => {
-                        print!(
-                          "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
-                          style("[1/2]").bold().dim(),
-                          CROSS,
-                          e.to_string()
-                        );
-                        std::process::exit(2)
+            let path_buf =
+                match PathBuf::from(format!("{}/node_modules/{}", parent_path, package_name)).canonicalize() {
+                    Ok(p) => p,
+                    Err(_) => {
+                      match PathBuf::from(format!("node_modules/{}", package_name)).canonicalize() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            print!(
+                              "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
+                              style("[1/2]").bold().dim(),
+                              CROSS,
+                              e.to_string()
+                            );
+                            std::process::exit(2)
+                        }
+                      }
                     }
                 };
+            let path = path_buf.to_string_lossy().to_string();
 
             let bsconfig = read_bsconfig(&path);
             let is_pinned = parent_bsconfig
@@ -240,7 +247,7 @@ fn read_dependencies<'a>(
             .map(|p| p.contains(&bsconfig.name))
             .unwrap_or(false);
 
-            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned());
+            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned(), path.to_owned());
 
             Dependency {
               name: package_name.to_owned(),
@@ -249,8 +256,7 @@ fn read_dependencies<'a>(
               is_pinned,
               dependencies,
             }
-        }) 
-        .collect::<Vec<Dependency>>();
+        }).collect::<Vec<Dependency>>();
 }
 
 fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
@@ -263,12 +269,7 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package (
-    bsconfig: bsconfig::T,
-    package_dir: &str,
-    is_pinned_dep: bool,
-    is_root: bool
-) -> Package {
+fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match bsconfig.sources.to_owned() {
         bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
         bsconfig::OneOrMore::Multiple(sources) => {
@@ -332,14 +333,24 @@ fn read_packages(project_root: &str) -> AHashMap<String, Package> {
 
     // Store all packages and completely deduplicate them
     let mut map: AHashMap<String, Package> = AHashMap::new();
-    map.insert(root_bsconfig.name.to_owned(), make_package(root_bsconfig.to_owned(), project_root, false, true));
+    map.insert(
+        root_bsconfig.name.to_owned(),
+        make_package(root_bsconfig.to_owned(), project_root, false, true),
+    );
 
     let mut registered_dependencies_set: AHashSet<String> = AHashSet::new();
-    let dependencies = flatten_dependencies(read_dependencies(&mut registered_dependencies_set, root_bsconfig.to_owned()));
+    let dependencies = flatten_dependencies(read_dependencies(
+        &mut registered_dependencies_set,
+        root_bsconfig.to_owned(),
+        project_root.to_string(),
+    ));
     dependencies.iter().for_each(|d| {
-      if !map.contains_key(&d.name) {
-        map.insert(d.name.to_owned(), make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false));
-      }
+        if !map.contains_key(&d.name) {
+            map.insert(
+                d.name.to_owned(),
+                make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false),
+            );
+        }
     });
 
     return map;
