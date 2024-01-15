@@ -31,20 +31,8 @@ pub fn generate_asts(
                 SourceType::MlMap(_) => {
                     // probably better to do this in a different function
                     // specific to compiling mlmaps
-                    let path = helpers::get_mlmap_path(
-                        package,
-                        &package
-                            .namespace
-                            .to_suffix()
-                            .expect("namespace should be set for mlmap module"),
-                    );
-                    let compile_path = helpers::get_mlmap_compile_path(
-                        package,
-                        &package
-                            .namespace
-                            .to_suffix()
-                            .expect("namespace should be set for mlmap module"),
-                    );
+                    let path = package.get_mlmap_path();
+                    let compile_path = package.get_mlmap_compile_path();
                     let mlmap_hash = helpers::compute_file_hash(&compile_path);
                     namespaces::compile_mlmap(&package, module_name, &build_state.project_root);
                     let mlmap_hash_after = helpers::compute_file_hash(&compile_path);

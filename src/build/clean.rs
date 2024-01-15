@@ -39,7 +39,6 @@ fn remove_compile_asset(
     source_file: &str,
     package: &packages::Package,
     namespace: &packages::Namespace,
-
     extension: &str,
 ) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(

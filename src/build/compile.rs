@@ -162,7 +162,7 @@ pub fn compile(
                                     let result = compile_file(
                                         &package,
                                         &root_package,
-                                        &helpers::get_iast_path(package, &path),
+                                        &package.get_iast_path(&path),
                                         module,
                                         &build_state.project_root,
                                         &rescript_version,
@@ -175,7 +175,7 @@ pub fn compile(
                             let result = compile_file(
                                 &package,
                                 &root_package,
-                                &helpers::get_ast_path(package, &source_file.implementation.path),
+                                &package.get_ast_path(&source_file.implementation.path),
                                 module,
                                 &build_state.project_root,
                                 &rescript_version,

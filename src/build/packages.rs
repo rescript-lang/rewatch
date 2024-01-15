@@ -70,6 +70,34 @@ impl Package {
     pub fn get_build_path(&self) -> String {
         format!("{}/lib/ocaml", self.path)
     }
+
+    pub fn get_mlmap_path(&self) -> String {
+        self.get_build_path()
+            + "/"
+            + &self
+                .namespace
+                .to_suffix()
+                .expect("namespace should be set for mlmap module")
+            + ".mlmap"
+    }
+
+    pub fn get_mlmap_compile_path(&self) -> String {
+        self.get_build_path()
+            + "/"
+            + &self
+                .namespace
+                .to_suffix()
+                .expect("namespace should be set for mlmap module")
+            + ".cmi"
+    }
+
+    pub fn get_ast_path(&self, source_file: &str) -> String {
+        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "ast")
+    }
+
+    pub fn get_iast_path(&self, source_file: &str) -> String {
+        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "iast")
+    }
 }
 
 impl PartialEq for Package {

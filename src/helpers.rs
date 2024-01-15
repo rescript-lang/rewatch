@@ -198,22 +198,6 @@ pub fn is_interface_ast_file(file: &str) -> bool {
     file.ends_with(".iast")
 }
 
-pub fn get_mlmap_path(package: &packages::Package, namespace: &str) -> String {
-    package.get_build_path() + "/" + namespace + ".mlmap"
-}
-
-pub fn get_mlmap_compile_path(package: &packages::Package, namespace: &str) -> String {
-    package.get_build_path() + "/" + namespace + ".cmi"
-}
-
-pub fn get_ast_path(package: &packages::Package, source_file: &str) -> String {
-    get_compiler_asset(package, source_file, &packages::Namespace::NoNamespace, "ast")
-}
-
-pub fn get_iast_path(package: &packages::Package, source_file: &str) -> String {
-    get_compiler_asset(package, source_file, &packages::Namespace::NoNamespace, "iast")
-}
-
 pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
     let file = fs::File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
