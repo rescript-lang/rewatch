@@ -56,10 +56,16 @@ pub struct Package {
     pub namespace: Namespace,
     pub modules: Option<AHashSet<String>>,
     // canonicalized dir of the package
-    pub package_dir: String,
+    pub path: String,
     pub dirs: Option<AHashSet<PathBuf>>,
     pub is_pinned_dep: bool,
     pub is_root: bool,
+}
+
+impl Package {
+    pub fn get_bs_build_path(&self) -> String {
+        format!("{}/lib/bs", self.path)
+    }
 }
 
 impl PartialEq for Package {
@@ -269,7 +275,7 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, is_root: bool) -> Package {
+fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match bsconfig.sources.to_owned() {
         bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
         bsconfig::OneOrMore::Multiple(sources) => {
@@ -321,7 +327,7 @@ fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, i
             },
         },
         modules: None,
-        package_dir: package_dir.to_string(),
+        path: package_path.to_string(),
         dirs: None,
         is_pinned_dep: is_pinned_dep,
         is_root,
@@ -417,7 +423,7 @@ fn extend_with_children(
         value
             .source_folders
             .par_iter()
-            .map(|source| get_source_files(Path::new(&value.package_dir), &filter, source))
+            .map(|source| get_source_files(Path::new(&value.path), &filter, source))
             .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -464,14 +470,7 @@ pub fn make(filter: &Option<regex::Regex>, root_folder: &str) -> AHashMap<String
         .into_iter()
         .for_each(|package| match &package.dirs {
             Some(dirs) => dirs.iter().for_each(|dir| {
-                let _ = std::fs::create_dir_all(
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_folder,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir),
-                );
+                let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
             }),
             None => (),
         });
@@ -496,11 +495,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
             }
             let build_path_abs =
                 helpers::get_build_path(&build_state.project_root, &package.bsconfig.name, package.is_root);
-            let bs_build_path = helpers::get_bs_build_path(
-                &build_state.project_root,
-                &package.bsconfig.name,
-                package.is_root,
-            );
+            let bs_build_path = package.get_bs_build_path();
             helpers::create_build_path(&build_path_abs);
             helpers::create_build_path(&bs_build_path);
 
@@ -877,7 +872,7 @@ mod test {
             source_files: None,
             namespace: Namespace::Namespace(String::from("Package1")),
             modules: None,
-            package_dir: String::from("./something"),
+            path: String::from("./something"),
             dirs: None,
             is_pinned_dep: false,
             is_root: false,

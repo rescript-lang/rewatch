@@ -137,7 +137,7 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                                logs::append(&build_state.project_root, package.is_root, package, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -149,7 +149,7 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                        logs::append(&build_state.project_root, package.is_root, package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -168,7 +168,7 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                                logs::append(&build_state.project_root, package.is_root, package, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -184,7 +184,7 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, &package.name, &err);
+                        logs::append(&build_state.project_root, package.is_root, package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }

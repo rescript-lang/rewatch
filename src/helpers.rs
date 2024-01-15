@@ -50,13 +50,6 @@ pub fn get_build_path(root: &str, package_name: &str, is_root: bool) -> String {
     }
 }
 
-pub fn get_bs_build_path(root: &str, package_name: &str, is_root: bool) -> String {
-    match is_root {
-        true => format!("{}/lib/bs", root),
-        false => format!("{}/node_modules/{}/lib/bs", root, package_name),
-    }
-}
-
 pub fn get_node_modules_path(root: &str) -> String {
     format!("{}/node_modules", root)
 }
@@ -185,11 +178,9 @@ pub fn canonicalize_string_path(path: &str) -> Option<String> {
 
 pub fn get_bs_compiler_asset(
     source_file: &str,
-    package_name: &str,
+    package: &packages::Package,
     namespace: &packages::Namespace,
-    root_path: &str,
     extension: &str,
-    is_root: bool,
 ) -> String {
     let namespace = match extension {
         "ast" | "iast" => &packages::Namespace::NoNamespace,
@@ -198,7 +189,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&get_bs_build_path(root_path, &package_name, is_root))
+    std::path::Path::new(&package.get_bs_build_path())
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()

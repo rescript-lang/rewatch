@@ -20,7 +20,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                 let package = build_state.packages.get(&module.package_name).unwrap();
 
                 Some(
-                    PathBuf::from(&package.package_dir)
+                    PathBuf::from(&package.path)
                         .canonicalize()
                         .expect("Could not canonicalize")
                         .join(source_file.implementation.path.to_owned())
@@ -39,7 +39,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
             .filter_map(|module| {
                 let package = build_state.packages.get(&module.package_name).unwrap();
                 module.get_interface().as_ref().map(|interface| {
-                    PathBuf::from(&package.package_dir)
+                    PathBuf::from(&package.path)
                         .canonicalize()
                         .expect("Could not canonicalize")
                         .join(interface.path.to_owned())

@@ -287,23 +287,13 @@ pub fn compile(
                             match result {
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state = CompileState::Warning;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &err,
-                                    );
+                                    logs::append(&build_state.project_root, package.is_root, package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &err,
-                                    );
+                                    logs::append(&build_state.project_root, package.is_root, package, &err);
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -311,24 +301,14 @@ pub fn compile(
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &err,
-                                    );
+                                    logs::append(&build_state.project_root, package.is_root, package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &err,
-                                    );
+                                    logs::append(&build_state.project_root, package.is_root, package, &err);
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -550,50 +530,34 @@ fn compile_file(
             if !is_interface {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    // because editor tooling doesn't support namespace entries yet
-                    // we just remove the @ for now. This makes sure the editor support
-                    // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmi"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        // because editor tooling doesn't support namespace entries yet
+                        // we just remove the @ for now. This makes sure the editor support
+                        // doesn't break
+                        .join(module_name.to_owned().replace("@", "") + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmj"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmj"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    // because editor tooling doesn't support namespace entries yet
-                    // we just remove the @ for now. This makes sure the editor support
-                    // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmt"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        // because editor tooling doesn't support namespace entries yet
+                        // we just remove the @ for now. This makes sure the editor support
+                        // doesn't break
+                        .join(module_name.to_owned().replace("@", "") + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.name,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmti"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmti"),
                 );
             }
             match &module.source_type {
@@ -609,18 +573,13 @@ fn compile_file(
                     // editor tools expects the source file in lib/bs for finding the current package
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
-                        std::path::Path::new(&package.package_dir).join(path),
-                        std::path::Path::new(&helpers::get_bs_build_path(
-                            root_path,
-                            &package.name,
-                            package.is_root,
-                        ))
-                        .join(path),
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_bs_build_path()).join(path),
                     )
                     .expect("copying source file failed");
 
                     let _ = std::fs::copy(
-                        std::path::Path::new(&package.package_dir).join(path),
+                        std::path::Path::new(&package.path).join(path),
                         std::path::Path::new(&helpers::get_build_path(
                             root_path,
                             &package.name,
