@@ -239,7 +239,8 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 fn read_dependencies<'a>(
     registered_dependencies_set: &'a mut AHashSet<String>,
     parent_bsconfig: bsconfig::T,
-    parent_path: String,
+    parent_path: &str,
+    project_root: &str,
 ) -> Vec<Dependency> {
     return parent_bsconfig
         .bs_dependencies
@@ -261,15 +262,16 @@ fn read_dependencies<'a>(
             let path_buf =
                 match PathBuf::from(format!("{}/node_modules/{}", parent_path, package_name)).canonicalize() {
                     Ok(p) => p,
-                    Err(_) => {
-                      match PathBuf::from(format!("node_modules/{}", package_name)).canonicalize() {
+                    Err(e1) => {
+                      match PathBuf::from(format!("{}/node_modules/{}", project_root, package_name)).canonicalize() {
                         Ok(p) => p,
-                        Err(e) => {
+                        Err(e2) => {
                             print!(
-                              "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
+                              "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}\n{}",
                               style("[1/2]").bold().dim(),
                               CROSS,
-                              e.to_string()
+                              e1.to_string(),
+                              e2.to_string()
                             );
                             std::process::exit(2)
                         }
@@ -285,7 +287,7 @@ fn read_dependencies<'a>(
             .map(|p| p.contains(&bsconfig.name))
             .unwrap_or(false);
 
-            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned(), path.to_owned());
+            let dependencies = read_dependencies(&mut registered_dependencies_set.clone(),bsconfig.to_owned(), &path, &project_root);
 
             Dependency {
               name: package_name.to_owned(),
@@ -380,7 +382,8 @@ fn read_packages(project_root: &str) -> AHashMap<String, Package> {
     let dependencies = flatten_dependencies(read_dependencies(
         &mut registered_dependencies_set,
         root_bsconfig.to_owned(),
-        project_root.to_string(),
+        project_root,
+        project_root,
     ));
     dependencies.iter().for_each(|d| {
         if !map.contains_key(&d.name) {
