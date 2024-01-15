@@ -14,15 +14,10 @@ enum Location {
     Ocaml,
 }
 
-fn get_log_file_path(
-    project_root: &str,
-    subfolder: Location,
-    package: &packages::Package,
-    is_root: bool,
-) -> String {
+fn get_log_file_path(subfolder: Location, package: &packages::Package) -> String {
     let build_folder = match subfolder {
         Location::Bs => package.get_bs_build_path(),
-        Location::Ocaml => helpers::get_build_path(project_root, &package.name, is_root),
+        Location::Ocaml => package.get_build_path(),
     };
 
     build_folder.to_owned() + "/.compiler.log"
@@ -51,45 +46,32 @@ fn write_to_log_file(mut file: File, package_name: &str, content: &str) {
     }
 }
 
-pub fn initialize(project_root: &str, packages: &AHashMap<String, Package>) {
+pub fn initialize(packages: &AHashMap<String, Package>) {
     packages.par_iter().for_each(|(name, package)| {
-        let _ = File::create(get_log_file_path(
-            project_root,
-            Location::Bs,
-            package,
-            package.is_root,
-        ))
-        .map(|file| write_to_log_file(file, &name, &format!("#Start({})\n", helpers::get_system_time())))
-        .expect(&("Cannot create compiler log for package ".to_owned() + name));
+        let _ = File::create(get_log_file_path(Location::Bs, package))
+            .map(|file| write_to_log_file(file, &name, &format!("#Start({})\n", helpers::get_system_time())))
+            .expect(&("Cannot create compiler log for package ".to_owned() + name));
     })
 }
 
-pub fn append(project_root: &str, is_root: bool, package: &packages::Package, str: &str) {
+pub fn append(package: &packages::Package, str: &str) {
     File::options()
         .append(true)
-        .open(get_log_file_path(project_root, Location::Bs, package, is_root))
+        .open(get_log_file_path(Location::Bs, package))
         .map(|file| write_to_log_file(file, &package.name, str))
-        .expect(
-            &("Cannot write compilerlog: ".to_owned()
-                + &get_log_file_path(project_root, Location::Bs, package, is_root)),
-        );
+        .expect(&("Cannot write compilerlog: ".to_owned() + &get_log_file_path(Location::Bs, package)));
 }
 
-pub fn finalize(project_root: &str, packages: &AHashMap<String, Package>) {
+pub fn finalize(packages: &AHashMap<String, Package>) {
     packages.par_iter().for_each(|(name, package)| {
         let _ = File::options()
             .append(true)
-            .open(get_log_file_path(
-                project_root,
-                Location::Bs,
-                package,
-                package.is_root,
-            ))
+            .open(get_log_file_path(Location::Bs, package))
             .map(|file| write_to_log_file(file, &name, &format!("#Done({})\n", helpers::get_system_time())));
 
         let _ = std::fs::copy(
-            get_log_file_path(project_root, Location::Bs, package, package.is_root),
-            get_log_file_path(project_root, Location::Ocaml, package, package.is_root),
+            get_log_file_path(Location::Bs, package),
+            get_log_file_path(Location::Ocaml, package),
         );
     })
 }

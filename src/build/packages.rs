@@ -66,6 +66,10 @@ impl Package {
     pub fn get_bs_build_path(&self) -> String {
         format!("{}/lib/bs", self.path)
     }
+
+    pub fn get_build_path(&self) -> String {
+        format!("{}/lib/ocaml", self.path)
+    }
 }
 
 impl PartialEq for Package {
@@ -493,8 +497,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 Some(package_modules) => build_state.module_names.extend(package_modules),
                 None => (),
             }
-            let build_path_abs =
-                helpers::get_build_path(&build_state.project_root, &package.bsconfig.name, package.is_root);
+            let build_path_abs = package.get_build_path();
             let bs_build_path = package.get_bs_build_path();
             helpers::create_build_path(&build_path_abs);
             helpers::create_build_path(&bs_build_path);
@@ -526,8 +529,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
                     .collect::<AHashSet<String>>();
 
-                let mlmap =
-                    namespaces::gen_mlmap(&package, namespace, &depending_modules, &build_state.project_root);
+                let mlmap = namespaces::gen_mlmap(&package, namespace, &depending_modules);
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);

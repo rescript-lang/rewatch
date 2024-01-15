@@ -142,12 +142,10 @@ pub fn compile(
                         }
                         SourceType::SourceFile(source_file) => {
                             let cmi_path = helpers::get_compiler_asset(
+                                package,
                                 &source_file.implementation.path,
-                                &module.package_name,
                                 &package.namespace,
-                                &build_state.project_root,
                                 "cmi",
-                                package.is_root,
                             );
 
                             let cmi_digest = helpers::compute_file_hash(&cmi_path);
@@ -164,12 +162,7 @@ pub fn compile(
                                     let result = compile_file(
                                         &package,
                                         &root_package,
-                                        &helpers::get_iast_path(
-                                            &path,
-                                            &package.name,
-                                            &build_state.project_root,
-                                            package.is_root,
-                                        ),
+                                        &helpers::get_iast_path(package, &path),
                                         module,
                                         &build_state.project_root,
                                         &rescript_version,
@@ -182,12 +175,7 @@ pub fn compile(
                             let result = compile_file(
                                 &package,
                                 &root_package,
-                                &helpers::get_ast_path(
-                                    &source_file.implementation.path,
-                                    &package.name,
-                                    &build_state.project_root,
-                                    package.is_root,
-                                ),
+                                &helpers::get_ast_path(package, &source_file.implementation.path),
                                 module,
                                 &build_state.project_root,
                                 &rescript_version,
@@ -287,13 +275,13 @@ pub fn compile(
                             match result {
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state = CompileState::Warning;
-                                    logs::append(&build_state.project_root, package.is_root, package, &err);
+                                    logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(&build_state.project_root, package.is_root, package, &err);
+                                    logs::append(package, &err);
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -301,14 +289,14 @@ pub fn compile(
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(&build_state.project_root, package.is_root, package, &err);
+                                    logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(&build_state.project_root, package.is_root, package, &err);
+                                    logs::append(package, &err);
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -355,7 +343,7 @@ fn compile_file(
     version: &str,
     is_interface: bool,
 ) -> Result<Option<String>, String> {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = package.get_build_path();
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let normal_deps = package
@@ -378,10 +366,11 @@ fn compile_file(
         .concat()
         .into_iter()
         .map(|x| {
+            // TODO: Add support for non-hoisted set up
+            let hoisted_path = format!("{}/node_modules/{}/lib/ocaml", root_path, &x);
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(root_path, &x, package.is_root))
-                    .unwrap(),
+                helpers::canonicalize_string_path(&hoisted_path).unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -580,12 +569,8 @@ fn compile_file(
 
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&helpers::get_build_path(
-                            root_path,
-                            &package.name,
-                            package.is_root,
-                        ))
-                        .join(std::path::Path::new(path).file_name().unwrap()),
+                        std::path::Path::new(&package.get_build_path())
+                            .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
                 }

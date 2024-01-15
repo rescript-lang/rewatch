@@ -52,12 +52,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
 
     // scan all ast files in all packages
     for package in build_state.packages.values() {
-        let read_dir = fs::read_dir(std::path::Path::new(&helpers::get_build_path(
-            &build_state.project_root,
-            &package.name,
-            package.is_root,
-        )))
-        .unwrap();
+        let read_dir = fs::read_dir(std::path::Path::new(&package.get_build_path())).unwrap();
 
         for entry in read_dir {
             match entry {

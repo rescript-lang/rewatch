@@ -23,9 +23,8 @@ pub fn gen_mlmap(
     package: &packages::Package,
     namespace: &str,
     depending_modules: &AHashSet<String>,
-    root_path: &str,
 ) -> String {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = package.get_build_path();
     // we don't really need to create a digest, because we track if we need to
     // recompile in a different way but we need to put it in the file for it to
     // be readable.
@@ -51,7 +50,7 @@ pub fn gen_mlmap(
 }
 
 pub fn compile_mlmap(package: &packages::Package, namespace: &str, root_path: &str) {
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = package.get_build_path();
     let mlmap_name = format!("{}.mlmap", namespace);
     let args = vec!["-w", "-49", "-color", "always", "-no-alias-deps", &mlmap_name];
 

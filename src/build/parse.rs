@@ -32,22 +32,18 @@ pub fn generate_asts(
                     // probably better to do this in a different function
                     // specific to compiling mlmaps
                     let path = helpers::get_mlmap_path(
-                        &build_state.project_root,
-                        &module.package_name,
+                        package,
                         &package
                             .namespace
                             .to_suffix()
                             .expect("namespace should be set for mlmap module"),
-                        package.is_root,
                     );
                     let compile_path = helpers::get_mlmap_compile_path(
-                        &build_state.project_root,
-                        &module.package_name,
+                        package,
                         &package
                             .namespace
                             .to_suffix()
                             .expect("namespace should be set for mlmap module"),
-                        package.is_root,
                     );
                     let mlmap_hash = helpers::compute_file_hash(&compile_path);
                     namespaces::compile_mlmap(&package, module_name, &build_state.project_root);
@@ -137,7 +133,7 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, package, &err);
+                                logs::append(package, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -149,7 +145,7 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, package, &err);
+                        logs::append(package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -168,7 +164,7 @@ pub fn generate_asts(
                                     }
                                     _ => (),
                                 }
-                                logs::append(&build_state.project_root, package.is_root, package, &err);
+                                logs::append(package, &err);
                                 stderr.push_str(&err);
                             }
                         }
@@ -184,7 +180,7 @@ pub fn generate_asts(
                             }
                             _ => (),
                         }
-                        logs::append(&build_state.project_root, package.is_root, package, &err);
+                        logs::append(package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
@@ -207,7 +203,7 @@ fn generate_ast(
     version: &str,
 ) -> Result<(String, Option<String>), String> {
     let file = &filename.to_string();
-    let build_path_abs = helpers::get_build_path(root_path, &package.name, package.is_root);
+    let build_path_abs = package.get_build_path();
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
 

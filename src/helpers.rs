@@ -43,13 +43,6 @@ impl LexicalAbsolute for Path {
     }
 }
 
-pub fn get_build_path(root: &str, package_name: &str, is_root: bool) -> String {
-    match is_root {
-        true => format!("{}/lib/ocaml", root),
-        false => format!("{}/node_modules/{}/lib/ocaml", root, package_name),
-    }
-}
-
 pub fn get_node_modules_path(root: &str) -> String {
     format!("{}/node_modules", root)
 }
@@ -155,14 +148,12 @@ pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
 }
 
 pub fn get_compiler_asset(
+    package: &packages::Package,
     source_file: &str,
-    package_name: &str,
     namespace: &packages::Namespace,
-    root_path: &str,
     extension: &str,
-    is_root: bool,
 ) -> String {
-    get_build_path(root_path, package_name, is_root)
+    package.get_build_path()
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
         + "."
@@ -207,34 +198,20 @@ pub fn is_interface_ast_file(file: &str) -> bool {
     file.ends_with(".iast")
 }
 
-pub fn get_mlmap_path(root_path: &str, package_name: &str, namespace: &str, is_root: bool) -> String {
-    get_build_path(root_path, package_name, is_root) + "/" + namespace + ".mlmap"
+pub fn get_mlmap_path(package: &packages::Package, namespace: &str) -> String {
+    package.get_build_path() + "/" + namespace + ".mlmap"
 }
 
-pub fn get_mlmap_compile_path(root_path: &str, package_name: &str, namespace: &str, is_root: bool) -> String {
-    get_build_path(root_path, package_name, is_root) + "/" + namespace + ".cmi"
+pub fn get_mlmap_compile_path(package: &packages::Package, namespace: &str) -> String {
+    package.get_build_path() + "/" + namespace + ".cmi"
 }
 
-pub fn get_ast_path(source_file: &str, package_name: &str, root_path: &str, is_root: bool) -> String {
-    get_compiler_asset(
-        source_file,
-        package_name,
-        &packages::Namespace::NoNamespace,
-        root_path,
-        "ast",
-        is_root,
-    )
+pub fn get_ast_path(package: &packages::Package, source_file: &str) -> String {
+    get_compiler_asset(package, source_file, &packages::Namespace::NoNamespace, "ast")
 }
 
-pub fn get_iast_path(source_file: &str, package_name: &str, root_path: &str, is_root: bool) -> String {
-    get_compiler_asset(
-        source_file,
-        package_name,
-        &packages::Namespace::NoNamespace,
-        root_path,
-        "iast",
-        is_root,
-    )
+pub fn get_iast_path(package: &packages::Package, source_file: &str) -> String {
+    get_compiler_asset(package, source_file, &packages::Namespace::NoNamespace, "iast")
 }
 
 pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
