@@ -62,13 +62,13 @@ function filter(prim0, prim1) {
 
 function reject(t, fn) {
   return t.filter(function (el) {
-              return !Curry._1(fn, el);
+              return !fn(el);
             });
 }
 
 function sortBy(t, fn) {
   return Belt_SortArray.stableSortBy(t, (function (a, b) {
-                var match = Curry._2(fn, a, b);
+                var match = fn(a, b);
                 if (match === "greater_than") {
                   return 1;
                 } else if (match === "less_than") {
@@ -104,7 +104,7 @@ function eqBy(_xs, _ys, fn) {
     if (match$1 === undefined) {
       return false;
     }
-    if (!Curry._2(fn, Caml_option.valFromOption(match), Caml_option.valFromOption(match$1))) {
+    if (!fn(Caml_option.valFromOption(match), Caml_option.valFromOption(match$1))) {
       return false;
     }
     _ys = Belt_Array.sliceToEnd(ys, 1);
@@ -125,7 +125,7 @@ function takeWhile(t, fn) {
         return ;
       }
       var item = t[idx];
-      if (!Curry._1(fn, item)) {
+      if (!fn(item)) {
         return ;
       }
       a.contents = Belt_Array.concat(a.contents, [item]);
@@ -150,7 +150,7 @@ function distinct(t, eq) {
     var y = t[idx];
     var acc$1 = Belt_Array.some(acc, (function(y){
         return function (x) {
-          return Curry._2(eq, x, y);
+          return eq(x, y);
         }
         }(y))) ? acc : Belt_Array.concat(acc, [y]);
     _idx = idx + 1 | 0;
@@ -176,7 +176,7 @@ function partition(t, fn) {
     }
     var item = t[idx];
     var idx$1 = idx + 1 | 0;
-    if (Curry._1(fn, item)) {
+    if (fn(item)) {
       _idx = idx$1;
       _a = Belt_Array.concat(a, [item]);
       continue ;
@@ -205,7 +205,7 @@ function indexOfBy(t, fn, value) {
     if (value$p === undefined) {
       return ;
     }
-    if (Curry._2(fn, value, Caml_option.valFromOption(value$p))) {
+    if (fn(value, Caml_option.valFromOption(value$p))) {
       return idx;
     }
     _idx = idx + 1 | 0;
