@@ -22,4 +22,4 @@ else
   exit 1
 fi
 
-./compile.sh && ./watch.sh && ./lock.sh
+./compile.sh && ./watch.sh && ./lock.sh && ./suffix.sh
