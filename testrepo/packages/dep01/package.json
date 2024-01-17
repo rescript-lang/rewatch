@@ -12,7 +12,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "rescript": "*",
-    "@testrepo/dep02": "*"
+    "@testrepo/dep02": "*",
+    "rescript": "*"
   }
 }

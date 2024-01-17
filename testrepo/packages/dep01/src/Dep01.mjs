@@ -2,9 +2,9 @@
 
 import * as Dep02 from "@testrepo/dep02/src/Dep02.mjs";
 
-function log(param) {
+function log() {
   console.log("02");
-  Dep02.log(undefined);
+  Dep02.log();
 }
 
 export {

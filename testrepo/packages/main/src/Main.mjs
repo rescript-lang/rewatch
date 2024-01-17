@@ -4,7 +4,7 @@ import * as Dep01 from "@testrepo/dep01/src/Dep01.mjs";
 
 console.log("01");
 
-Dep01.log(undefined);
+Dep01.log();
 
 var $$Array;
 

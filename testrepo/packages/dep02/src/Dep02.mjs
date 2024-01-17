@@ -3,7 +3,7 @@
 import * as $$Array from "./Array.mjs";
 import * as NS_alias$$atNewNamespace from "@testrepo/new-namespace/src/NS_alias.mjs";
 
-function log(param) {
+function log() {
   $$Array.forEach([
         "a",
         "b"
@@ -12,7 +12,7 @@ function log(param) {
         }));
 }
 
-console.log(NS_alias$$atNewNamespace.hello_world(undefined));
+console.log(NS_alias$$atNewNamespace.hello_world());
 
 export {
   log ,

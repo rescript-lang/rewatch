@@ -2,11 +2,11 @@
 
 import * as Other_module$$atNewNamespace from "./Other_module.mjs";
 
-function hello_world(param) {
+function hello_world() {
   return "Hello world";
 }
 
-Other_module$$atNewNamespace.bla(undefined);
+Other_module$$atNewNamespace.bla();
 
 export {
   hello_world ,
