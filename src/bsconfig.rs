@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{fmt, fs};
+
+pub static DEFAULT_SUFFIX: &str = ".mjs";
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -121,28 +123,6 @@ pub enum JsxModule {
     React,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum Suffix {
-    #[serde(rename = ".js")]
-    Js,
-    #[serde(rename = ".mjs")]
-    Mjs,
-    #[serde(rename = ".cjs")]
-    Cjs,
-    #[serde(rename = ".bs.js")]
-    BsJs,
-    #[serde(rename = ".bs.mjs")]
-    BsMjs,
-    #[serde(rename = ".bs.cjs")]
-    BsCjs,
-}
-
-impl fmt::Display for Suffix {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", serde_json::to_value(self).unwrap().as_str().unwrap())
-    }
-}
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct JsxSpecs {
     pub version: Option<i32>,
@@ -161,7 +141,7 @@ pub struct T {
     #[serde(rename = "package-specs")]
     pub package_specs: Option<OneOrMore<PackageSpec>>,
     pub warnings: Option<Warnings>,
-    pub suffix: Option<Suffix>,
+    pub suffix: Option<String>,
     #[serde(rename = "pinned-dependencies")]
     pub pinned_dependencies: Option<Vec<String>>,
     #[serde(rename = "bs-dependencies")]
