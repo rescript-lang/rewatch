@@ -117,7 +117,7 @@ pub struct AstModule {
     pub last_modified: SystemTime,
     pub ast_file_path: String,
     pub is_root: bool,
-    pub suffix: Option<crate::bsconfig::Suffix>,
+    pub suffix: Option<String>,
 }
 
 pub struct CompileAssetsState {

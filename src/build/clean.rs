@@ -31,7 +31,7 @@ fn remove_iast(source_file: &str, package_path: &str, root_path: &str, is_root: 
     ));
 }
 
-fn remove_mjs_file(source_file: &str, suffix: &bsconfig::Suffix) {
+fn remove_mjs_file(source_file: &str, suffix: &String) {
     let _ = std::fs::remove_file(helpers::change_extension(
         source_file,
         // suffix.to_string includes the ., so we need to remove it
@@ -107,12 +107,12 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                         .bsconfig
                         .suffix
                         .to_owned()
-                        .unwrap_or(bsconfig::Suffix::Mjs),
+                        .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
                 ))
             }
             _ => None,
         })
-        .collect::<Vec<(String, bsconfig::Suffix)>>();
+        .collect::<Vec<(String, String)>>();
 
     rescript_file_locations
         .par_iter()
@@ -168,7 +168,9 @@ pub fn cleanup_previous_build(
             );
             remove_mjs_file(
                 &res_file_location,
-                &suffix.to_owned().unwrap_or(bsconfig::Suffix::Mjs),
+                &suffix
+                    .to_owned()
+                    .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
             );
             remove_iast(
                 res_file_location,

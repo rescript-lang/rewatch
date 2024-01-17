@@ -499,7 +499,7 @@ fn compile_file(
         // TODO: Also read suffix from package-spec.
         let suffix = match root_package.bsconfig.suffix.to_owned() {
             Some(suffix) => suffix,
-            None => bsconfig::Suffix::Mjs,
+            None => String::from(bsconfig::DEFAULT_SUFFIX)
         };
 
         vec![
