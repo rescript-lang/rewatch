@@ -91,7 +91,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let _ = stdout().flush();
     let mut build_state = BuildState::new(project_root, root_config_name, packages);
     packages::parse_packages(&mut build_state);
-    logs::initialize(&build_state.project_root, &build_state.packages);
+    logs::initialize(&build_state.packages);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
         "{}\r{} {}Found source files in {:.2}s",
@@ -158,7 +158,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             print!("{}", &err);
         }
         Err(err) => {
-            logs::finalize(&build_state.project_root, &build_state.packages);
+            logs::finalize(&build_state.packages);
             println!(
                 "{}\r{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
@@ -204,7 +204,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
     let compile_duration = start_compiling.elapsed();
 
-    logs::finalize(&build_state.project_root, &build_state.packages);
+    logs::finalize(&build_state.packages);
     pb.finish();
     clean::cleanup_after_build(&build_state);
     if compile_errors.len() > 0 {

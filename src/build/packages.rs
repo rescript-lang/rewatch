@@ -56,10 +56,48 @@ pub struct Package {
     pub namespace: Namespace,
     pub modules: Option<AHashSet<String>>,
     // canonicalized dir of the package
-    pub package_dir: String,
+    pub path: String,
     pub dirs: Option<AHashSet<PathBuf>>,
     pub is_pinned_dep: bool,
     pub is_root: bool,
+}
+
+impl Package {
+    pub fn get_bs_build_path(&self) -> String {
+        format!("{}/lib/bs", self.path)
+    }
+
+    pub fn get_build_path(&self) -> String {
+        format!("{}/lib/ocaml", self.path)
+    }
+
+    pub fn get_mlmap_path(&self) -> String {
+        self.get_build_path()
+            + "/"
+            + &self
+                .namespace
+                .to_suffix()
+                .expect("namespace should be set for mlmap module")
+            + ".mlmap"
+    }
+
+    pub fn get_mlmap_compile_path(&self) -> String {
+        self.get_build_path()
+            + "/"
+            + &self
+                .namespace
+                .to_suffix()
+                .expect("namespace should be set for mlmap module")
+            + ".cmi"
+    }
+
+    pub fn get_ast_path(&self, source_file: &str) -> String {
+        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "ast")
+    }
+
+    pub fn get_iast_path(&self, source_file: &str) -> String {
+        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "iast")
+    }
 }
 
 impl PartialEq for Package {
@@ -275,7 +313,7 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, is_root: bool) -> Package {
+fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match bsconfig.sources.to_owned() {
         bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
         bsconfig::OneOrMore::Multiple(sources) => {
@@ -327,7 +365,7 @@ fn make_package(bsconfig: bsconfig::T, package_dir: &str, is_pinned_dep: bool, i
             },
         },
         modules: None,
-        package_dir: package_dir.to_string(),
+        path: package_path.to_string(),
         dirs: None,
         is_pinned_dep: is_pinned_dep,
         is_root,
@@ -424,7 +462,7 @@ fn extend_with_children(
         value
             .source_folders
             .par_iter()
-            .map(|source| get_source_files(Path::new(&value.package_dir), &filter, source))
+            .map(|source| get_source_files(Path::new(&value.path), &filter, source))
             .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -475,14 +513,7 @@ pub fn make(
         .into_iter()
         .for_each(|package| match &package.dirs {
             Some(dirs) => dirs.iter().for_each(|dir| {
-                let _ = std::fs::create_dir_all(
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_folder,
-                        &package.package_dir,
-                        package.is_root,
-                    ))
-                    .join(dir),
-                );
+                let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
             }),
             None => (),
         });
@@ -505,10 +536,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 Some(package_modules) => build_state.module_names.extend(package_modules),
                 None => (),
             }
-            let build_path_abs =
-                helpers::get_build_path(&build_state.project_root, &package.package_dir, package.is_root);
-            let bs_build_path =
-                helpers::get_bs_build_path(&build_state.project_root, &package.package_dir, package.is_root);
+            let build_path_abs = package.get_build_path();
+            let bs_build_path = package.get_bs_build_path();
             helpers::create_build_path(&build_path_abs);
             helpers::create_build_path(&bs_build_path);
 
@@ -539,8 +568,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
                     .collect::<AHashSet<String>>();
 
-                let mlmap =
-                    namespaces::gen_mlmap(&package, namespace, &depending_modules, &build_state.project_root);
+                let mlmap = namespaces::gen_mlmap(&package, namespace, &depending_modules);
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
@@ -885,7 +913,7 @@ mod test {
             source_files: None,
             namespace: Namespace::Namespace(String::from("Package1")),
             modules: None,
-            package_dir: String::from("./something"),
+            path: String::from("./something"),
             dirs: None,
             is_pinned_dep: false,
             is_root: false,

@@ -50,20 +50,6 @@ pub fn package_path(root: &str, package_name: &str, is_root: bool) -> String {
     }
 }
 
-pub fn get_build_path(root: &str, package_dir: &str, is_root: bool) -> String {
-    match is_root {
-        true => format!("{}/lib/ocaml", root),
-        false => format!("{}/lib/ocaml", package_dir),
-    }
-}
-
-pub fn get_bs_build_path(root: &str, package_path: &str, is_root: bool) -> String {
-    match is_root {
-        true => format!("{}/lib/bs", root),
-        false => format!("{}/lib/bs", package_path),
-    }
-}
-
 pub fn get_abs_path(path: &str) -> String {
     let abs_path_buf = PathBuf::from(path);
 
@@ -184,14 +170,12 @@ pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
 }
 
 pub fn get_compiler_asset(
+    package: &packages::Package,
     source_file: &str,
-    package_path: &str,
     namespace: &packages::Namespace,
-    root_path: &str,
     extension: &str,
-    is_root: bool,
 ) -> String {
-    get_build_path(root_path, package_path, is_root)
+    package.get_build_path()
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
         + "."
@@ -207,11 +191,9 @@ pub fn canonicalize_string_path(path: &str) -> Option<String> {
 
 pub fn get_bs_compiler_asset(
     source_file: &str,
-    package_path: &str,
+    package: &packages::Package,
     namespace: &packages::Namespace,
-    root_path: &str,
     extension: &str,
-    is_root: bool,
 ) -> String {
     let namespace = match extension {
         "ast" | "iast" => &packages::Namespace::NoNamespace,
@@ -220,7 +202,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&get_bs_build_path(root_path, &package_path, is_root))
+    std::path::Path::new(&package.get_bs_build_path())
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()
@@ -236,36 +218,6 @@ pub fn get_namespace_from_module_name(module_name: &str) -> Option<String> {
 
 pub fn is_interface_ast_file(file: &str) -> bool {
     file.ends_with(".iast")
-}
-
-pub fn get_mlmap_path(root_path: &str, package_path: &str, namespace: &str, is_root: bool) -> String {
-    get_build_path(root_path, package_path, is_root) + "/" + namespace + ".mlmap"
-}
-
-pub fn get_mlmap_compile_path(root_path: &str, package_path: &str, namespace: &str, is_root: bool) -> String {
-    get_build_path(root_path, package_path, is_root) + "/" + namespace + ".cmi"
-}
-
-pub fn get_ast_path(source_file: &str, package_path: &str, root_path: &str, is_root: bool) -> String {
-    get_compiler_asset(
-        source_file,
-        package_path,
-        &packages::Namespace::NoNamespace,
-        root_path,
-        "ast",
-        is_root,
-    )
-}
-
-pub fn get_iast_path(source_file: &str, package_path: &str, root_path: &str, is_root: bool) -> String {
-    get_compiler_asset(
-        source_file,
-        package_path,
-        &packages::Namespace::NoNamespace,
-        root_path,
-        "iast",
-        is_root,
-    )
 }
 
 pub fn read_lines(filename: String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
