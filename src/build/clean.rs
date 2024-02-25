@@ -12,8 +12,8 @@ use std::time::Instant;
 fn remove_ast(package: &packages::Package, source_file: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         package,
-        source_file,
         &packages::Namespace::NoNamespace,
+        source_file,
         "ast",
     ));
 }
@@ -21,8 +21,8 @@ fn remove_ast(package: &packages::Package, source_file: &str) {
 fn remove_iast(package: &packages::Package, source_file: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         package,
-        source_file,
         &packages::Namespace::NoNamespace,
+        source_file,
         "iast",
     ));
 }
@@ -38,14 +38,14 @@ fn remove_mjs_file(source_file: &str, suffix: &String) {
 fn remove_compile_asset(package: &packages::Package, source_file: &str, extension: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
         package,
-        source_file,
         &package.namespace,
+        source_file,
         extension,
     ));
     let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
-        source_file,
         package,
         &package.namespace,
+        source_file,
         extension,
     ));
 }

@@ -92,11 +92,11 @@ impl Package {
     }
 
     pub fn get_ast_path(&self, source_file: &str) -> String {
-        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "ast")
+        helpers::get_compiler_asset(self, &packages::Namespace::NoNamespace, source_file, "ast")
     }
 
     pub fn get_iast_path(&self, source_file: &str) -> String {
-        helpers::get_compiler_asset(self, source_file, &packages::Namespace::NoNamespace, "iast")
+        helpers::get_compiler_asset(self, &packages::Namespace::NoNamespace, source_file, "iast")
     }
 }
 

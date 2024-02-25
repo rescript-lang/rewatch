@@ -171,8 +171,8 @@ pub fn string_ends_with_any(s: &PathBuf, suffixes: &[&str]) -> bool {
 
 pub fn get_compiler_asset(
     package: &packages::Package,
-    source_file: &str,
     namespace: &packages::Namespace,
+    source_file: &str,
     extension: &str,
 ) -> String {
     package.get_build_path()
@@ -190,9 +190,9 @@ pub fn canonicalize_string_path(path: &str) -> Option<String> {
 }
 
 pub fn get_bs_compiler_asset(
-    source_file: &str,
     package: &packages::Package,
     namespace: &packages::Namespace,
+    source_file: &str,
     extension: &str,
 ) -> String {
     let namespace = match extension {
