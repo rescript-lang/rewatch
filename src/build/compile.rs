@@ -143,12 +143,10 @@ pub fn compile(
                         }
                         SourceType::SourceFile(source_file) => {
                             let cmi_path = helpers::get_compiler_asset(
+                                package,
                                 &source_file.implementation.path,
-                                &module.package_name,
                                 &package.namespace,
-                                &build_state.project_root,
                                 "cmi",
-                                package.is_root,
                             );
 
                             let cmi_digest = helpers::compute_file_hash(&cmi_path);
@@ -165,14 +163,8 @@ pub fn compile(
                                     let result = compile_file(
                                         &package,
                                         &root_package,
-                                        &helpers::get_iast_path(
-                                            &path,
-                                            &package.package_dir,
-                                            &build_state.project_root,
-                                            package.is_root,
-                                        ),
+                                        &package.get_iast_path(&path),
                                         module,
-                                        &build_state.project_root,
                                         &rescript_version,
                                         true,
                                         bsc_path,
@@ -185,14 +177,8 @@ pub fn compile(
                             let result = compile_file(
                                 &package,
                                 &root_package,
-                                &helpers::get_ast_path(
-                                    &source_file.implementation.path,
-                                    &package.package_dir,
-                                    &build_state.project_root,
-                                    package.is_root,
-                                ),
+                                &package.get_ast_path(&source_file.implementation.path),
                                 module,
-                                &build_state.project_root,
                                 &rescript_version,
                                 false,
                                 bsc_path,
@@ -292,25 +278,13 @@ pub fn compile(
                             match result {
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state = CompileState::Warning;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &package.package_dir,
-                                        &err,
-                                    );
+                                    logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Ok(None) => (),
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &package.package_dir,
-                                        &err,
-                                    );
+                                    logs::append(package, &err);
                                     compile_errors.push_str(&err);
                                 }
                             };
@@ -318,26 +292,14 @@ pub fn compile(
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &package.package_dir,
-                                        &err,
-                                    );
+                                    logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
                                 Some(Ok(None)) => (),
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(
-                                        &build_state.project_root,
-                                        package.is_root,
-                                        &package.name,
-                                        &package.package_dir,
-                                        &err,
-                                    );
+                                    logs::append(package, &err);
                                     compile_errors.push_str(&err);
                                 }
                                 _ => (),
@@ -380,13 +342,12 @@ fn compile_file(
     root_package: &packages::Package,
     ast_path: &str,
     module: &Module,
-    root_path: &str,
     version: &str,
     is_interface: bool,
     bsc_path: &str,
     packages: &AHashMap<String, packages::Package>,
 ) -> Result<Option<String>, String> {
-    let build_path_abs = helpers::get_build_path(root_path, &package.package_dir, package.is_root);
+    let build_path_abs = package.get_build_path();
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let normal_deps = package
@@ -412,12 +373,7 @@ fn compile_file(
             let package = &packages.get(&x).expect("expect package");
             vec![
                 "-I".to_string(),
-                helpers::canonicalize_string_path(&helpers::get_build_path(
-                    root_path,
-                    &package.package_dir,
-                    package.is_root,
-                ))
-                .unwrap(),
+                helpers::canonicalize_string_path(&package.get_build_path()).unwrap(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -499,7 +455,7 @@ fn compile_file(
         // TODO: Also read suffix from package-spec.
         let suffix = match root_package.bsconfig.suffix.to_owned() {
             Some(suffix) => suffix,
-            None => String::from(bsconfig::DEFAULT_SUFFIX)
+            None => String::from(bsconfig::DEFAULT_SUFFIX),
         };
 
         vec![
@@ -566,50 +522,34 @@ fn compile_file(
             if !is_interface {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.package_dir,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    // because editor tooling doesn't support namespace entries yet
-                    // we just remove the @ for now. This makes sure the editor support
-                    // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmi"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        // because editor tooling doesn't support namespace entries yet
+                        // we just remove the @ for now. This makes sure the editor support
+                        // doesn't break
+                        .join(module_name.to_owned().replace("@", "") + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.package_dir,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmj"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmj"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.package_dir,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    // because editor tooling doesn't support namespace entries yet
-                    // we just remove the @ for now. This makes sure the editor support
-                    // doesn't break
-                    .join(module_name.to_owned().replace("@", "") + ".cmt"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        // because editor tooling doesn't support namespace entries yet
+                        // we just remove the @ for now. This makes sure the editor support
+                        // doesn't break
+                        .join(module_name.to_owned().replace("@", "") + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&helpers::get_bs_build_path(
-                        root_path,
-                        &package.package_dir,
-                        package.is_root,
-                    ))
-                    .join(dir)
-                    .join(module_name.to_owned() + ".cmti"),
+                    std::path::Path::new(&package.get_bs_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmti"),
                 );
             }
             match &module.source_type {
@@ -625,24 +565,15 @@ fn compile_file(
                     // editor tools expects the source file in lib/bs for finding the current package
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
-                        std::path::Path::new(&package.package_dir).join(path),
-                        std::path::Path::new(&helpers::get_bs_build_path(
-                            root_path,
-                            &package.package_dir,
-                            package.is_root,
-                        ))
-                        .join(path),
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_bs_build_path()).join(path),
                     )
                     .expect("copying source file failed");
 
                     let _ = std::fs::copy(
-                        std::path::Path::new(&package.package_dir).join(path),
-                        std::path::Path::new(&helpers::get_build_path(
-                            root_path,
-                            &package.package_dir,
-                            package.is_root,
-                        ))
-                        .join(std::path::Path::new(path).file_name().unwrap()),
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_build_path())
+                            .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
                 }

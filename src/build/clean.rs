@@ -9,25 +9,21 @@ use rayon::prelude::*;
 use std::io::Write;
 use std::time::Instant;
 
-fn remove_ast(source_file: &str, package_path: &str, root_path: &str, is_root: bool) {
+fn remove_ast(package: &packages::Package, source_file: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        package,
         source_file,
-        package_path,
         &packages::Namespace::NoNamespace,
-        root_path,
         "ast",
-        is_root,
     ));
 }
 
-fn remove_iast(source_file: &str, package_path: &str, root_path: &str, is_root: bool) {
+fn remove_iast(package: &packages::Package, source_file: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        package,
         source_file,
-        package_path,
         &packages::Namespace::NoNamespace,
-        root_path,
         "iast",
-        is_root,
     ));
 }
 
@@ -39,50 +35,26 @@ fn remove_mjs_file(source_file: &str, suffix: &String) {
     ));
 }
 
-fn remove_compile_asset(
-    source_file: &str,
-    package_path: &str,
-    namespace: &packages::Namespace,
-    root_path: &str,
-    is_root: bool,
-    extension: &str,
-) {
+fn remove_compile_asset(package: &packages::Package, source_file: &str, extension: &str) {
     let _ = std::fs::remove_file(helpers::get_compiler_asset(
+        package,
         source_file,
-        package_path,
-        namespace,
-        root_path,
+        &package.namespace,
         extension,
-        is_root,
     ));
     let _ = std::fs::remove_file(helpers::get_bs_compiler_asset(
         source_file,
-        package_path,
-        namespace,
-        root_path,
+        package,
+        &package.namespace,
         extension,
-        is_root,
     ));
 }
 
-pub fn remove_compile_assets(
-    source_file: &str,
-    package_path: &str,
-    namespace: &packages::Namespace,
-    root_path: &str,
-    is_root: bool,
-) {
+pub fn remove_compile_assets(package: &packages::Package, source_file: &str) {
     // optimization
     // only issue cmti if htere is an interfacce file
     for extension in &["cmj", "cmi", "cmt", "cmti"] {
-        remove_compile_asset(
-            source_file,
-            package_path,
-            namespace,
-            root_path,
-            is_root,
-            extension,
-        );
+        remove_compile_asset(package, source_file, extension);
     }
 }
 
@@ -99,7 +71,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                     .get(&build_state.root_config_name)
                     .expect("Could not find root package");
                 Some((
-                    std::path::PathBuf::from(package.package_dir.to_string())
+                    std::path::PathBuf::from(package.path.to_string())
                         .join(source_file.implementation.path.to_string())
                         .to_string_lossy()
                         .to_string(),
@@ -145,9 +117,7 @@ pub fn cleanup_previous_build(
             let AstModule {
                 module_name,
                 package_name,
-                namespace: package_namespace,
                 ast_file_path,
-                is_root,
                 suffix,
                 ..
             } = compile_assets_state
@@ -159,31 +129,15 @@ pub fn cleanup_previous_build(
                 .packages
                 .get(package_name)
                 .expect("Could not find package");
-            remove_compile_assets(
-                res_file_location,
-                &package.package_dir,
-                package_namespace,
-                &build_state.project_root,
-                *is_root,
-            );
+            remove_compile_assets(package, res_file_location);
             remove_mjs_file(
                 &res_file_location,
                 &suffix
                     .to_owned()
                     .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
             );
-            remove_iast(
-                res_file_location,
-                &package.package_dir,
-                &build_state.project_root,
-                *is_root,
-            );
-            remove_ast(
-                res_file_location,
-                &package.package_dir,
-                &build_state.project_root,
-                *is_root,
-            );
+            remove_iast(package, res_file_location);
+            remove_ast(package, res_file_location);
             match helpers::get_extension(ast_file_path).as_str() {
                 "iast" => Some(module_name.to_owned()),
                 "ast" => None,
@@ -361,18 +315,8 @@ pub fn cleanup_after_build(build_state: &BuildState) {
         if failed_to_parse(module) {
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
-                    remove_iast(
-                        &source_file.implementation.path,
-                        &package.package_dir,
-                        &build_state.project_root,
-                        package.is_root,
-                    );
-                    remove_ast(
-                        &source_file.implementation.path,
-                        &package.package_dir,
-                        &build_state.project_root,
-                        package.is_root,
-                    );
+                    remove_iast(package, &source_file.implementation.path);
+                    remove_ast(package, &source_file.implementation.path);
                 }
                 _ => (),
             }
@@ -386,14 +330,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                     // we only clean the cmt (typed tree) here, this will cause the file to be recompiled
                     // (and thus keep showing the warning), but it will keep the cmi file, so that we don't
                     // unecessary mark all the dependents as dirty, when there is no change in the interface
-                    remove_compile_asset(
-                        &source_file.implementation.path,
-                        &package.package_dir,
-                        &package.namespace,
-                        &build_state.project_root,
-                        package.is_root,
-                        "cmt",
-                    );
+                    remove_compile_asset(package, &source_file.implementation.path, "cmt");
                 }
                 SourceType::MlMap(_) => (),
             }
@@ -424,11 +361,11 @@ pub fn clean(path: &str) {
         );
         std::io::stdout().flush().unwrap();
 
-        let path_str = helpers::get_build_path(&project_root, &package.package_dir, package.is_root);
+        let path_str = package.get_build_path();
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
 
-        let path_str = helpers::get_bs_build_path(&project_root, &package.package_dir, package.is_root);
+        let path_str = package.get_bs_build_path();
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
     });
