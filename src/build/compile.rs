@@ -144,8 +144,8 @@ pub fn compile(
                         SourceType::SourceFile(source_file) => {
                             let cmi_path = helpers::get_compiler_asset(
                                 package,
-                                &source_file.implementation.path,
                                 &package.namespace,
+                                &source_file.implementation.path,
                                 "cmi",
                             );
 
