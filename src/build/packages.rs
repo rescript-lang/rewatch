@@ -762,18 +762,10 @@ impl Package {
 
     pub fn get_uncurried_args(&self, version: &str, root_package: &packages::Package) -> Vec<String> {
         if check_if_rescript11_or_higher(version) {
-            match (
-                root_package.bsconfig.uncurried.to_owned(),
-                self.bsconfig.uncurried.to_owned(),
-            ) {
-                (Some(x), _) | (None, Some(x)) => {
-                    if x {
-                        vec!["-uncurried".to_string()]
-                    } else {
-                        vec![]
-                    }
-                }
-                (None, None) => vec!["-uncurried".to_string()],
+            match root_package.bsconfig.uncurried.to_owned() {
+                // v11 is always uncurried except iff explicitly set to false in the root rescript.json
+                Some(false) => vec![],
+                _ => vec!["-uncurried".to_string()],
             }
         } else {
             vec![]
