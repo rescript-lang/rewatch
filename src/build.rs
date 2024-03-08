@@ -86,16 +86,22 @@ pub fn get_compiler_args(path: &str) -> String {
         &rescript_version,
         &workspace_root,
     );
+    let is_interface = filename.ends_with("i");
+    let has_interface = if is_interface {
+        true
+    } else {
+        let mut interface_filename = filename.to_string();
+        interface_filename.push('i');
+        PathBuf::from(&interface_filename).exists()
+    };
     let compiler_args = compiler_args(
         package,
         root_package,
         &ast_path,
         &rescript_version,
         &relative_filename,
-        // is_interface,
-        false,
-        // has_interface,
-        false,
+        is_interface,
+        has_interface,
         &packages,
     );
     serde_json::to_string_pretty(&CompilerArgs {
