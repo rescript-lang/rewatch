@@ -342,9 +342,9 @@ pub fn compiler_args(
     root_package: &packages::Package,
     ast_path: &str,
     version: &str,
-    implementation_file_path: &str,
+    file_path: &str,
     is_interface: bool,
-    bsc_flags: Vec<String>,
+    has_interface: bool,
     packages: &AHashMap<String, packages::Package>,
 ) -> Vec<String> {
     let normal_deps = package
@@ -354,6 +354,7 @@ pub fn compiler_args(
         .unwrap_or(&vec![])
         .to_owned();
 
+    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
     // don't compile dev-deps yet
     // let dev_deps = source
     //     .package
@@ -375,7 +376,7 @@ pub fn compiler_args(
         })
         .collect::<Vec<Vec<String>>>();
 
-    let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+    let module_name = helpers::file_path_to_module_name(file_path, &package.namespace);
 
     let namespace_args = match &package.namespace {
         packages::Namespace::NamespaceWithEntry { namespace: _, entry } if &module_name == entry => {
@@ -427,10 +428,15 @@ pub fn compiler_args(
         }
     };
 
-    let read_cmi_args = if is_interface {
-        vec![]
-    } else {
-        vec!["-bs-read-cmi".to_string()]
+    let read_cmi_args = match has_interface {
+        true => {
+            if is_interface {
+                vec![]
+            } else {
+                vec!["-bs-read-cmi".to_string()]
+            }
+        }
+        false => vec![],
     };
 
     let implementation_args = if is_interface {
@@ -451,11 +457,7 @@ pub fn compiler_args(
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:{}",
-                Path::new(implementation_file_path)
-                    .parent()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
+                Path::new(file_path).parent().unwrap().to_str().unwrap(),
                 suffix
             ),
         ]
@@ -499,13 +501,13 @@ fn compile_file(
     bsc_path: &str,
     packages: &AHashMap<String, packages::Package>,
 ) -> Result<Option<String>, String> {
-    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match module.source_type {
         SourceType::SourceFile(ref source_file) => &source_file.implementation.path,
         _ => panic!("Not a source file"),
     };
     let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+    let has_interface = module.get_interface().is_some();
     let to_mjs_args = compiler_args(
         package,
         root_package,
@@ -513,7 +515,7 @@ fn compile_file(
         version,
         &implementation_file_path,
         is_interface,
-        bsc_flags,
+        has_interface,
         packages,
     );
 

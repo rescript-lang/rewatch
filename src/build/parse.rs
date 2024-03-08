@@ -184,12 +184,12 @@ pub fn generate_asts(
     }
 }
 
-pub fn compiler_args(
+pub fn parser_args(
     package: &packages::Package,
     root_package: &packages::Package,
     filename: &str,
     version: &str,
-) -> Vec<String> {
+) -> (String, Vec<String>) {
     let file = &filename.to_string();
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
@@ -206,23 +206,26 @@ pub fn compiler_args(
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
     let file = "../../".to_string() + file;
-    vec![
-        vec!["-bs-v".to_string(), format!("{}", version)],
-        ppx_flags,
-        jsx_args,
-        jsx_module_args,
-        jsx_mode_args,
-        uncurried_args,
-        bsc_flags,
+    (
+        ast_path.to_string(),
         vec![
-            "-absname".to_string(),
-            "-bs-ast".to_string(),
-            "-o".to_string(),
-            ast_path.to_string(),
-            file,
-        ],
-    ]
-    .concat()
+            vec!["-bs-v".to_string(), format!("{}", version)],
+            ppx_flags,
+            jsx_args,
+            jsx_module_args,
+            jsx_mode_args,
+            uncurried_args,
+            bsc_flags,
+            vec![
+                "-absname".to_string(),
+                "-bs-ast".to_string(),
+                "-o".to_string(),
+                ast_path.to_string(),
+                file,
+            ],
+        ]
+        .concat(),
+    )
 }
 
 fn generate_ast(
@@ -232,20 +235,17 @@ fn generate_ast(
     version: &str,
     bsc_path: &str,
 ) -> Result<(String, Option<String>), String> {
-    let file = &filename.to_string();
     let build_path_abs = package.get_build_path();
-    let path = PathBuf::from(filename);
-    let ast_extension = path_to_ast_extension(&path);
-    let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
+    let (ast_path, parser_args) = parser_args(&package, &root_package, filename, version);
 
     /* Create .ast */
-    if let Some(res_to_ast) = Some(file).map(|file| {
+    if let Some(res_to_ast) = Some(
         Command::new(bsc_path)
             .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
-            .args(compiler_args(&package, &root_package, file, version))
+            .args(parser_args)
             .output()
-            .expect("Error converting .res to .ast")
-    }) {
+            .expect("Error converting .res to .ast"),
+    ) {
         let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("Expect StdErr to be non-null");
         if helpers::contains_ascii_characters(stderr) {
             if res_to_ast.status.success() {
@@ -258,21 +258,21 @@ fn generate_ast(
             Ok((ast_path, None))
         }
     } else {
-        println!("Parsing file {}...", file);
-        return Err(format!(
+        println!("Parsing file {}...", filename);
+        Err(format!(
             "Could not find canonicalize_string_path for file {} in package {}",
-            file, package.name
-        ));
+            filename, package.name
+        ))
     }
 }
 
 fn path_to_ast_extension(path: &Path) -> &str {
     let extension = path.extension().unwrap().to_str().unwrap();
-    return if helpers::is_interface_ast_file(extension) {
+    if helpers::is_interface_ast_file(extension) {
         ".iast"
     } else {
         ".ast"
-    };
+    }
 }
 
 fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
