@@ -136,13 +136,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     let timing_ast = Instant::now();
-    let result_asts = parse::generate_asts(
-        &rescript_version,
-        &mut build_state,
-        || pb.inc(1),
-        &bsc_path,
-        workspace_root.to_owned(),
-    );
+    let result_asts = parse::generate_asts(&rescript_version, &mut build_state, || pb.inc(1), &bsc_path);
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {

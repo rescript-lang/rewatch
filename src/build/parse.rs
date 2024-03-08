@@ -15,7 +15,6 @@ pub fn generate_asts(
     build_state: &mut BuildState,
     inc: impl Fn() -> () + std::marker::Sync,
     bsc_path: &str,
-    workspace_root: Option<String>,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -59,10 +58,8 @@ pub fn generate_asts(
                             package.to_owned(),
                             root_package.to_owned(),
                             &source_file.implementation.path.to_owned(),
-                            &build_state.project_root,
                             &version,
                             bsc_path,
-                            workspace_root.to_owned(),
                         );
 
                         let iast_result = match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
@@ -70,10 +67,8 @@ pub fn generate_asts(
                                 package.to_owned(),
                                 root_package.to_owned(),
                                 &interface_file_path.to_owned(),
-                                &build_state.project_root,
                                 &version,
                                 bsc_path,
-                                workspace_root.to_owned(),
                             )
                             .map(|result| Some(result)),
                             _ => Ok(None),
@@ -189,64 +184,65 @@ pub fn generate_asts(
     }
 }
 
-fn generate_ast(
-    package: packages::Package,
-    root_package: packages::Package,
+pub fn compiler_args(
+    package: &packages::Package,
+    root_package: &packages::Package,
     filename: &str,
-    root_path: &str,
     version: &str,
-    bsc_path: &str,
-    workspace_root: Option<String>,
-) -> Result<(String, Option<String>), String> {
+) -> Vec<String> {
     let file = &filename.to_string();
-    let build_path_abs = package.get_build_path();
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
-
     let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
-
     let ppx_flags = bsconfig::flatten_ppx_flags(
-        &if let Some(workspace_root) = workspace_root {
-            format!("{}/node_modules", &workspace_root)
-        } else {
-            format!("{}/node_modules", &root_path)
-        },
+        &format!("{}/node_modules", &root_package.path),
         &filter_ppx_flags(&package.bsconfig.ppx_flags),
         &package.name,
     );
-
     let jsx_args = root_package.get_jsx_args();
     let jsx_module_args = root_package.get_jsx_module_args();
     let jsx_mode_args = root_package.get_jsx_mode_args();
     let uncurried_args = root_package.get_uncurried_args(version, &root_package);
     let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
 
-    let res_to_ast_args = |file: &str| -> Vec<String> {
-        let file = "../../".to_string() + file;
+    let file = "../../".to_string() + file;
+    vec![
+        vec!["-bs-v".to_string(), format!("{}", version)],
+        ppx_flags,
+        jsx_args,
+        jsx_module_args,
+        jsx_mode_args,
+        uncurried_args,
+        bsc_flags,
         vec![
-            vec!["-bs-v".to_string(), format!("{}", version)],
-            ppx_flags,
-            jsx_args,
-            jsx_module_args,
-            jsx_mode_args,
-            uncurried_args,
-            bsc_flags,
-            vec![
-                "-absname".to_string(),
-                "-bs-ast".to_string(),
-                "-o".to_string(),
-                ast_path.to_string(),
-                file,
-            ],
-        ]
-        .concat()
-    };
+            "-absname".to_string(),
+            "-bs-ast".to_string(),
+            "-o".to_string(),
+            ast_path.to_string(),
+            file,
+        ],
+    ]
+    .concat()
+}
+
+fn generate_ast(
+    package: packages::Package,
+    root_package: packages::Package,
+    filename: &str,
+    version: &str,
+    bsc_path: &str,
+) -> Result<(String, Option<String>), String> {
+    let file = &filename.to_string();
+    let build_path_abs = package.get_build_path();
+    let path = PathBuf::from(filename);
+    let ast_extension = path_to_ast_extension(&path);
+    let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
 
     /* Create .ast */
     if let Some(res_to_ast) = Some(file).map(|file| {
         Command::new(bsc_path)
             .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
-            .args(res_to_ast_args(file))
+            .args(compiler_args(&package, &root_package, file, version))
             .output()
             .expect("Error converting .res to .ast")
     }) {
