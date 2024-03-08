@@ -287,8 +287,8 @@ pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
-fn has_bs_config(path: &PathBuf) -> bool {
-    path.join("bsconfig.json").exists()
+fn has_rescript_config(path: &PathBuf) -> bool {
+    path.join("bsconfig.json").exists() || path.join("rescript.json").exists()
 }
 
 pub fn get_workspace_root(package_root: &str) -> Option<String> {
@@ -301,7 +301,7 @@ pub fn get_workspace_root(package_root: &str) -> Option<String> {
 pub fn get_nearest_bsconfig(path_buf: &PathBuf) -> Option<String> {
     let mut current_dir = path_buf.to_owned();
     loop {
-        if has_bs_config(&current_dir) {
+        if has_rescript_config(&current_dir) {
             return Some(current_dir.to_string_lossy().to_string());
         }
         match current_dir.parent() {
