@@ -15,6 +15,7 @@ pub fn generate_asts(
     build_state: &mut BuildState,
     inc: impl Fn() -> () + std::marker::Sync,
     bsc_path: &str,
+    workspace_root: &Option<String>,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
@@ -60,6 +61,7 @@ pub fn generate_asts(
                             &source_file.implementation.path.to_owned(),
                             &version,
                             bsc_path,
+                            workspace_root,
                         );
 
                         let iast_result = match source_file.interface.as_ref().map(|i| i.path.to_owned()) {
@@ -69,6 +71,7 @@ pub fn generate_asts(
                                 &interface_file_path.to_owned(),
                                 &version,
                                 bsc_path,
+                                workspace_root,
                             )
                             .map(|result| Some(result)),
                             _ => Ok(None),
@@ -189,13 +192,18 @@ pub fn parser_args(
     root_package: &packages::Package,
     filename: &str,
     version: &str,
+    workspace_root: &Option<String>,
 ) -> (String, Vec<String>) {
     let file = &filename.to_string();
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
     let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
     let ppx_flags = bsconfig::flatten_ppx_flags(
-        &format!("{}/node_modules", &root_package.path),
+        &if let Some(workspace_root) = workspace_root {
+            format!("{}/node_modules", &workspace_root)
+        } else {
+            format!("{}/node_modules", &root_package.path)
+        },
         &filter_ppx_flags(&package.bsconfig.ppx_flags),
         &package.name,
     );
@@ -234,9 +242,10 @@ fn generate_ast(
     filename: &str,
     version: &str,
     bsc_path: &str,
+    workspace_root: &Option<String>,
 ) -> Result<(String, Option<String>), String> {
     let build_path_abs = package.get_build_path();
-    let (ast_path, parser_args) = parser_args(&package, &root_package, filename, version);
+    let (ast_path, parser_args) = parser_args(&package, &root_package, filename, version, workspace_root);
 
     /* Create .ast */
     if let Some(res_to_ast) = Some(

@@ -79,7 +79,13 @@ pub fn get_compiler_args(path: &str) -> String {
         .to_string();
     let root_package = packages.get(&root_config_name).unwrap();
     let package = packages.get(&package_name).unwrap();
-    let (ast_path, parser_args) = parser_args(package, root_package, &relative_filename, &rescript_version);
+    let (ast_path, parser_args) = parser_args(
+        package,
+        root_package,
+        &relative_filename,
+        &rescript_version,
+        &workspace_root,
+    );
     let compiler_args = compiler_args(
         package,
         root_package,
@@ -191,7 +197,13 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     );
 
     let timing_ast = Instant::now();
-    let result_asts = parse::generate_asts(&rescript_version, &mut build_state, || pb.inc(1), &bsc_path);
+    let result_asts = parse::generate_asts(
+        &rescript_version,
+        &mut build_state,
+        || pb.inc(1),
+        &bsc_path,
+        &workspace_root,
+    );
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
