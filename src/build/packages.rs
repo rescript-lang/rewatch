@@ -239,6 +239,7 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 fn read_dependencies<'a>(
     registered_dependencies_set: &'a mut AHashSet<String>,
     parent_bsconfig: &bsconfig::T,
+    parent_path: &str,
     project_root: &str,
     workspace_root: Option<String>,
 ) -> Vec<Dependency> {
@@ -259,26 +260,43 @@ fn read_dependencies<'a>(
         // Read all bsconfig files in parallel instead of blocking
         .par_iter()
         .map(|package_name| {
-            let path = match (
-                PathBuf::from(helpers::package_path(project_root, package_name, false)).canonicalize(),
-                workspace_root.as_ref().map(|workspace_root| {
-                    PathBuf::from(helpers::package_path(&workspace_root, package_name, false)).canonicalize()
-                }),
-            ) {
-                (Ok(dir), _) => dir.to_string_lossy().to_string(),
-                (_, Some(Ok(dir))) => dir.to_string_lossy().to_string(),
-                (Err(e), _) => {
-                    print!(
-        "{} {} Error building package tree (are node_modules up-to-date?)... \n More details: {}",
-                          style("[1/2]").bold().dim(),
-                          CROSS,
-                          e.to_string()
-                        );
-                    std::process::exit(2)
-                }
+            let path_from_parent = PathBuf::from(helpers::package_path(parent_path, package_name));
+            let path_from_project_root = PathBuf::from(helpers::package_path(project_root, package_name));
+            let maybe_path_from_workspace_root = workspace_root.as_ref().map(|workspace_root| {
+                PathBuf::from(helpers::package_path(&workspace_root, package_name))
+            });
+
+            let path = match (path_from_parent, path_from_project_root, maybe_path_from_workspace_root) {
+              (path_from_parent, _, _) if path_from_parent.exists() => path_from_parent,
+              (_, path_from_project_root, _) if path_from_project_root.exists() => path_from_project_root,
+              (_, _, Some(path_from_workspace_root)) if path_from_workspace_root.exists() => path_from_workspace_root,
+              _ => {
+                print!(
+                  "{} {} Error building package tree. The package \"{}\" is not found (are node_modules up-to-date?)...",
+                      style("[1/2]").bold().dim(),
+                      CROSS,
+                      package_name
+                    );
+                std::process::exit(2)
+              }
             };
 
-            let bsconfig = read_bsconfig(&path);
+            let canonical_path = match path.canonicalize() {
+              Ok(canonical_path) => canonical_path.to_string_lossy().to_string(),
+              Err(e) => {
+                print!(
+                  "{} {} Error building package tree. Failed canonicalizing the package \"{}\" path \"{}\" (are node_modules up-to-date?)...\nMore details: {}",
+                      style("[1/2]").bold().dim(),
+                      CROSS,
+                      package_name,
+                      path.to_string_lossy(),
+                      e.to_string()
+                    );
+                std::process::exit(2)
+              }
+            };
+
+            let bsconfig = read_bsconfig(&canonical_path);
             let is_pinned = parent_bsconfig
                 .pinned_dependencies
                 .as_ref()
@@ -288,6 +306,7 @@ fn read_dependencies<'a>(
             let dependencies = read_dependencies(
                 &mut registered_dependencies_set.to_owned(),
                 &bsconfig,
+                &canonical_path,
                 project_root,
                 workspace_root.to_owned(),
             );
@@ -295,7 +314,7 @@ fn read_dependencies<'a>(
             Dependency {
                 name: package_name.to_owned(),
                 bsconfig,
-                path,
+                path: canonical_path,
                 is_pinned,
                 dependencies,
             }
@@ -386,6 +405,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
     let dependencies = flatten_dependencies(read_dependencies(
         &mut registered_dependencies_set,
         &root_bsconfig,
+        project_root,
         project_root,
         workspace_root,
     ));

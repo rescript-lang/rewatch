@@ -43,11 +43,8 @@ impl LexicalAbsolute for Path {
     }
 }
 
-pub fn package_path(root: &str, package_name: &str, is_root: bool) -> String {
-    match is_root {
-        true => root.to_string(),
-        false => format!("{}/node_modules/{}", root, package_name),
-    }
+pub fn package_path(root: &str, package_name: &str) -> String {
+    format!("{}/node_modules/{}", root, package_name)
 }
 
 pub fn get_abs_path(path: &str) -> String {
