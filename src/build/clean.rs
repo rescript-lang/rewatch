@@ -327,10 +327,10 @@ pub fn cleanup_after_build(build_state: &BuildState) {
             // up the AST file if compile is not successful
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
-                    // we only clean the cmt (typed tree) here, this will cause the file to be recompiled
+                    // we only clean the ast here, this will cause the file to be recompiled
                     // (and thus keep showing the warning), but it will keep the cmi file, so that we don't
                     // unecessary mark all the dependents as dirty, when there is no change in the interface
-                    remove_compile_asset(package, &source_file.implementation.path, "cmt");
+                    remove_compile_asset(package, &source_file.implementation.path, "ast");
                 }
                 SourceType::MlMap(_) => (),
             }
