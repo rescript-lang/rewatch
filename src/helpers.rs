@@ -172,6 +172,10 @@ pub fn get_compiler_asset(
     source_file: &str,
     extension: &str,
 ) -> String {
+    let namespace = match extension {
+        "ast" | "iast" => &packages::Namespace::NoNamespace,
+        _ => namespace,
+    };
     package.get_build_path()
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
