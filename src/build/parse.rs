@@ -5,6 +5,7 @@ use super::packages;
 use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
+use ahash::AHashSet;
 use log::debug;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -31,20 +32,8 @@ pub fn generate_asts(
                 .expect("Package not found");
             match &module.source_type {
                 SourceType::MlMap(_) => {
-                    // probably better to do this in a different function
-                    // specific to compiling mlmaps
                     let path = package.get_mlmap_path();
-                    let compile_path = package.get_mlmap_compile_path();
-                    let mlmap_hash = helpers::compute_file_hash(&compile_path);
-                    namespaces::compile_mlmap(&package, module_name, bsc_path);
-                    let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
-
-                    let is_dirty = match (mlmap_hash, mlmap_hash_after) {
-                        (Some(digest), Some(digest_after)) => !digest.eq(&digest_after),
-                        _ => true,
-                    };
-
-                    (module_name.to_owned(), Ok((path, None)), Ok(None), is_dirty)
+                    (module_name.to_owned(), Ok((path, None)), Ok(None), false)
                 }
 
                 SourceType::SourceFile(source_file) => {
@@ -180,6 +169,45 @@ pub fn generate_asts(
             }
         });
 
+    // compile the mlmaps of dirty modules
+    // first collect dirty packages
+    let dirty_packages = build_state
+        .modules
+        .iter()
+        .filter(|(_, module)| module.compile_dirty)
+        .map(|(_, module)| module.package_name.clone())
+        .collect::<AHashSet<String>>();
+
+    build_state.modules.iter_mut().for_each(|(module_name, module)| {
+        let is_dirty = match &module.source_type {
+            SourceType::MlMap(_) => {
+                if dirty_packages.contains(&module.package_name) {
+                    let package = build_state
+                        .packages
+                        .get(&module.package_name)
+                        .expect("Package not found");
+                    // probably better to do this in a different function
+                    // specific to compiling mlmaps
+                    let compile_path = package.get_mlmap_compile_path();
+                    let mlmap_hash = helpers::compute_file_hash(&compile_path);
+                    namespaces::compile_mlmap(&package, module_name, bsc_path);
+                    let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
+
+                    match (mlmap_hash, mlmap_hash_after) {
+                        (Some(digest), Some(digest_after)) => !digest.eq(&digest_after),
+                        _ => true,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+        if is_dirty {
+            module.compile_dirty = is_dirty;
+        }
+    });
+
     if has_failure {
         Err(stderr)
     } else {
@@ -250,7 +278,7 @@ fn generate_ast(
     /* Create .ast */
     if let Some(res_to_ast) = Some(
         Command::new(bsc_path)
-            .current_dir(helpers::canonicalize_string_path(&build_path_abs).unwrap())
+            .current_dir(&build_path_abs)
             .args(parser_args)
             .output()
             .expect("Error converting .res to .ast"),

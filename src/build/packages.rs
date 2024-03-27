@@ -384,7 +384,12 @@ fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, 
             },
         },
         modules: None,
-        path: package_path.to_string(),
+        // we canonicalize the path name so it's always the same
+        path: PathBuf::from(package_path)
+            .canonicalize()
+            .expect("Could not canonicalize")
+            .to_string_lossy()
+            .to_string(),
         dirs: None,
         is_pinned_dep: is_pinned_dep,
         is_root,

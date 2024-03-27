@@ -2,6 +2,7 @@ use super::build_types::*;
 use super::packages;
 use crate::helpers;
 use ahash::{AHashMap, AHashSet};
+use rayon::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -21,8 +22,6 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
 
                 Some(
                     PathBuf::from(&package.path)
-                        .canonicalize()
-                        .expect("Could not canonicalize")
                         .join(source_file.implementation.path.to_owned())
                         .to_string_lossy()
                         .to_string(),
@@ -40,8 +39,6 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                 let package = build_state.packages.get(&module.package_name).unwrap();
                 module.get_interface().as_ref().map(|interface| {
                     PathBuf::from(&package.path)
-                        .canonicalize()
-                        .expect("Could not canonicalize")
                         .join(interface.path.to_owned())
                         .to_string_lossy()
                         .to_string()
@@ -51,78 +48,94 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
     );
 
     // scan all ast files in all packages
-    for package in build_state.packages.values() {
-        let read_dir = fs::read_dir(std::path::Path::new(&package.get_build_path())).unwrap();
+    let compile_assets = build_state
+        .packages
+        .par_iter()
+        .map(|(_, package)| {
+            let read_dir = fs::read_dir(std::path::Path::new(&package.get_build_path())).unwrap();
+            read_dir
+                .filter_map(|entry| match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        let extension = path.extension().and_then(|e| e.to_str());
+                        match extension {
+                            Some(ext) => match ext {
+                                "iast" | "ast" | "cmi" | "cmt" => Some((
+                                    path.to_owned(),
+                                    entry.metadata().unwrap().modified().unwrap(),
+                                    ext.to_owned(),
+                                    package.name.to_owned(),
+                                    package.namespace.to_owned(),
+                                    package.is_root,
+                                )),
+                                _ => None,
+                            },
+                            None => None,
+                        }
+                    }
+                    Err(_) => None,
+                })
+                .collect::<Vec<(PathBuf, SystemTime, String, String, packages::Namespace, bool)>>()
+        })
+        .flatten()
+        .collect::<Vec<(PathBuf, SystemTime, String, String, packages::Namespace, bool)>>();
 
-        for entry in read_dir {
-            match entry {
-                Ok(entry) => {
-                    let path = entry.path();
-                    let extension = path.extension().and_then(|e| e.to_str());
-                    match extension {
-                        Some(ext) => match ext {
-                            "iast" | "ast" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    &package.namespace,
-                                );
+    compile_assets.iter().for_each(
+        |(path, last_modified, extension, package_name, package_namespace, package_is_root)| {
+            match extension.as_str() {
+                "iast" | "ast" => {
+                    let module_name =
+                        helpers::file_path_to_module_name(path.to_str().unwrap(), &package_namespace);
 
-                                let ast_file_path = path.to_str().unwrap().to_owned();
-                                let res_file_path = get_res_path_from_ast(&ast_file_path);
-                                let root_package = build_state
-                                    .packages
-                                    .get(&build_state.root_config_name)
-                                    .expect("Could not find root package");
-                                match res_file_path {
-                                    Some(res_file_path) => {
-                                        let _ = ast_modules.insert(
-                                            res_file_path.to_owned(),
-                                            AstModule {
-                                                module_name: module_name,
-                                                package_name: package.name.to_owned(),
-                                                namespace: package.namespace.to_owned(),
-                                                last_modified: entry.metadata().unwrap().modified().unwrap(),
-                                                ast_file_path: ast_file_path,
-                                                is_root: package.is_root,
-                                                suffix: root_package.bsconfig.suffix.to_owned(),
-                                            },
-                                        );
-                                        let _ = ast_rescript_file_locations.insert(res_file_path);
-                                    }
-                                    None => (),
-                                }
-                            }
-                            "cmi" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    // we don't want to include a namespace here because the CMI file
-                                    // already includes a namespace
-                                    &packages::Namespace::NoNamespace,
-                                );
-                                cmi_modules
-                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
-                            }
-                            "cmt" => {
-                                let module_name = helpers::file_path_to_module_name(
-                                    path.to_str().unwrap(),
-                                    // we don't want to include a namespace here because the CMI file
-                                    // already includes a namespace
-                                    &packages::Namespace::NoNamespace,
-                                );
-                                cmt_modules
-                                    .insert(module_name, entry.metadata().unwrap().modified().unwrap());
-                            }
-                            _ => {
-                                // println!("other extension: {:?}", other);
-                            }
-                        },
+                    let ast_file_path = path.to_str().unwrap().to_owned();
+                    let res_file_path = get_res_path_from_ast(&ast_file_path);
+                    let root_package = build_state
+                        .packages
+                        .get(&build_state.root_config_name)
+                        .expect("Could not find root package");
+                    match res_file_path {
+                        Some(res_file_path) => {
+                            let _ = ast_modules.insert(
+                                res_file_path.to_owned(),
+                                AstModule {
+                                    module_name,
+                                    package_name: package_name.to_owned(),
+                                    namespace: package_namespace.to_owned(),
+                                    last_modified: last_modified.to_owned(),
+                                    ast_file_path,
+                                    is_root: *package_is_root,
+                                    suffix: root_package.bsconfig.suffix.to_owned(),
+                                },
+                            );
+                            let _ = ast_rescript_file_locations.insert(res_file_path);
+                        }
                         None => (),
                     }
                 }
-                Err(_) => (),
+                "cmi" => {
+                    let module_name = helpers::file_path_to_module_name(
+                        path.to_str().unwrap(),
+                        // we don't want to include a namespace here because the CMI file
+                        // already includes a namespace
+                        &packages::Namespace::NoNamespace,
+                    );
+                    cmi_modules.insert(module_name, last_modified.to_owned());
+                }
+                "cmt" => {
+                    let module_name = helpers::file_path_to_module_name(
+                        path.to_str().unwrap(),
+                        // we don't want to include a namespace here because the CMI file
+                        // already includes a namespace
+                        &packages::Namespace::NoNamespace,
+                    );
+                    cmt_modules.insert(module_name, last_modified.to_owned());
+                }
+                _ => {
+                    // println!("other extension: {:?}", other);
+                }
             }
-        }
-    }
+        },
+    );
 
     CompileAssetsState {
         ast_modules,
