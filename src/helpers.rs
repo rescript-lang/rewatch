@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod emojis {
@@ -310,4 +311,16 @@ pub fn get_nearest_bsconfig(path_buf: &PathBuf) -> Option<String> {
             Some(parent) => current_dir = parent.to_path_buf(),
         }
     }
+}
+
+pub fn get_rescript_version(bsc_path: &str) -> String {
+    let version_cmd = Command::new(bsc_path)
+        .args(["-v"])
+        .output()
+        .expect("failed to find version");
+
+    std::str::from_utf8(&version_cmd.stdout)
+        .expect("Could not read version from rescript")
+        .replace("\n", "")
+        .replace("ReScript ", "")
 }

@@ -12,20 +12,14 @@ use log::{info, log_enabled, Level::Info};
 use rayon::prelude::*;
 use std::path::Path;
 use std::process::Command;
+use std::time::SystemTime;
 
 pub fn compile(
-    mut build_state: &mut BuildState,
-    deleted_module_names: &AHashSet<String>,
-    rescript_version: &str,
+    build_state: &mut BuildState,
     inc: impl Fn() -> () + std::marker::Sync,
     set_length: impl Fn(u64) -> (),
-    bsc_path: &str,
 ) -> (String, String, usize) {
     let mut compiled_modules = AHashSet::<String>::new();
-
-    mark_modules_with_deleted_deps_dirty(&mut build_state, &deleted_module_names);
-    mark_modules_with_expired_deps_dirty(&mut build_state);
-
     let dirty_modules = build_state
         .modules
         .iter()
@@ -40,9 +34,9 @@ pub fn compile(
 
     // dirty_modules.iter().for_each(|m| println!("dirty module: {}", m));
     // println!("{} dirty modules", dirty_modules.len());
-    // let mut sorted_dirty_modules = dirty_modules.iter().collect::<Vec<&String>>();
-    // sorted_dirty_modules.sort();
-    // // dirty_modules.iter().for_each(|m| println!("dirty module: {}", m));
+    let mut sorted_dirty_modules = dirty_modules.iter().collect::<Vec<&String>>();
+    sorted_dirty_modules.sort();
+    // dirty_modules.iter().for_each(|m| println!("dirty module: {}", m));
     // sorted_dirty_modules
     //     .iter()
     //     .for_each(|m| println!("dirty module: {}", m));
@@ -64,8 +58,8 @@ pub fn compile(
     sorted_modules.sort();
 
     // this is the whole "compile universe" all modules that might be dirty
-    // we get this by traversing from the dirty modules to all the modules that
-    // are dependent on them
+    // we get this by expanding the dependents from the dirty modules
+
     let mut compile_universe = dirty_modules.clone();
     let mut current_step_modules = compile_universe.clone();
     loop {
@@ -73,6 +67,7 @@ pub fn compile(
         for dirty_module in current_step_modules.iter() {
             dependents.extend(build_state.get_module(dirty_module).unwrap().dependents.clone());
         }
+
         current_step_modules = dependents
             .difference(&compile_universe)
             .map(|s| s.to_string())
@@ -165,9 +160,9 @@ pub fn compile(
                                         &root_package,
                                         &package.get_iast_path(&path),
                                         module,
-                                        &rescript_version,
+                                        &build_state.rescript_version,
                                         true,
-                                        bsc_path,
+                                        &build_state.bsc_path,
                                         &build_state.packages,
                                     );
                                     Some(result)
@@ -179,9 +174,9 @@ pub fn compile(
                                 &root_package,
                                 &package.get_ast_path(&source_file.implementation.path),
                                 module,
-                                &rescript_version,
+                                &build_state.rescript_version,
                                 false,
-                                bsc_path,
+                                &build_state.bsc_path,
                                 &build_state.packages,
                             );
                             // if let Err(error) = result.to_owned() {
@@ -273,7 +268,10 @@ pub fn compile(
                         .get(&module.package_name)
                         .expect("Package not found");
                     match module.source_type {
-                        SourceType::MlMap(_) => (),
+                        SourceType::MlMap(ref mut mlmap) => {
+                            module.compile_dirty = false;
+                            mlmap.dirty = false;
+                        }
                         SourceType::SourceFile(ref mut source_file) => {
                             match result {
                                 Ok(Some(err)) => {
@@ -281,7 +279,9 @@ pub fn compile(
                                     logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
-                                Ok(None) => (),
+                                Ok(None) => {
+                                    source_file.implementation.compile_state = CompileState::Success;
+                                }
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
                                     logs::append(package, &err);
@@ -295,7 +295,12 @@ pub fn compile(
                                     logs::append(package, &err);
                                     compile_warnings.push_str(&err);
                                 }
-                                Some(Ok(None)) => (),
+                                Some(Ok(None)) => {
+                                    if let Some(interface) = source_file.interface.as_mut() {
+                                        interface.compile_state = CompileState::Success;
+                                    }
+                                }
+
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
@@ -304,6 +309,21 @@ pub fn compile(
                                 }
                                 _ => (),
                             };
+                            match (result, interface_result) {
+                                // successfull compilation
+                                (Ok(None), Some(Ok(None))) | (Ok(None), None) => {
+                                    module.compile_dirty = false;
+                                    module.last_compiled_cmi = Some(SystemTime::now());
+                                    module.last_compiled_cmt = Some(SystemTime::now());
+                                }
+                                // some error or warning
+                                (Err(_), _)
+                                | (_, Some(Err(_)))
+                                | (Ok(Some(_)), _)
+                                | (_, Some(Ok(Some(_)))) => {
+                                    module.compile_dirty = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -614,17 +634,28 @@ fn compile_file(
     }
 }
 
-pub fn mark_modules_with_deleted_deps_dirty(
-    build_state: &mut BuildState,
-    deleted_modules: &AHashSet<String>,
-) {
+pub fn mark_modules_with_deleted_deps_dirty(build_state: &mut BuildState) {
     build_state.modules.iter_mut().for_each(|(_, module)| {
-        if !module.deps.is_disjoint(deleted_modules) {
+        if !module.deps.is_disjoint(&build_state.deleted_modules) {
             module.compile_dirty = true;
         }
     });
 }
 
+// this happens when a compile is not completed successfully in some way
+// a dependent module could be compiled with a new interface, but the dependent
+// modules have not finished compiling. This can cause a stale build.
+// When the build is clean this doesn't happen. But when we interupt the build,
+// such as force quitting the watcher, it can happen.
+//
+// If a build stops in the middle of errors, this will also happen, because
+// basically we interrupt a build and we stop compiling somewhere in the middle.
+//
+// In watch mode, we retain the dirty state of the modules, so we don't need
+// to do this, which will make it more efficient.
+//
+// We could clean up the build after errors. But I think we probably still need
+// to do this, because people can also force quit the watcher of
 pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
     let mut modules_with_expired_deps: AHashSet<String> = AHashSet::new();
     build_state
@@ -638,6 +669,10 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                     SourceType::SourceFile(_) => {
                         match (module.last_compiled_cmt, module.last_compiled_cmi) {
                             (None, None) | (Some(_), None) | (None, Some(_)) => {
+                                // println!(
+                                //     "🛑 {} is a dependent of {} but has no cmt/cmi",
+                                //     module_name, dependent
+                                // );
                                 modules_with_expired_deps.insert(module_name.to_string());
                             }
                             (Some(_), Some(_)) => (),
@@ -663,6 +698,10 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                                 }
                             }
                             (None, _) => {
+                                // println!(
+                                //     "🛑 {} is a dependent of {} (no last compiled time)",
+                                //     module_name, dependent
+                                // );
                                 modules_with_expired_deps.insert(dependent.to_string());
                             }
                             _ => (),

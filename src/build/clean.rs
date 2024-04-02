@@ -97,7 +97,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
 pub fn cleanup_previous_build(
     build_state: &mut BuildState,
     compile_assets_state: CompileAssetsState,
-) -> (usize, usize, AHashSet<String>) {
+) -> (usize, usize) {
     // delete the .mjs file which appear in our previous compile assets
     // but does not exists anymore
     // delete the compiler assets for which modules we can't find a rescript file
@@ -258,19 +258,17 @@ pub fn cleanup_previous_build(
         })
         .collect::<AHashSet<String>>();
 
-    (
-        diff_len,
-        compile_assets_state.ast_rescript_file_locations.len(),
-        deleted_module_names,
-    )
+    build_state.deleted_modules = deleted_module_names;
+
+    (diff_len, compile_assets_state.ast_rescript_file_locations.len())
 }
 
-fn failed_to_parse(module: &Module) -> bool {
+fn has_parse_warnings(module: &Module) -> bool {
     match &module.source_type {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    parse_state: ParseState::ParseError | ParseState::Warning,
+                    parse_state: ParseState::Warning,
                     ..
                 },
             ..
@@ -278,7 +276,7 @@ fn failed_to_parse(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    parse_state: ParseState::ParseError | ParseState::Warning,
+                    parse_state: ParseState::Warning,
                     ..
                 }),
             ..
@@ -287,12 +285,12 @@ fn failed_to_parse(module: &Module) -> bool {
     }
 }
 
-fn failed_to_compile(module: &Module) -> bool {
+fn has_compile_warnings(module: &Module) -> bool {
     match &module.source_type {
         SourceType::SourceFile(SourceFile {
             implementation:
                 Implementation {
-                    compile_state: CompileState::Error | CompileState::Warning,
+                    compile_state: CompileState::Warning,
                     ..
                 },
             ..
@@ -300,7 +298,7 @@ fn failed_to_compile(module: &Module) -> bool {
         SourceType::SourceFile(SourceFile {
             interface:
                 Some(Interface {
-                    compile_state: CompileState::Error | CompileState::Warning,
+                    compile_state: CompileState::Warning,
                     ..
                 }),
             ..
@@ -312,7 +310,7 @@ fn failed_to_compile(module: &Module) -> bool {
 pub fn cleanup_after_build(build_state: &BuildState) {
     build_state.modules.par_iter().for_each(|(_module_name, module)| {
         let package = build_state.get_package(&module.package_name).unwrap();
-        if failed_to_parse(module) {
+        if has_parse_warnings(module) {
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
                     remove_iast(package, &source_file.implementation.path);
@@ -321,16 +319,22 @@ pub fn cleanup_after_build(build_state: &BuildState) {
                 _ => (),
             }
         }
-        if failed_to_compile(module) {
-            // only retain ast file if it compiled successfully, that's the only thing we check
-            // if we see a AST file, we assume it compiled successfully, so we also need to clean
-            // up the AST file if compile is not successful
+        if has_compile_warnings(module) {
+            // only retain AST file if the compilation doesn't have warnings, we remove the AST in favor
+            // of the CMI/CMT/CMJ files because if we delete these, the editor tooling doesn't
+            // work anymore. If we remove the intermediate AST file, the editor tooling will
+            // work, and we have an indication that we need to recompile the file.
+            //
+            // Recompiling this takes a bit more time, because we have to parse again, but
+            // if we have warnings it's usually not a lot of files so the additional
+            // latency shouldn't be too bad
             match &module.source_type {
                 SourceType::SourceFile(source_file) => {
                     // we only clean the ast here, this will cause the file to be recompiled
                     // (and thus keep showing the warning), but it will keep the cmi file, so that we don't
                     // unecessary mark all the dependents as dirty, when there is no change in the interface
-                    remove_compile_asset(package, &source_file.implementation.path, "ast");
+                    remove_ast(package, &source_file.implementation.path);
+                    remove_iast(package, &source_file.implementation.path);
                 }
                 SourceType::MlMap(_) => (),
             }
@@ -341,8 +345,10 @@ pub fn cleanup_after_build(build_state: &BuildState) {
 pub fn clean(path: &str) {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
-    let packages = packages::make(&None, &project_root, workspace_root);
+    let packages = packages::make(&None, &project_root, &workspace_root);
     let root_config_name = packages::get_package_name(&project_root);
+    let bsc_path = helpers::get_bsc(&project_root, workspace_root.to_owned());
+    let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     let timing_clean_compiler_assets = Instant::now();
     print!(
@@ -383,7 +389,14 @@ pub fn clean(path: &str) {
     let timing_clean_mjs = Instant::now();
     print!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
     std::io::stdout().flush().unwrap();
-    let mut build_state = BuildState::new(project_root.to_owned(), root_config_name, packages);
+    let mut build_state = BuildState::new(
+        project_root.to_owned(),
+        root_config_name,
+        packages,
+        workspace_root,
+        rescript_version,
+        bsc_path,
+    );
     packages::parse_packages(&mut build_state);
     clean_mjs_files(&build_state);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();

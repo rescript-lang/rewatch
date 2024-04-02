@@ -85,8 +85,6 @@ fn main() {
                 };
             }
             Command::Watch => {
-                let _initial_build = build::build(&filter, &folder, false);
-                args.after_build.clone().map(|command| cmd::run(command));
                 watcher::start(&filter, &folder, args.after_build);
             }
         },

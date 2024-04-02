@@ -1,4 +1,5 @@
 use super::build_types::*;
+use super::is_dirty;
 use super::packages;
 use crate::helpers;
 use ahash::AHashSet;
@@ -79,37 +80,40 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                     .get_package(&module.package_name)
                     .expect("Package not found");
                 let ast_path = package.get_ast_path(&source_file.implementation.path);
+                if is_dirty(module) || !build_state.deps_initialized {
+                    let mut deps = get_dep_modules(
+                        &ast_path,
+                        package.namespace.to_suffix(),
+                        &package.modules.as_ref().unwrap(),
+                        all_mod,
+                    );
 
-                let mut deps = get_dep_modules(
-                    &ast_path,
-                    package.namespace.to_suffix(),
-                    &package.modules.as_ref().unwrap(),
-                    all_mod,
-                );
+                    match &source_file.interface {
+                        Some(interface) => {
+                            let iast_path = package.get_iast_path(&interface.path);
 
-                match &source_file.interface {
-                    Some(interface) => {
-                        let iast_path = package.get_iast_path(&interface.path);
-
-                        deps.extend(get_dep_modules(
-                            &iast_path,
-                            package.namespace.to_suffix(),
-                            &package.modules.as_ref().unwrap(),
-                            all_mod,
-                        ))
+                            deps.extend(get_dep_modules(
+                                &iast_path,
+                                package.namespace.to_suffix(),
+                                &package.modules.as_ref().unwrap(),
+                                all_mod,
+                            ))
+                        }
+                        None => (),
                     }
-                    None => (),
-                }
-                match &package.namespace {
-                    packages::Namespace::NamespaceWithEntry { namespace: _, entry }
-                        if entry == module_name =>
-                    {
-                        deps.insert(package.namespace.to_suffix().unwrap());
+                    match &package.namespace {
+                        packages::Namespace::NamespaceWithEntry { namespace: _, entry }
+                            if entry == module_name =>
+                        {
+                            deps.insert(package.namespace.to_suffix().unwrap());
+                        }
+                        _ => (),
                     }
-                    _ => (),
+                    deps.remove(module_name);
+                    (module_name.to_string(), deps)
+                } else {
+                    (module_name.to_string(), module.deps.to_owned())
                 }
-                deps.remove(module_name);
-                (module_name.to_string(), deps)
             }
         })
         .collect::<Vec<(String, AHashSet<String>)>>()
@@ -124,4 +128,5 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                 }
             });
         });
+    build_state.deps_initialized = true;
 }

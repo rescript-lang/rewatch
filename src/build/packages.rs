@@ -526,9 +526,9 @@ fn extend_with_children(
 pub fn make(
     filter: &Option<regex::Regex>,
     root_folder: &str,
-    workspace_root: Option<String>,
+    workspace_root: &Option<String>,
 ) -> AHashMap<String, Package> {
-    let map = read_packages(root_folder, workspace_root);
+    let map = read_packages(root_folder, workspace_root.to_owned());
 
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
