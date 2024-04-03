@@ -9,15 +9,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub mod emojis {
     use console::Emoji;
     pub static COMMAND: Emoji<'_, '_> = Emoji("🏃 ", "");
-    pub static TREE: Emoji<'_, '_> = Emoji("🌴 ", "");
+    pub static TREE: Emoji<'_, '_> = Emoji("📦 ", "");
     pub static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
-    pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
-    pub static CODE: Emoji<'_, '_> = Emoji("🟰  ", "");
-    pub static SWORDS: Emoji<'_, '_> = Emoji("⚔️  ", "");
-    pub static DEPS: Emoji<'_, '_> = Emoji("️🕸️  ", "");
-    pub static CHECKMARK: Emoji<'_, '_> = Emoji("️✅  ", "");
-    pub static CROSS: Emoji<'_, '_> = Emoji("️🛑  ", "");
-    pub static LINE_CLEAR: &str = "\x1b[2K";
+    pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🕵️  ", "");
+    pub static CODE: Emoji<'_, '_> = Emoji("🧱 ", "");
+    pub static SWORDS: Emoji<'_, '_> = Emoji("🤺 ️", "");
+    pub static DEPS: Emoji<'_, '_> = Emoji("️🌴 ", "");
+    pub static CHECKMARK: Emoji<'_, '_> = Emoji("️✅ ", "");
+    pub static CROSS: Emoji<'_, '_> = Emoji("️🛑 ", "");
+    pub static SPARKLES: Emoji<'_, '_> = Emoji("✨ ", "");
+    pub static COMPILE_STATE: Emoji<'_, '_> = Emoji("📝 ", "");
+    pub static LINE_CLEAR: &str = "\x1b[2K\r";
 }
 
 pub trait LexicalAbsolute {

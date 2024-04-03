@@ -117,21 +117,17 @@ pub fn initialize_build<'a>(
     let root_config_name = packages::get_package_name(&project_root);
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
-    print!(
-        "{} {} Building package tree...",
-        style("[1/7]").bold().dim(),
-        TREE
-    );
+    print!("{}{}Building package tree...", style("[1/7]").bold().dim(), TREE);
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
     let packages = packages::make(&filter, &project_root, &workspace_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     println!(
-        "{}\r{} {}Built package tree in {:.2}s",
+        "{}{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
         style("[1/7]").bold().dim(),
-        CHECKMARK,
+        TREE,
         default_timing
             .unwrap_or(timing_package_tree_elapsed)
             .as_secs_f64()
@@ -144,7 +140,7 @@ pub fn initialize_build<'a>(
     let timing_source_files = Instant::now();
 
     print!(
-        "{} {} Finding source files...",
+        "{} {}Finding source files...",
         style("[2/7]").bold().dim(),
         LOOKING_GLASS
     );
@@ -160,36 +156,36 @@ pub fn initialize_build<'a>(
     packages::parse_packages(&mut build_state);
     let timing_source_files_elapsed = timing_source_files.elapsed();
     println!(
-        "{}\r{} {}Found source files in {:.2}s",
+        "{}{} {}Found source files in {:.2}s",
         LINE_CLEAR,
         style("[2/7]").bold().dim(),
-        CHECKMARK,
+        LOOKING_GLASS,
         default_timing
             .unwrap_or(timing_source_files_elapsed)
             .as_secs_f64()
     );
 
     print!(
-        "{} {} Reading compile state...",
+        "{} {}Reading compile state...",
         style("[3/7]").bold().dim(),
-        LOOKING_GLASS
+        COMPILE_STATE
     );
     let _ = stdout().flush();
     let timing_compile_state = Instant::now();
     let compile_assets_state = read_compile_state::read(&mut build_state);
     let timing_compile_state_elapsed = timing_compile_state.elapsed();
     println!(
-        "{}\r{} {}Read compile state {:.2}s",
+        "{}{} {}Read compile state {:.2}s",
         LINE_CLEAR,
         style("[3/7]").bold().dim(),
-        CHECKMARK,
+        COMPILE_STATE,
         default_timing
             .unwrap_or(timing_compile_state_elapsed)
             .as_secs_f64()
     );
 
     print!(
-        "{} {} Cleaning up previous build...",
+        "{} {}Cleaning up previous build...",
         style("[4/7]").bold().dim(),
         SWEEP
     );
@@ -197,10 +193,10 @@ pub fn initialize_build<'a>(
     let (diff_cleanup, total_cleanup) = clean::cleanup_previous_build(&mut build_state, compile_assets_state);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
     println!(
-        "{}\r{} {}Cleaned {}/{} {:.2}s",
+        "{}{} {}Cleaned {}/{} {:.2}s",
         LINE_CLEAR,
         style("[4/7]").bold().dim(),
-        CHECKMARK,
+        SWEEP,
         diff_cleanup,
         total_cleanup,
         default_timing.unwrap_or(timing_cleanup_elapsed).as_secs_f64()
@@ -208,19 +204,25 @@ pub fn initialize_build<'a>(
     Ok(build_state)
 }
 
+fn format_step(current: usize, total: usize) -> console::StyledObject<String> {
+    style(format!("[{}/{}]", current, total)).bold().dim()
+}
+
 pub fn incremental_build(
     build_state: &mut BuildState,
     default_timing: Option<Duration>,
     initial_build: bool,
+    only_incremental: bool,
 ) -> Result<(), ()> {
     logs::initialize(&build_state.packages);
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
-
     let pb = ProgressBar::new(num_dirty_modules);
+    let mut current_step = if only_incremental { 1 } else { 5 };
+    let total_steps = if only_incremental { 3 } else { 7 };
     pb.set_style(
         ProgressStyle::with_template(&format!(
-            "{} {} Parsing... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[5/7]").bold().dim(),
+            "{} {}Parsing... {{spinner}} {{pos}}/{{len}} {{msg}}",
+            format_step(current_step, total_steps),
             CODE
         ))
         .unwrap(),
@@ -233,10 +235,10 @@ pub fn incremental_build(
     match result_asts {
         Ok(err) => {
             println!(
-                "{}\r{} {}Parsed {} source files in {:.2}s",
+                "{}{} {}Parsed {} source files in {:.2}s",
                 LINE_CLEAR,
-                style("[5/7]").bold().dim(),
-                CHECKMARK,
+                format_step(current_step, total_steps),
+                CODE,
                 num_dirty_modules,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
@@ -245,9 +247,9 @@ pub fn incremental_build(
         Err(err) => {
             logs::finalize(&build_state.packages);
             println!(
-                "{}\r{} {}Error parsing source files in {:.2}s",
+                "{}{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
-                style("[5/7]").bold().dim(),
+                format_step(current_step, total_steps),
                 CROSS,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
@@ -258,12 +260,13 @@ pub fn incremental_build(
     let timing_deps = Instant::now();
     deps::get_deps(build_state, &build_state.deleted_modules.to_owned());
     let timing_deps_elapsed = timing_deps.elapsed();
+    current_step += 1;
 
     println!(
-        "{}\r{} {}Collected deps in {:.2}s",
+        "{}{} {}Collected deps in {:.2}s",
         LINE_CLEAR,
-        style("[6/7]").bold().dim(),
-        CHECKMARK,
+        format_step(current_step, total_steps),
+        DEPS,
         default_timing.unwrap_or(timing_deps_elapsed).as_secs_f64()
     );
 
@@ -279,6 +282,7 @@ pub fn incremental_build(
         mark_modules_with_expired_deps_dirty(build_state);
     }
     mark_modules_with_deleted_deps_dirty(build_state);
+    current_step += 1;
 
     // print all the compile_dirty modules
     // for (module_name, module) in build_state.modules.iter() {
@@ -291,8 +295,8 @@ pub fn incremental_build(
     let pb = ProgressBar::new(build_state.modules.len().try_into().unwrap());
     pb.set_style(
         ProgressStyle::with_template(&format!(
-            "{} {} Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            style("[7/7]").bold().dim(),
+            "{} {}Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
+            format_step(current_step, total_steps),
             SWORDS
         ))
         .unwrap(),
@@ -308,9 +312,9 @@ pub fn incremental_build(
             println!("{}", &compile_warnings);
         }
         println!(
-            "{}\r{} {}Compiled {} modules in {:.2}s",
+            "{}{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[7/7]").bold().dim(),
+            format_step(current_step, total_steps),
             CROSS,
             num_compiled_modules,
             default_timing.unwrap_or(compile_duration).as_secs_f64()
@@ -325,10 +329,10 @@ pub fn incremental_build(
         return Err(());
     } else {
         println!(
-            "{}\r{} {}Compiled {} modules in {:.2}s",
+            "{}{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
-            style("[7/7]").bold().dim(),
-            CHECKMARK,
+            format_step(current_step, total_steps),
+            SWORDS,
             num_compiled_modules,
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
@@ -347,13 +351,13 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     };
     let timing_total = Instant::now();
     let mut build_state = initialize_build(default_timing, filter, path)?;
-    match incremental_build(&mut build_state, default_timing, true) {
+    match incremental_build(&mut build_state, default_timing, true, false) {
         Ok(_) => {
             let timing_total_elapsed = timing_total.elapsed();
             println!(
-                "{}\r{}Finished Compilation in {:.2}s",
+                "\n{}{}Finished Compilation in {:.2}s",
                 LINE_CLEAR,
-                CHECKMARK,
+                SPARKLES,
                 default_timing.unwrap_or(timing_total_elapsed).as_secs_f64()
             );
             clean::cleanup_after_build(&build_state);

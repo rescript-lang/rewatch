@@ -359,7 +359,7 @@ pub fn clean(path: &str) {
     std::io::stdout().flush().unwrap();
     packages.iter().for_each(|(_, package)| {
         print!(
-            "{}\r{} {} Cleaning {}...",
+            "{}{} {} Cleaning {}...",
             LINE_CLEAR,
             style("[1/2]").bold().dim(),
             SWEEP,
@@ -378,7 +378,7 @@ pub fn clean(path: &str) {
     let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
 
     println!(
-        "{}\r{} {}Cleaned compiler assets in {:.2}s",
+        "{}{} {}Cleaned compiler assets in {:.2}s",
         LINE_CLEAR,
         style("[1/2]").bold().dim(),
         CHECKMARK,
@@ -401,7 +401,7 @@ pub fn clean(path: &str) {
     clean_mjs_files(&build_state);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
     println!(
-        "{}\r{} {}Cleaned mjs files in {:.2}s",
+        "{}{} {}Cleaned mjs files in {:.2}s",
         LINE_CLEAR,
         style("[2/2]").bold().dim(),
         CHECKMARK,

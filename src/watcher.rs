@@ -204,13 +204,13 @@ async fn async_watch(
             CompileType::Full => {
                 let timing_total = Instant::now();
                 build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
-                let _ = build::incremental_build(&mut build_state, None, initial_build);
+                let _ = build::incremental_build(&mut build_state, None, initial_build, false);
                 after_build.clone().map(|command| cmd::run(command));
                 let timing_total_elapsed = timing_total.elapsed();
                 println!(
-                    "{}\r{}Finished compilation in {:.2}s",
+                    "\n{}{}Finished compilation in {:.2}s\n",
                     LINE_CLEAR,
-                    CHECKMARK,
+                    SPARKLES,
                     timing_total_elapsed.as_secs_f64()
                 );
                 needs_compile_type = CompileType::None;

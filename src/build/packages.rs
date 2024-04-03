@@ -683,7 +683,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         match source_files.get(&implementation_filename) {
                             None => {
                                 println!(
-                                "{}\rWarning: No implementation file found for interface file (skipping): {}",
+                                "{}Warning: No implementation file found for interface file (skipping): {}",
                                 LINE_CLEAR, file
                             )
                             }

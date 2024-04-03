@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rewatch::build;
+use rewatch::build::clean;
 use rewatch::build::packages;
-use rewatch::clean;
 use rewatch::helpers;
 
 use std::fs::File;
