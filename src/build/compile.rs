@@ -270,7 +270,7 @@ pub fn compile(
                     match module.source_type {
                         SourceType::MlMap(ref mut mlmap) => {
                             module.compile_dirty = false;
-                            mlmap.dirty = false;
+                            mlmap.parse_dirty = false;
                         }
                         SourceType::SourceFile(ref mut source_file) => {
                             match result {

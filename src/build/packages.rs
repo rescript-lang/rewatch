@@ -618,7 +618,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 build_state.insert_module(
                     &helpers::file_path_to_module_name(&mlmap.to_owned(), &packages::Namespace::NoNamespace),
                     Module {
-                        source_type: SourceType::MlMap(MlMap { dirty: false }),
+                        source_type: SourceType::MlMap(MlMap { parse_dirty: false }),
                         deps,
                         dependents: AHashSet::new(),
                         package_name: package.name.to_owned(),
@@ -654,7 +654,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                     }
                                     source_file.implementation.path = file.to_owned();
                                     source_file.implementation.last_modified = metadata.modified;
-                                    source_file.implementation.dirty = true;
+                                    source_file.implementation.parse_dirty = true;
                                 }
                                 _ => (),
                             })
@@ -665,7 +665,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                         parse_state: ParseState::Pending,
                                         compile_state: CompileState::Pending,
                                         last_modified: metadata.modified,
-                                        dirty: true,
+                                        parse_dirty: true,
                                     },
                                     interface: None,
                                 }),
@@ -698,7 +698,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                                 parse_state: ParseState::Pending,
                                                 compile_state: CompileState::Pending,
                                                 last_modified: metadata.modified,
-                                                dirty: true,
+                                                parse_dirty: true,
                                             });
                                         }
                                         _ => (),
@@ -711,14 +711,14 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                                 parse_state: ParseState::Pending,
                                                 compile_state: CompileState::Pending,
                                                 last_modified: metadata.modified,
-                                                dirty: true,
+                                                parse_dirty: true,
                                             },
                                             interface: Some(Interface {
                                                 path: file.to_owned(),
                                                 parse_state: ParseState::Pending,
                                                 compile_state: CompileState::Pending,
                                                 last_modified: metadata.modified,
-                                                dirty: true,
+                                                parse_dirty: true,
                                             }),
                                         }),
                                         deps: AHashSet::new(),

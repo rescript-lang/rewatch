@@ -23,7 +23,7 @@ pub struct Interface {
     pub parse_state: ParseState,
     pub compile_state: CompileState,
     pub last_modified: SystemTime,
-    pub dirty: bool,
+    pub parse_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +32,7 @@ pub struct Implementation {
     pub parse_state: ParseState,
     pub compile_state: CompileState,
     pub last_modified: SystemTime,
-    pub dirty: bool,
+    pub parse_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +43,7 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MlMap {
-    pub dirty: bool,
+    pub parse_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
