@@ -116,7 +116,7 @@ async fn async_watch(
                                             {
                                                 source_file.implementation.last_modified = modified;
                                             };
-                                            source_file.implementation.dirty = true;
+                                            source_file.implementation.parse_dirty = true;
                                             break;
                                         }
 
@@ -132,7 +132,7 @@ async fn async_watch(
                                                 {
                                                     interface.last_modified = modified;
                                                 }
-                                                interface.dirty = true;
+                                                interface.parse_dirty = true;
                                                 break;
                                             }
                                         }

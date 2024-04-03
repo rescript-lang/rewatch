@@ -190,7 +190,7 @@ pub fn cleanup_previous_build(
 
                         let source_last_modified = interface.last_modified;
                         if ast_last_modified > &source_last_modified {
-                            interface.dirty = false;
+                            interface.parse_dirty = false;
                         }
                     } else {
                         let implementation = &mut source_file.implementation;
@@ -198,7 +198,7 @@ pub fn cleanup_previous_build(
                         if ast_last_modified > &source_last_modified
                             && !deleted_interfaces.contains(module_name)
                         {
-                            implementation.dirty = false;
+                            implementation.parse_dirty = false;
                         }
                     }
                 }

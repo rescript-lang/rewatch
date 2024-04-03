@@ -35,8 +35,12 @@ pub fn generate_asts(
                 SourceType::SourceFile(source_file) => {
                     let root_package = build_state.get_package(&build_state.root_config_name).unwrap();
 
-                    let (ast_path, iast_path, dirty) = if source_file.implementation.dirty
-                        || source_file.interface.as_ref().map(|i| i.dirty).unwrap_or(false)
+                    let (ast_path, iast_path, dirty) = if source_file.implementation.parse_dirty
+                        || source_file
+                            .interface
+                            .as_ref()
+                            .map(|i| i.parse_dirty)
+                            .unwrap_or(false)
                     {
                         inc();
                         let ast_result = generate_ast(
@@ -102,11 +106,11 @@ pub fn generate_asts(
                     Ok((_path, err)) => {
                         match module.source_type {
                             SourceType::SourceFile(ref mut source_file) => {
-                                source_file.implementation.dirty = false;
+                                source_file.implementation.parse_dirty = false;
                                 source_file
                                     .interface
                                     .as_mut()
-                                    .map(|interface| interface.dirty = false);
+                                    .map(|interface| interface.parse_dirty = false);
                             }
                             _ => (),
                         }
@@ -123,7 +127,7 @@ pub fn generate_asts(
                                 match module.source_type {
                                     SourceType::SourceFile(ref mut source_file) => {
                                         source_file.implementation.parse_state = ParseState::Warning;
-                                        source_file.implementation.dirty = true;
+                                        source_file.implementation.parse_dirty = true;
                                     }
                                     _ => (),
                                 }
@@ -136,7 +140,7 @@ pub fn generate_asts(
                         match module.source_type {
                             SourceType::SourceFile(ref mut source_file) => {
                                 source_file.implementation.parse_state = ParseState::ParseError;
-                                source_file.implementation.dirty = true;
+                                source_file.implementation.parse_dirty = true;
                             }
                             _ => (),
                         }
@@ -154,7 +158,7 @@ pub fn generate_asts(
                                     SourceType::SourceFile(ref mut source_file) => {
                                         source_file.interface.as_mut().map(|interface| {
                                             interface.parse_state = ParseState::ParseError;
-                                            interface.dirty = true;
+                                            interface.parse_dirty = true;
                                         });
                                     }
                                     _ => (),
@@ -170,7 +174,7 @@ pub fn generate_asts(
                             SourceType::SourceFile(ref mut source_file) => {
                                 source_file.interface.as_mut().map(|interface| {
                                     interface.parse_state = ParseState::ParseError;
-                                    interface.dirty = true;
+                                    interface.parse_dirty = true;
                                 });
                             }
                             _ => (),

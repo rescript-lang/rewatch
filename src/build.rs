@@ -26,15 +26,21 @@ use self::parse::parser_args;
 fn is_dirty(module: &Module) -> bool {
     match module.source_type {
         SourceType::SourceFile(SourceFile {
-            implementation: Implementation { dirty: true, .. },
+            implementation: Implementation {
+                parse_dirty: true, ..
+            },
             ..
         }) => true,
         SourceType::SourceFile(SourceFile {
-            interface: Some(Interface { dirty: true, .. }),
+            interface: Some(Interface {
+                parse_dirty: true, ..
+            }),
             ..
         }) => true,
         SourceType::SourceFile(_) => false,
-        SourceType::MlMap(MlMap { dirty, .. }) => dirty,
+        SourceType::MlMap(MlMap {
+            parse_dirty: dirty, ..
+        }) => dirty,
     }
 }
 
