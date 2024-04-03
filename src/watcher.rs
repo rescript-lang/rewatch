@@ -1,5 +1,6 @@
 use crate::build;
 use crate::build::build_types::SourceType;
+use crate::build::clean;
 use crate::cmd;
 use crate::helpers;
 use crate::helpers::emojis::*;
@@ -10,6 +11,7 @@ use notify::event::ModifyKind;
 use notify::{Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -52,9 +54,25 @@ async fn async_watch(
 ) -> notify::Result<()> {
     let mut build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
     let mut needs_compile_type = CompileType::Incremental;
+    // create a mutex to capture if ctrl-c was pressed
+    let ctrlc_pressed = Arc::new(Mutex::new(false));
+    let ctrlc_pressed_clone = Arc::clone(&ctrlc_pressed);
+
+    ctrlc::set_handler(move || {
+        let pressed = Arc::clone(&ctrlc_pressed);
+        let mut pressed = pressed.lock().unwrap();
+        *pressed = true;
+    })
+    .expect("Error setting Ctrl-C handler");
+
     let mut initial_build = true;
 
     loop {
+        if *ctrlc_pressed_clone.lock().unwrap() {
+            println!("\nExiting...");
+            clean::cleanup_after_build(&build_state);
+            break Ok(());
+        }
         let mut events: Vec<Event> = vec![];
         if !q.is_empty() {
             // Wait for events to settle
