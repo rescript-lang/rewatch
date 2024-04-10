@@ -8,14 +8,19 @@ pub mod packages;
 pub mod parse;
 pub mod read_compile_state;
 
-use crate::helpers;
 use crate::helpers::emojis::*;
+use crate::helpers::{self, get_workspace_root};
 use build_types::*;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::Serialize;
 use std::io::{stdout, Write};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
+
+use self::compile::compiler_args;
+use self::parse::parser_args;
 
 pub fn get_version(bsc_path: &str) -> String {
     let version_cmd = Command::new(bsc_path)
@@ -42,6 +47,68 @@ fn is_dirty(module: &Module) -> bool {
         SourceType::SourceFile(_) => false,
         SourceType::MlMap(MlMap { dirty, .. }) => module.compile_dirty || dirty,
     }
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct CompilerArgs {
+    pub compiler_args: Vec<String>,
+    pub parser_args: Vec<String>,
+}
+
+pub fn get_compiler_args(path: &str) -> String {
+    let filename = &helpers::get_abs_path(path);
+    let package_root = helpers::get_abs_path(
+        &helpers::get_nearest_bsconfig(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
+    );
+    let workspace_root = get_workspace_root(&package_root).map(|p| helpers::get_abs_path(&p));
+    let root_config_name =
+        packages::get_package_name(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
+    let package_name = packages::get_package_name(&package_root);
+    let bsc_path = helpers::get_bsc(&package_root, workspace_root.to_owned());
+    let rescript_version = get_version(&bsc_path);
+    let packages = packages::make(
+        &None,
+        &workspace_root.to_owned().unwrap_or(package_root.to_owned()),
+        workspace_root.to_owned(),
+    );
+    // make PathBuf from package root and get the relative path for filename
+    let relative_filename = PathBuf::from(&filename)
+        .strip_prefix(PathBuf::from(&package_root).parent().unwrap())
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let root_package = packages.get(&root_config_name).unwrap();
+    let package = packages.get(&package_name).unwrap();
+    let (ast_path, parser_args) = parser_args(
+        package,
+        root_package,
+        &relative_filename,
+        &rescript_version,
+        &workspace_root,
+    );
+    let is_interface = filename.ends_with("i");
+    let has_interface = if is_interface {
+        true
+    } else {
+        let mut interface_filename = filename.to_string();
+        interface_filename.push('i');
+        PathBuf::from(&interface_filename).exists()
+    };
+    let compiler_args = compiler_args(
+        package,
+        root_package,
+        &ast_path,
+        &rescript_version,
+        &relative_filename,
+        is_interface,
+        has_interface,
+        &packages,
+    );
+    serde_json::to_string_pretty(&CompilerArgs {
+        compiler_args,
+        parser_args,
+    })
+    .unwrap()
 }
 
 pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
@@ -141,7 +208,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
         &mut build_state,
         || pb.inc(1),
         &bsc_path,
-        workspace_root.to_owned(),
+        &workspace_root,
     );
     let timing_ast_elapsed = timing_ast.elapsed();
 

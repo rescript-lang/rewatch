@@ -45,6 +45,9 @@ struct Args {
 
     #[arg(short, long)]
     no_timing: Option<bool>,
+
+    #[arg(long)]
+    compiler_args: Option<String>,
 }
 
 fn main() {
@@ -56,6 +59,14 @@ fn main() {
     let filter = args
         .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
+
+    match args.compiler_args {
+        None => (),
+        Some(path) => {
+            println!("{}", build::get_compiler_args(&path));
+            std::process::exit(0);
+        }
+    }
 
     match lock::get(&folder) {
         lock::Lock::Error(ref e) => {

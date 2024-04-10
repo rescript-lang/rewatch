@@ -337,19 +337,16 @@ pub fn compile(
     (compile_errors, compile_warnings, num_compiled_modules)
 }
 
-fn compile_file(
+pub fn compiler_args(
     package: &packages::Package,
     root_package: &packages::Package,
     ast_path: &str,
-    module: &Module,
     version: &str,
+    file_path: &str,
     is_interface: bool,
-    bsc_path: &str,
+    has_interface: bool,
     packages: &AHashMap<String, packages::Package>,
-) -> Result<Option<String>, String> {
-    let build_path_abs = package.get_build_path();
-    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
-
+) -> Vec<String> {
     let normal_deps = package
         .bsconfig
         .bs_dependencies
@@ -357,6 +354,7 @@ fn compile_file(
         .unwrap_or(&vec![])
         .to_owned();
 
+    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
     // don't compile dev-deps yet
     // let dev_deps = source
     //     .package
@@ -378,12 +376,7 @@ fn compile_file(
         })
         .collect::<Vec<Vec<String>>>();
 
-    let implementation_file_path = match module.source_type {
-        SourceType::SourceFile(ref source_file) => &source_file.implementation.path,
-        _ => panic!("Not a source file"),
-    };
-
-    let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+    let module_name = helpers::file_path_to_module_name(file_path, &package.namespace);
 
     let namespace_args = match &package.namespace {
         packages::Namespace::NamespaceWithEntry { namespace: _, entry } if &module_name == entry => {
@@ -435,15 +428,15 @@ fn compile_file(
         }
     };
 
-    let read_cmi_args = match module.get_interface() {
-        Some(_) => {
+    let read_cmi_args = match has_interface {
+        true => {
             if is_interface {
                 vec![]
             } else {
                 vec!["-bs-read-cmi".to_string()]
             }
         }
-        _ => vec![],
+        false => vec![],
     };
 
     let implementation_args = if is_interface {
@@ -464,11 +457,7 @@ fn compile_file(
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:{}",
-                Path::new(implementation_file_path)
-                    .parent()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
+                Path::new(file_path).parent().unwrap().to_str().unwrap(),
                 suffix
             ),
         ]
@@ -483,7 +472,7 @@ fn compile_file(
         jsx_module_args,
         jsx_mode_args,
         uncurried_args,
-        bsc_flags,
+        bsc_flags.to_owned(),
         warning_args,
         // vec!["-warn-error".to_string(), "A".to_string()],
         // ^^ this one fails for bisect-ppx
@@ -498,6 +487,37 @@ fn compile_file(
         vec![ast_path.to_string()],
     ]
     .concat();
+
+    to_mjs_args
+}
+
+fn compile_file(
+    package: &packages::Package,
+    root_package: &packages::Package,
+    ast_path: &str,
+    module: &Module,
+    version: &str,
+    is_interface: bool,
+    bsc_path: &str,
+    packages: &AHashMap<String, packages::Package>,
+) -> Result<Option<String>, String> {
+    let build_path_abs = package.get_build_path();
+    let implementation_file_path = match module.source_type {
+        SourceType::SourceFile(ref source_file) => &source_file.implementation.path,
+        _ => panic!("Not a source file"),
+    };
+    let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
+    let has_interface = module.get_interface().is_some();
+    let to_mjs_args = compiler_args(
+        package,
+        root_package,
+        ast_path,
+        version,
+        &implementation_file_path,
+        is_interface,
+        has_interface,
+        packages,
+    );
 
     let to_mjs = Command::new(bsc_path)
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())

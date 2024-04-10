@@ -284,22 +284,26 @@ pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
     }
 }
 
+fn has_rescript_config(path: &PathBuf) -> bool {
+    path.join("bsconfig.json").exists() || path.join("rescript.json").exists()
+}
+
+pub fn get_workspace_root(package_root: &str) -> Option<String> {
+    std::path::PathBuf::from(&package_root)
+        .parent()
+        .and_then(|parent_dir| get_nearest_bsconfig(&parent_dir.to_path_buf()))
+}
+
 // traverse up the directory tree until we find a bsconfig.json, if not return None
-pub fn get_workspace_root(project_root: &str) -> Option<String> {
-    let mut current_dir = std::path::PathBuf::from(project_root);
+pub fn get_nearest_bsconfig(path_buf: &PathBuf) -> Option<String> {
+    let mut current_dir = path_buf.to_owned();
     loop {
+        if has_rescript_config(&current_dir) {
+            return Some(current_dir.to_string_lossy().to_string());
+        }
         match current_dir.parent() {
             None => return None,
             Some(parent) => current_dir = parent.to_path_buf(),
-        }
-        let bsconfig_path = current_dir.join("bsconfig.json");
-        if bsconfig_path.exists() {
-            return Some(
-                current_dir
-                    .to_str()
-                    .expect("Could not convert to string")
-                    .to_string(),
-            );
         }
     }
 }
