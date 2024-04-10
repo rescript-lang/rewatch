@@ -3,7 +3,7 @@ name: Release
 on:
   push:
   release:
-    types: 
+    types:
       - published
 
 concurrency:
@@ -23,16 +23,16 @@ jobs:
         with:
           ref: ${{ github.ref }}
       - name: setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.3
+        uses: mozilla-actions/sccache-action@v0.0.4
         with:
-          version: "v0.4.0"
+          version: "v0.7.7"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
       - name: Install zig
         uses: korandoru/setup-zig@v1
         with:
-          zig-version: 0.10.1
+          zig-version: 0.11.0
       - name: Install Rust targets
         shell: bash
         run: |
@@ -54,7 +54,7 @@ jobs:
           mv target/universal2-apple-darwin/release/rewatch ./rewatch-macos
           mv target/x86_64-pc-windows-gnu/release/rewatch.exe ./rewatch-windows.exe
 
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v4
         with:
           always-auth: true
           registry-url: "https://registry.npmjs.org"
