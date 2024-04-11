@@ -8,7 +8,7 @@ pub fn run(command_string: String) {
     let start_subcommand = Instant::now();
 
     print!(
-        "{} {} Running subcommand... \n{}\n",
+        "{} {}Running subcommand... \n{}\n",
         style("[...]").bold().dim(),
         COMMAND,
         style("────────"),
@@ -44,7 +44,7 @@ pub fn run(command_string: String) {
 
         let subcommand_duration = start_subcommand.elapsed();
         println!(
-            "{}\n{} {} Ran subcommand in {:.2}s",
+            "{}\n{} {}Ran subcommand in {:.2}s",
             style("────────"),
             style("[...]").bold().dim(),
             CHECKMARK,
