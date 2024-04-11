@@ -6,7 +6,6 @@ use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
 use console::style;
-use convert_case::{Case, Casing};
 use log::{debug, error};
 use rayon::prelude::*;
 use std::error;
@@ -40,7 +39,7 @@ impl Namespace {
 #[derive(Debug, Clone)]
 struct Dependency {
     name: String,
-    bsconfig: bsconfig::T,
+    bsconfig: bsconfig::Config,
     path: String,
     is_pinned: bool,
     dependencies: Vec<Dependency>,
@@ -49,7 +48,7 @@ struct Dependency {
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
-    pub bsconfig: bsconfig::T,
+    pub bsconfig: bsconfig::Config,
     pub source_folders: AHashSet<bsconfig::PackageSource>,
     // these are the relative file paths (relative to the package root)
     pub source_files: Option<AHashMap<String, SourceFileMeta>>,
@@ -62,13 +61,17 @@ pub struct Package {
     pub is_root: bool,
 }
 
+pub fn get_build_path(canonical_path: &str) -> String {
+    format!("{}/lib/ocaml", canonical_path)
+}
+
 impl Package {
     pub fn get_bs_build_path(&self) -> String {
         format!("{}/lib/bs", self.path)
     }
 
     pub fn get_build_path(&self) -> String {
-        format!("{}/lib/ocaml", self.path)
+        get_build_path(&self.path)
     }
 
     pub fn get_mlmap_path(&self) -> String {
@@ -211,7 +214,7 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
     source_folders
 }
 
-fn read_bsconfig(package_dir: &str) -> bsconfig::T {
+pub fn read_bsconfig(package_dir: &str) -> bsconfig::Config {
     let prefix = if package_dir == "" {
         "".to_string()
     } else {
@@ -228,6 +231,49 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
     }
 }
 
+pub fn read_dependency(
+    package_name: &str,
+    parent_path: &str,
+    project_root: &str,
+    workspace_root: &Option<String>,
+) -> Result<String, String> {
+    let path_from_parent = PathBuf::from(helpers::package_path(parent_path, package_name));
+    let path_from_project_root = PathBuf::from(helpers::package_path(project_root, package_name));
+    let maybe_path_from_workspace_root = workspace_root
+        .as_ref()
+        .map(|workspace_root| PathBuf::from(helpers::package_path(&workspace_root, package_name)));
+
+    let path = match (
+        path_from_parent,
+        path_from_project_root,
+        maybe_path_from_workspace_root,
+    ) {
+        (path_from_parent, _, _) if path_from_parent.exists() => Ok(path_from_parent),
+        (_, path_from_project_root, _) if path_from_project_root.exists() => Ok(path_from_project_root),
+        (_, _, Some(path_from_workspace_root)) if path_from_workspace_root.exists() => {
+            Ok(path_from_workspace_root)
+        }
+        _ => Err(format!(
+            "The package \"{}\" is not found (are node_modules up-to-date?)...",
+            package_name
+        )),
+    }?;
+
+    let canonical_path = match path.canonicalize() {
+        Ok(canonical_path) => Ok(canonical_path.to_string_lossy().to_string()),
+        Err(e) => {
+            Err(format!(
+                "Failed canonicalizing the package \"{}\" path \"{}\" (are node_modules up-to-date?)...\nMore details: {}",
+                package_name,
+                path.to_string_lossy(),
+                e.to_string()
+            ))
+        }
+    }?;
+
+    Ok(canonical_path)
+}
+
 /// # Make Package
 
 /// Given a bsconfig, reqursively finds all dependencies.
@@ -238,7 +284,7 @@ fn read_bsconfig(package_dir: &str) -> bsconfig::T {
 /// recursively continues operation for their dependencies as well.
 fn read_dependencies<'a>(
     registered_dependencies_set: &'a mut AHashSet<String>,
-    parent_bsconfig: &bsconfig::T,
+    parent_bsconfig: &bsconfig::Config,
     parent_path: &str,
     project_root: &str,
     workspace_root: Option<String>,
@@ -260,43 +306,19 @@ fn read_dependencies<'a>(
         // Read all bsconfig files in parallel instead of blocking
         .par_iter()
         .map(|package_name| {
-            let path_from_parent = PathBuf::from(helpers::package_path(parent_path, package_name));
-            let path_from_project_root = PathBuf::from(helpers::package_path(project_root, package_name));
-            let maybe_path_from_workspace_root = workspace_root.as_ref().map(|workspace_root| {
-                PathBuf::from(helpers::package_path(&workspace_root, package_name))
-            });
-
-            let path = match (path_from_parent, path_from_project_root, maybe_path_from_workspace_root) {
-              (path_from_parent, _, _) if path_from_parent.exists() => path_from_parent,
-              (_, path_from_project_root, _) if path_from_project_root.exists() => path_from_project_root,
-              (_, _, Some(path_from_workspace_root)) if path_from_workspace_root.exists() => path_from_workspace_root,
-              _ => {
-                print!(
-                  "{} {} Error building package tree. The package \"{}\" is not found (are node_modules up-to-date?)...",
-                      style("[1/2]").bold().dim(),
-                      CROSS,
-                      package_name
-                    );
-                std::process::exit(2)
-              }
-            };
-
-            let canonical_path = match path.canonicalize() {
-              Ok(canonical_path) => canonical_path.to_string_lossy().to_string(),
-              Err(e) => {
-                print!(
-                  "{} {} Error building package tree. Failed canonicalizing the package \"{}\" path \"{}\" (are node_modules up-to-date?)...\nMore details: {}",
-                      style("[1/2]").bold().dim(),
-                      CROSS,
-                      package_name,
-                      path.to_string_lossy(),
-                      e.to_string()
-                    );
-                std::process::exit(2)
-              }
-            };
-
-            let bsconfig = read_bsconfig(&canonical_path);
+            let (bsconfig, canonical_path) =
+                match read_dependency(package_name, parent_path, project_root, &workspace_root) {
+                    Err(error) => {
+                        print!(
+                            "{} {} Error building package tree. {}",
+                            style("[1/2]").bold().dim(),
+                            CROSS,
+                            error
+                        );
+                        std::process::exit(2)
+                    }
+                    Ok(canonical_path) => (read_bsconfig(&canonical_path), canonical_path),
+                };
             let is_pinned = parent_bsconfig
                 .pinned_dependencies
                 .as_ref()
@@ -332,7 +354,12 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
+fn make_package(
+    bsconfig: bsconfig::Config,
+    package_path: &str,
+    is_pinned_dep: bool,
+    is_root: bool,
+) -> Package {
     let source_folders = match bsconfig.sources.to_owned() {
         bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
         bsconfig::OneOrMore::Multiple(sources) => {
@@ -347,42 +374,12 @@ fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, 
         }
     };
 
-    let namespace_from_package = namespace_from_package_name(&bsconfig.name);
     Package {
         name: bsconfig.name.to_owned(),
         bsconfig: bsconfig.to_owned(),
         source_folders,
         source_files: None,
-        namespace: match (bsconfig.namespace, bsconfig.namespace_entry) {
-            (Some(bsconfig::Namespace::Bool(false)), _) => Namespace::NoNamespace,
-            (None, _) => Namespace::NoNamespace,
-            (Some(bsconfig::Namespace::Bool(true)), None) => Namespace::Namespace(namespace_from_package),
-            (Some(bsconfig::Namespace::Bool(true)), Some(entry)) => Namespace::NamespaceWithEntry {
-                namespace: namespace_from_package,
-                entry: entry,
-            },
-            (Some(bsconfig::Namespace::String(str)), None) => match str.as_str() {
-                "true" => Namespace::Namespace(namespace_from_package),
-                namespace if namespace.is_case(Case::UpperFlat) => {
-                    Namespace::Namespace(namespace.to_string())
-                }
-                namespace => Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
-            },
-            (Some(bsconfig::Namespace::String(str)), Some(entry)) => match str.as_str() {
-                "true" => Namespace::NamespaceWithEntry {
-                    namespace: namespace_from_package,
-                    entry,
-                },
-                namespace if namespace.is_case(Case::UpperFlat) => Namespace::NamespaceWithEntry {
-                    namespace: namespace.to_string(),
-                    entry: entry,
-                },
-                namespace => Namespace::NamespaceWithEntry {
-                    namespace: namespace.to_string().to_case(Case::Pascal),
-                    entry,
-                },
-            },
-        },
+        namespace: bsconfig.get_namespace(),
         modules: None,
         // we canonicalize the path name so it's always the same
         path: PathBuf::from(package_path)
@@ -391,7 +388,7 @@ fn make_package(bsconfig: bsconfig::T, package_path: &str, is_pinned_dep: bool, 
             .to_string_lossy()
             .to_string(),
         dirs: None,
-        is_pinned_dep: is_pinned_dep,
+        is_pinned_dep,
         is_root,
     }
 }
@@ -466,14 +463,6 @@ pub fn get_source_files(
     }
 
     map
-}
-
-pub fn namespace_from_package_name(package_name: &str) -> String {
-    package_name
-        .to_owned()
-        .replace("@", "")
-        .replace("/", "_")
-        .to_case(Case::Pascal)
 }
 
 /// This takes the tree of packages, and finds all the source files for each, adding them to the
@@ -736,65 +725,21 @@ pub fn parse_packages(build_state: &mut BuildState) {
         });
 }
 
-fn check_if_rescript11_or_higher(version: &str) -> bool {
-    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
-}
-
 impl Package {
     pub fn get_jsx_args(&self) -> Vec<String> {
-        match (self.bsconfig.reason.to_owned(), self.bsconfig.jsx.to_owned()) {
-            (_, Some(jsx)) => match jsx.version {
-                Some(version) if version == 3 || version == 4 => {
-                    vec!["-bs-jsx".to_string(), version.to_string()]
-                }
-                Some(_version) => panic!("Unsupported JSX version"),
-                None => vec![],
-            },
-            (Some(reason), None) => {
-                vec!["-bs-jsx".to_string(), format!("{}", reason.react_jsx)]
-            }
-            _ => vec![],
-        }
+        self.bsconfig.get_jsx_args()
     }
 
     pub fn get_jsx_mode_args(&self) -> Vec<String> {
-        match self.bsconfig.jsx.to_owned() {
-            Some(jsx) => match jsx.mode {
-                Some(bsconfig::JsxMode::Classic) => {
-                    vec!["-bs-jsx-mode".to_string(), "classic".to_string()]
-                }
-                Some(bsconfig::JsxMode::Automatic) => {
-                    vec!["-bs-jsx-mode".to_string(), "automatic".to_string()]
-                }
-
-                None => vec![],
-            },
-            _ => vec![],
-        }
+        self.bsconfig.get_jsx_mode_args()
     }
 
     pub fn get_jsx_module_args(&self) -> Vec<String> {
-        match self.bsconfig.jsx.to_owned() {
-            Some(jsx) => match jsx.module {
-                Some(bsconfig::JsxModule::React) => {
-                    vec!["-bs-jsx-module".to_string(), "react".to_string()]
-                }
-                None => vec![],
-            },
-            _ => vec![],
-        }
+        self.bsconfig.get_jsx_module_args()
     }
 
     pub fn get_uncurried_args(&self, version: &str, root_package: &packages::Package) -> Vec<String> {
-        if check_if_rescript11_or_higher(version) {
-            match root_package.bsconfig.uncurried.to_owned() {
-                // v11 is always uncurried except iff explicitly set to false in the root rescript.json
-                Some(false) => vec![],
-                _ => vec!["-uncurried".to_string()],
-            }
-        } else {
-            vec![]
-        }
+        root_package.bsconfig.get_uncurried_args(version)
     }
 }
 
@@ -908,7 +853,7 @@ mod test {
     ) -> Package {
         return Package {
             name: name.clone(),
-            bsconfig: crate::bsconfig::T {
+            bsconfig: crate::bsconfig::Config {
                 name: name.clone(),
                 sources: crate::bsconfig::OneOrMore::Single(Source::Shorthand(String::from("Source"))),
                 package_specs: None,

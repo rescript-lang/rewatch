@@ -48,6 +48,9 @@ struct Args {
 
     #[arg(long)]
     compiler_args: Option<String>,
+
+    #[arg(long)]
+    rescript_version: Option<String>,
 }
 
 fn main() {
@@ -63,7 +66,7 @@ fn main() {
     match args.compiler_args {
         None => (),
         Some(path) => {
-            println!("{}", build::get_compiler_args(&path));
+            println!("{}", build::get_compiler_args(&path, args.rescript_version));
             std::process::exit(0);
         }
     }
