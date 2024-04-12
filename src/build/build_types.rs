@@ -65,12 +65,10 @@ pub struct Module {
 
 impl Module {
     pub fn is_mlmap(&self) -> bool {
-        match self.source_type {
-            SourceType::MlMap(_) => true,
-            _ => false,
-        }
+        matches!(self.source_type, SourceType::MlMap(_))
     }
-    pub fn get_interface<'a>(&'a self) -> &'a Option<Interface> {
+
+    pub fn get_interface(&self) -> &Option<Interface> {
         match &self.source_type {
             SourceType::SourceFile(source_file) => &source_file.interface,
             _ => &None,

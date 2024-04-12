@@ -72,7 +72,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                     .expect("Could not find root package");
                 Some((
                     std::path::PathBuf::from(package.path.to_string())
-                        .join(source_file.implementation.path.to_string())
+                        .join(&source_file.implementation.path)
                         .to_string_lossy()
                         .to_string(),
                     root_package
@@ -88,7 +88,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
 
     rescript_file_locations
         .par_iter()
-        .for_each(|(rescript_file_location, suffix)| remove_mjs_file(&rescript_file_location, &suffix));
+        .for_each(|(rescript_file_location, suffix)| remove_mjs_file(rescript_file_location, suffix));
 }
 
 // TODO: change to scan_previous_build => CompileAssetsState
@@ -131,7 +131,7 @@ pub fn cleanup_previous_build(
                 .expect("Could not find package");
             remove_compile_assets(package, res_file_location);
             remove_mjs_file(
-                &res_file_location,
+                res_file_location,
                 &suffix
                     .to_owned()
                     .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
@@ -152,7 +152,6 @@ pub fn cleanup_previous_build(
     compile_assets_state
         .ast_rescript_file_locations
         .intersection(&compile_assets_state.rescript_file_locations)
-        .into_iter()
         .for_each(|res_file_location| {
             let AstModule {
                 module_name,
@@ -173,7 +172,7 @@ pub fn cleanup_previous_build(
                 let last_modified = Some(ast_last_modified);
 
                 if let Some(last_modified) = last_modified {
-                    if compile_dirty > &last_modified && !deleted_interfaces.contains(module_name) {
+                    if compile_dirty > last_modified && !deleted_interfaces.contains(module_name) {
                         module.compile_dirty = false;
                     }
                 }
@@ -209,18 +208,18 @@ pub fn cleanup_previous_build(
         .cmi_modules
         .iter()
         .for_each(|(module_name, last_modified)| {
-            build_state.modules.get_mut(module_name).map(|module| {
+            if let Some(module) = build_state.modules.get_mut(module_name) {
                 module.last_compiled_cmi = Some(*last_modified);
-            });
+            }
         });
 
     compile_assets_state
         .cmt_modules
         .iter()
         .for_each(|(module_name, last_modified)| {
-            build_state.modules.get_mut(module_name).map(|module| {
+            if let Some(module) = build_state.modules.get_mut(module_name) {
                 module.last_compiled_cmt = Some(*last_modified);
-            });
+            }
         });
 
     let ast_module_names = compile_assets_state
@@ -241,11 +240,7 @@ pub fn cleanup_previous_build(
         )
         .collect::<AHashSet<&String>>();
 
-    let all_module_names = build_state
-        .modules
-        .keys()
-        .map(|module_name| module_name)
-        .collect::<AHashSet<&String>>();
+    let all_module_names = build_state.modules.keys().collect::<AHashSet<&String>>();
 
     let deleted_module_names = ast_module_names
         .difference(&all_module_names)
@@ -254,7 +249,7 @@ pub fn cleanup_previous_build(
             if let Some(namespace) = helpers::get_namespace_from_module_name(module_name) {
                 return namespace;
             }
-            return module_name.to_string();
+            module_name.to_string()
         })
         .collect::<AHashSet<String>>();
 
@@ -264,59 +259,50 @@ pub fn cleanup_previous_build(
 }
 
 fn has_parse_warnings(module: &Module) -> bool {
-    match &module.source_type {
+    matches!(
+        &module.source_type,
         SourceType::SourceFile(SourceFile {
-            implementation:
-                Implementation {
-                    parse_state: ParseState::Warning,
-                    ..
-                },
+            implementation: Implementation {
+                parse_state: ParseState::Warning,
+                ..
+            },
             ..
-        }) => true,
-        SourceType::SourceFile(SourceFile {
-            interface:
-                Some(Interface {
-                    parse_state: ParseState::Warning,
-                    ..
-                }),
+        }) | SourceType::SourceFile(SourceFile {
+            interface: Some(Interface {
+                parse_state: ParseState::Warning,
+                ..
+            }),
             ..
-        }) => true,
-        _ => false,
-    }
+        })
+    )
 }
 
 fn has_compile_warnings(module: &Module) -> bool {
-    match &module.source_type {
+    matches!(
+        &module.source_type,
         SourceType::SourceFile(SourceFile {
-            implementation:
-                Implementation {
-                    compile_state: CompileState::Warning,
-                    ..
-                },
+            implementation: Implementation {
+                compile_state: CompileState::Warning,
+                ..
+            },
             ..
-        }) => true,
-        SourceType::SourceFile(SourceFile {
-            interface:
-                Some(Interface {
-                    compile_state: CompileState::Warning,
-                    ..
-                }),
+        }) | SourceType::SourceFile(SourceFile {
+            interface: Some(Interface {
+                compile_state: CompileState::Warning,
+                ..
+            }),
             ..
-        }) => true,
-        _ => false,
-    }
+        })
+    )
 }
 
 pub fn cleanup_after_build(build_state: &BuildState) {
     build_state.modules.par_iter().for_each(|(_module_name, module)| {
         let package = build_state.get_package(&module.package_name).unwrap();
         if has_parse_warnings(module) {
-            match &module.source_type {
-                SourceType::SourceFile(source_file) => {
-                    remove_iast(package, &source_file.implementation.path);
-                    remove_ast(package, &source_file.implementation.path);
-                }
-                _ => (),
+            if let SourceType::SourceFile(source_file) = &module.source_type {
+                remove_iast(package, &source_file.implementation.path);
+                remove_ast(package, &source_file.implementation.path);
             }
         }
         if has_compile_warnings(module) {

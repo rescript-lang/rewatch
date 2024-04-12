@@ -111,7 +111,7 @@ impl PartialEq for Package {
 impl Eq for Package {}
 impl Hash for Package {
     fn hash<H: Hasher>(&self, _state: &mut H) {
-        blake3::hash(&self.name.as_bytes());
+        blake3::hash(self.name.as_bytes());
     }
 }
 
@@ -130,7 +130,7 @@ pub fn read_folders(
 ) -> Result<AHashMap<String, SourceFileMeta>, Box<dyn error::Error>> {
     let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
     let path_buf = PathBuf::from(path);
-    let meta = fs::metadata(package_dir.join(&path));
+    let meta = fs::metadata(package_dir.join(path));
     let path_with_meta = meta.map(|meta| {
         (
             path.to_owned(),
@@ -148,7 +148,7 @@ pub fn read_folders(
         let path_ext = entry_path_buf.extension().and_then(|x| x.to_str());
         let new_path = path_buf.join(&name);
         if metadata.file_type().is_dir() && recurse {
-            match read_folders(&filter, package_dir, &new_path, recurse) {
+            match read_folders(filter, package_dir, &new_path, recurse) {
                 Ok(s) => map.extend(s),
                 Err(e) => println!("Error reading directory: {}", e),
             }
@@ -215,7 +215,7 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
 }
 
 pub fn read_bsconfig(package_dir: &str) -> bsconfig::Config {
-    let prefix = if package_dir == "" {
+    let prefix = if package_dir.is_empty() {
         "".to_string()
     } else {
         package_dir.to_string() + "/"
@@ -241,7 +241,7 @@ pub fn read_dependency(
     let path_from_project_root = PathBuf::from(helpers::package_path(project_root, package_name));
     let maybe_path_from_workspace_root = workspace_root
         .as_ref()
-        .map(|workspace_root| PathBuf::from(helpers::package_path(&workspace_root, package_name)));
+        .map(|workspace_root| PathBuf::from(helpers::package_path(workspace_root, package_name)));
 
     let path = match (
         path_from_parent,
@@ -266,7 +266,7 @@ pub fn read_dependency(
                 "Failed canonicalizing the package \"{}\" path \"{}\" (are node_modules up-to-date?)...\nMore details: {}",
                 package_name,
                 path.to_string_lossy(),
-                e.to_string()
+                e
             ))
         }
     }?;
@@ -282,8 +282,8 @@ pub fn read_dependency(
 /// registerd for the parent packages. Especially relevant for peerDependencies.
 /// 2. In parallel performs IO to read the dependencies bsconfig and
 /// recursively continues operation for their dependencies as well.
-fn read_dependencies<'a>(
-    registered_dependencies_set: &'a mut AHashSet<String>,
+fn read_dependencies(
+    registered_dependencies_set: &mut AHashSet<String>,
     parent_bsconfig: &bsconfig::Config,
     parent_path: &str,
     project_root: &str,
@@ -420,7 +420,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
         }
     });
 
-    return map;
+    map
 }
 
 /// `get_source_files` is essentially a wrapper around `read_structure`, which read a
@@ -450,7 +450,7 @@ pub fn get_source_files(
     let path_dir = Path::new(&source.dir);
     // don't include dev sources for now
     if type_ != &Some("dev".to_string()) {
-        match read_folders(&filter, package_dir, path_dir, recurse) {
+        match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
                 println!(
@@ -476,7 +476,7 @@ fn extend_with_children(
         value
             .source_folders
             .par_iter()
-            .map(|source| get_source_files(Path::new(&value.path), &filter, source))
+            .map(|source| get_source_files(Path::new(&value.path), filter, source))
             .collect::<Vec<AHashMap<String, SourceFileMeta>>>()
             .into_iter()
             .for_each(|source| map.extend(source));
@@ -521,21 +521,18 @@ pub fn make(
 
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
-    let result = extend_with_children(&filter, map);
-    result
-        .values()
-        .into_iter()
-        .for_each(|package| match &package.dirs {
-            Some(dirs) => dirs.iter().for_each(|dir| {
-                let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
-            }),
-            None => (),
-        });
+    let result = extend_with_children(filter, map);
+    result.values().for_each(|package| match &package.dirs {
+        Some(dirs) => dirs.iter().for_each(|dir| {
+            let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
+        }),
+        None => (),
+    });
     result
 }
 
 pub fn get_package_name(path: &str) -> String {
-    let bsconfig = read_bsconfig(&path);
+    let bsconfig = read_bsconfig(path);
     bsconfig.name
 }
 
@@ -546,9 +543,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
         .iter()
         .for_each(|(package_name, package)| {
             debug!("Parsing package: {}", package_name);
-            match package.modules.to_owned() {
-                Some(package_modules) => build_state.module_names.extend(package_modules),
-                None => (),
+            if let Some(package_modules) = package.modules.to_owned() {
+                build_state.module_names.extend(package_modules)
             }
             let build_path_abs = package.get_build_path();
             let bs_build_path = package.get_bs_build_path();
@@ -571,7 +567,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
 
                 let depending_modules = source_files
                     .iter()
-                    .map(|path| helpers::file_path_to_module_name(&path, &packages::Namespace::NoNamespace))
+                    .map(|path| helpers::file_path_to_module_name(path, &packages::Namespace::NoNamespace))
                     .filter(|module_name| {
                         if let Some(entry) = entry {
                             module_name != entry
@@ -582,7 +578,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .filter(|module_name| helpers::is_non_exotic_module_name(module_name))
                     .collect::<AHashSet<String>>();
 
-                let mlmap = namespaces::gen_mlmap(&package, namespace, &depending_modules);
+                let mlmap = namespaces::gen_mlmap(package, namespace, &depending_modules);
 
                 // mlmap will be compiled in the AST generation step
                 // compile_mlmap(&package, namespace, &project_root);
@@ -590,11 +586,11 @@ pub fn parse_packages(build_state: &mut BuildState) {
                     .iter()
                     .filter(|path| {
                         helpers::is_non_exotic_module_name(&helpers::file_path_to_module_name(
-                            &path,
+                            path,
                             &packages::Namespace::NoNamespace,
                         ))
                     })
-                    .map(|path| helpers::file_path_to_module_name(&path, &package.namespace))
+                    .map(|path| helpers::file_path_to_module_name(path, &package.namespace))
                     .filter(|module_name| {
                         if let Some(entry) = entry {
                             module_name != entry
@@ -632,8 +628,8 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         build_state
                             .modules
                             .entry(module_name.to_string())
-                            .and_modify(|module| match module.source_type {
-                                SourceType::SourceFile(ref mut source_file) => {
+                            .and_modify(|module| {
+                                if let SourceType::SourceFile(ref mut source_file) = module.source_type {
                                     if &source_file.implementation.path != file {
                                         error!("Duplicate files found for module: {}", &module_name);
                                         error!("file 1: {}", &source_file.implementation.path);
@@ -645,7 +641,6 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                     source_file.implementation.last_modified = metadata.modified;
                                     source_file.implementation.parse_dirty = true;
                                 }
-                                _ => (),
                             })
                             .or_insert(Module {
                                 source_type: SourceType::SourceFile(SourceFile {
@@ -680,8 +675,10 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                 build_state
                                     .modules
                                     .entry(module_name.to_string())
-                                    .and_modify(|module| match module.source_type {
-                                        SourceType::SourceFile(ref mut source_file) => {
+                                    .and_modify(|module| {
+                                        if let SourceType::SourceFile(ref mut source_file) =
+                                            module.source_type
+                                        {
                                             source_file.interface = Some(Interface {
                                                 path: file.to_owned(),
                                                 parse_state: ParseState::Pending,
@@ -690,7 +687,6 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                                 parse_dirty: true,
                                             });
                                         }
-                                        _ => (),
                                     })
                                     .or_insert(Module {
                                         source_type: SourceType::SourceFile(SourceFile {
@@ -758,7 +754,7 @@ fn get_unallowed_dependents(
             }
         }
     }
-    return None;
+    None
 }
 #[derive(Debug, Clone)]
 struct UnallowedDependency {
@@ -793,10 +789,10 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
 
                 let unallowed_dependency = detected_unallowed_dependencies.entry(String::from(package_name));
                 let value = unallowed_dependency.or_insert_with(|| empty_unallowed_deps);
-                match dependency_type {
-                    &"bs-dependencies" => value.bs_deps.push(String::from(unallowed_dependency_name)),
-                    &"pinned-dependencies" => value.pinned_deps.push(String::from(unallowed_dependency_name)),
-                    &"bs-dev-dependencies" => value.bs_dev_deps.push(String::from(unallowed_dependency_name)),
+                match *dependency_type {
+                    "bs-dependencies" => value.bs_deps.push(unallowed_dependency_name),
+                    "pinned-dependencies" => value.pinned_deps.push(unallowed_dependency_name),
+                    "bs-dev-dependencies" => value.bs_dev_deps.push(unallowed_dependency_name),
                     _ => (),
                 }
             }
@@ -816,7 +812,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         ]
         .iter()
         .for_each(|(deps_type, map)| {
-            if map.len() > 0 {
+            if !map.is_empty() {
                 println!(
                     "{} dependencies: {}",
                     console::style(deps_type).bold().dim(),
@@ -834,7 +830,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
             console::style("bsconfig.json").bold().dim()
         )
     }
-    return !has_any_unallowed_dependent;
+    !has_any_unallowed_dependent
 }
 
 #[cfg(test)]

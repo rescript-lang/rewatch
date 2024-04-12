@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::Write;
 use std::path::Path;
 use std::process;
 use sysinfo::{PidExt, System, SystemExt};
@@ -22,9 +22,9 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
             Error::Locked(pid) => format!("Rewatch is already running with PID {}", pid),
-            Error::ParsingLockfile(e) => format!("Could not parse lockfile: \n {}", e.to_string()),
-            Error::ReadingLockfile(e) => format!("Could not read lockfile: \n {}", e.to_string()),
-            Error::WritingLockfile(e) => format!("Could not write lockfile: \n {}", e.to_string()),
+            Error::ParsingLockfile(e) => format!("Could not parse lockfile: \n {}", e),
+            Error::ReadingLockfile(e) => format!("Could not read lockfile: \n {}", e),
+            Error::WritingLockfile(e) => format!("Could not write lockfile: \n {}", e),
         };
         write!(f, "{}", msg)
     }
@@ -38,18 +38,14 @@ pub enum Lock {
 fn exists(to_check_pid: u32) -> bool {
     System::new_all()
         .processes()
-        .into_iter()
+        .iter()
         .any(|(pid, _process)| pid.as_u32() == to_check_pid)
 }
 
 fn create(lockfile_location: &Path, pid: u32) -> Lock {
     // Create /lib if not exists
-    match lockfile_location
-        .parent()
-        .map(|folder| fs::create_dir_all(folder))
-    {
-        Some(Err(e)) => return Lock::Error(Error::WritingLockfile(e)),
-        _ => (),
+    if let Some(Err(e)) = lockfile_location.parent().map(fs::create_dir_all) {
+        return Lock::Error(Error::WritingLockfile(e));
     };
 
     File::create(lockfile_location)
@@ -63,10 +59,10 @@ pub fn get(folder: &str) -> Lock {
     let pid = process::id();
 
     match fs::read_to_string(&location) {
-        Err(e) if (e.kind() == std::io::ErrorKind::NotFound) => create(&path, pid),
+        Err(e) if (e.kind() == std::io::ErrorKind::NotFound) => create(path, pid),
         Err(e) => Lock::Error(Error::ReadingLockfile(e)),
         Ok(s) => match s.parse::<u32>() {
-            Ok(parsed_pid) if !exists(parsed_pid) => create(&path, pid),
+            Ok(parsed_pid) if !exists(parsed_pid) => create(path, pid),
             Ok(parsed_pid) => Lock::Error(Error::Locked(parsed_pid)),
             Err(e) => Lock::Error(Error::ParsingLockfile(e)),
         },

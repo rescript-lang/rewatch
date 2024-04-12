@@ -13,12 +13,12 @@ use std::process::Command;
 
 pub fn generate_asts(
     build_state: &mut BuildState,
-    inc: impl Fn() -> () + std::marker::Sync,
+    inc: impl Fn() + std::marker::Sync,
 ) -> Result<String, String> {
     let mut has_failure = false;
     let mut stderr = "".to_string();
 
-    let results = build_state
+    build_state
         .modules
         .par_iter()
         .map(|(module_name, module)| {
@@ -61,7 +61,7 @@ pub fn generate_asts(
                                 &build_state.bsc_path,
                                 &build_state.workspace_root,
                             )
-                            .map(|result| Some(result)),
+                            .map(Some),
                             _ => Ok(None),
                         };
 
@@ -89,100 +89,67 @@ pub fn generate_asts(
             Result<(String, Option<String>), String>,
             Result<Option<(String, Option<String>)>, String>,
             bool,
-        )>>();
-
-    results
+        )>>()
         .into_iter()
         .for_each(|(module_name, ast_path, iast_path, is_dirty)| {
             if let Some(module) = build_state.modules.get_mut(&module_name) {
+                module.compile_dirty = is_dirty;
                 let package = build_state
                     .packages
                     .get(&module.package_name)
                     .expect("Package not found");
-                if is_dirty {
-                    module.compile_dirty = true
-                }
-                match ast_path {
-                    Ok((_path, err)) => {
-                        match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                source_file.implementation.parse_dirty = false;
-                                source_file
-                                    .interface
-                                    .as_mut()
-                                    .map(|interface| interface.parse_dirty = false);
-                            }
-                            _ => (),
+                match (ast_path, module.source_type.to_owned()) {
+                    // supress warnings in non-pinned deps
+                    (Ok((_path, Some(err))), SourceType::SourceFile(ref mut source_file))
+                        if package.is_pinned_dep =>
+                    {
+                        source_file.implementation.parse_state = ParseState::Warning;
+                        source_file.implementation.parse_dirty = true;
+                        if let Some(interface) = source_file.interface.as_mut() {
+                            interface.parse_dirty = false;
                         }
-                        // supress warnings in non-pinned deps
-                        match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                source_file.implementation.parse_state = ParseState::Success;
-                            }
-                            _ => (),
-                        }
-
-                        if package.is_pinned_dep {
-                            if let Some(err) = err {
-                                match module.source_type {
-                                    SourceType::SourceFile(ref mut source_file) => {
-                                        source_file.implementation.parse_state = ParseState::Warning;
-                                        source_file.implementation.parse_dirty = true;
-                                    }
-                                    _ => (),
-                                }
-                                logs::append(package, &err);
-                                stderr.push_str(&err);
-                            }
+                        logs::append(package, &err);
+                        stderr.push_str(&err);
+                    }
+                    (Ok((_path, None)), SourceType::SourceFile(ref mut source_file)) => {
+                        source_file.implementation.parse_state = ParseState::Success;
+                        source_file.implementation.parse_dirty = false;
+                        if let Some(interface) = source_file.interface.as_mut() {
+                            interface.parse_dirty = false;
                         }
                     }
-                    Err(err) => {
-                        match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                source_file.implementation.parse_state = ParseState::ParseError;
-                                source_file.implementation.parse_dirty = true;
-                            }
-                            _ => (),
-                        }
+                    (Err(err), SourceType::SourceFile(ref mut source_file)) => {
+                        source_file.implementation.parse_state = ParseState::ParseError;
+                        source_file.implementation.parse_dirty = true;
                         logs::append(package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
+                    _ => (),
                 };
-                match iast_path {
-                    Ok(Some((_path, err))) => {
+
+                match (iast_path, module.source_type.to_owned()) {
+                    (Ok(Some((_path, Some(err)))), SourceType::SourceFile(ref mut source_file))
+                        if package.is_pinned_dep =>
+                    {
                         // supress warnings in non-pinned deps
-                        if package.is_pinned_dep {
-                            if let Some(err) = err {
-                                match module.source_type {
-                                    SourceType::SourceFile(ref mut source_file) => {
-                                        source_file.interface.as_mut().map(|interface| {
-                                            interface.parse_state = ParseState::ParseError;
-                                            interface.parse_dirty = true;
-                                        });
-                                    }
-                                    _ => (),
-                                }
-                                logs::append(package, &err);
-                                stderr.push_str(&err);
-                            }
+                        if let Some(interface) = source_file.interface.as_mut() {
+                            interface.parse_state = ParseState::Warning;
+                            interface.parse_dirty = true;
                         }
+                        logs::append(package, &err);
+                        stderr.push_str(&err);
                     }
-                    Ok(None) => (),
-                    Err(err) => {
-                        match module.source_type {
-                            SourceType::SourceFile(ref mut source_file) => {
-                                source_file.interface.as_mut().map(|interface| {
-                                    interface.parse_state = ParseState::ParseError;
-                                    interface.parse_dirty = true;
-                                });
-                            }
-                            _ => (),
+                    (Err(err), SourceType::SourceFile(ref mut source_file)) => {
+                        if let Some(interface) = source_file.interface.as_mut() {
+                            interface.parse_state = ParseState::ParseError;
+                            interface.parse_dirty = true;
                         }
                         logs::append(package, &err);
                         has_failure = true;
                         stderr.push_str(&err);
                     }
+                    _ => (),
                 };
             }
         });
@@ -208,7 +175,7 @@ pub fn generate_asts(
                     // specific to compiling mlmaps
                     let compile_path = package.get_mlmap_compile_path();
                     let mlmap_hash = helpers::compute_file_hash(&compile_path);
-                    namespaces::compile_mlmap(&package, module_name, &build_state.bsc_path);
+                    namespaces::compile_mlmap(package, module_name, &build_state.bsc_path);
                     let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
 
                     match (mlmap_hash, mlmap_hash_after) {
@@ -314,7 +281,7 @@ fn generate_ast(
             if res_to_ast.status.success() {
                 Ok((ast_path, Some(stderr.to_string())))
             } else {
-                println!("err: {}", stderr.to_string());
+                println!("err: {}", stderr);
                 Err(stderr.to_string())
             }
         } else {
@@ -344,20 +311,15 @@ fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<On
         Ok(_) => None,
         Err(_) => Some("bisect"),
     };
-    match ppx_flags {
-        Some(flags) => Some(
-            flags
-                .iter()
-                .filter(|flag| match (flag, filter) {
-                    (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
-                    (bsconfig::OneOrMore::Multiple(str), Some(filter)) => {
-                        !str.first().unwrap().contains(filter)
-                    }
-                    _ => true,
-                })
-                .map(|x| x.to_owned())
-                .collect::<Vec<OneOrMore<String>>>(),
-        ),
-        None => None,
-    }
+    ppx_flags.as_ref().map(|flags| {
+        flags
+            .iter()
+            .filter(|flag| match (flag, filter) {
+                (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
+                (bsconfig::OneOrMore::Multiple(str), Some(filter)) => !str.first().unwrap().contains(filter),
+                _ => true,
+            })
+            .map(|x| x.to_owned())
+            .collect::<Vec<OneOrMore<String>>>()
+    })
 }

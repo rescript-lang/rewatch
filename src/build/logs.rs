@@ -48,8 +48,8 @@ fn write_to_log_file(mut file: File, package_name: &str, content: &str) {
 
 pub fn initialize(packages: &AHashMap<String, Package>) {
     packages.par_iter().for_each(|(name, package)| {
-        let _ = File::create(get_log_file_path(package, Location::Bs))
-            .map(|file| write_to_log_file(file, &name, &format!("#Start({})\n", helpers::get_system_time())))
+        File::create(get_log_file_path(package, Location::Bs))
+            .map(|file| write_to_log_file(file, name, &format!("#Start({})\n", helpers::get_system_time())))
             .expect(&("Cannot create compiler log for package ".to_owned() + name));
     })
 }
@@ -67,7 +67,7 @@ pub fn finalize(packages: &AHashMap<String, Package>) {
         let _ = File::options()
             .append(true)
             .open(get_log_file_path(package, Location::Bs))
-            .map(|file| write_to_log_file(file, &name, &format!("#Done({})\n", helpers::get_system_time())));
+            .map(|file| write_to_log_file(file, name, &format!("#Done({})\n", helpers::get_system_time())));
 
         let _ = std::fs::copy(
             get_log_file_path(package, Location::Bs),

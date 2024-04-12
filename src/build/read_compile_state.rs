@@ -22,7 +22,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
 
                 Some(
                     PathBuf::from(&package.path)
-                        .join(source_file.implementation.path.to_owned())
+                        .join(&source_file.implementation.path)
                         .to_string_lossy()
                         .to_string(),
                 )
@@ -39,7 +39,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                 let package = build_state.packages.get(&module.package_name).unwrap();
                 module.get_interface().as_ref().map(|interface| {
                     PathBuf::from(&package.path)
-                        .join(interface.path.to_owned())
+                        .join(&interface.path)
                         .to_string_lossy()
                         .to_string()
                 })
@@ -85,7 +85,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
             match extension.as_str() {
                 "iast" | "ast" => {
                     let module_name =
-                        helpers::file_path_to_module_name(path.to_str().unwrap(), &package_namespace);
+                        helpers::file_path_to_module_name(path.to_str().unwrap(), package_namespace);
 
                     let ast_file_path = path.to_str().unwrap().to_owned();
                     let res_file_path = get_res_path_from_ast(&ast_file_path);
@@ -93,8 +93,7 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                         .packages
                         .get(&build_state.root_config_name)
                         .expect("Could not find root package");
-                    match res_file_path {
-                        Some(res_file_path) => {
+                    if let Some(res_file_path) = res_file_path {
                             let _ = ast_modules.insert(
                                 res_file_path.to_owned(),
                                 AstModule {
@@ -108,8 +107,6 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                                 },
                             );
                             let _ = ast_rescript_file_locations.insert(res_file_path);
-                        }
-                        None => (),
                     }
                 }
                 "cmi" => {
@@ -159,5 +156,5 @@ fn get_res_path_from_ast(ast_file: &str) -> Option<String> {
             }
         }
     }
-    return None;
+    None
 }
