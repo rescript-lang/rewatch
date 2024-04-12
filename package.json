@@ -1,6 +1,6 @@
 {
   "name": "@rolandpeelen/rewatch",
-  "version": "0.0.16",
+  "version": "1.0.0",
   "license": "BSD-3-Clause",
   "bin": {
     "rewatch": "rewatch"

@@ -1010,7 +1010,7 @@ checksum = "2ab07dc67230e4a4718e70fd5c20055a4334b121f1f9db8fe63ef39ce9b8c846"
 
 [[package]]
 name = "rewatch"
-version = "0.11.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "blake3",
