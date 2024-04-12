@@ -234,11 +234,12 @@ pub fn generate_asts(
 }
 
 pub fn parser_args(
-    package: &packages::Package,
-    root_package: &packages::Package,
+    config: &bsconfig::Config,
+    root_config: &bsconfig::Config,
     filename: &str,
     version: &str,
     workspace_root: &Option<String>,
+    root_path: &str,
 ) -> (String, Vec<String>) {
     let file = &filename.to_string();
     let path = PathBuf::from(filename);
@@ -248,16 +249,16 @@ pub fn parser_args(
         &if let Some(workspace_root) = workspace_root {
             format!("{}/node_modules", &workspace_root)
         } else {
-            format!("{}/node_modules", &root_package.path)
+            format!("{}/node_modules", &root_path)
         },
-        &filter_ppx_flags(&package.bsconfig.ppx_flags),
-        &package.name,
+        &filter_ppx_flags(&config.ppx_flags),
+        &config.name,
     );
-    let jsx_args = root_package.get_jsx_args();
-    let jsx_module_args = root_package.get_jsx_module_args();
-    let jsx_mode_args = root_package.get_jsx_mode_args();
-    let uncurried_args = root_package.get_uncurried_args(version, &root_package);
-    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
+    let jsx_args = root_config.get_jsx_args();
+    let jsx_module_args = root_config.get_jsx_module_args();
+    let jsx_mode_args = root_config.get_jsx_mode_args();
+    let uncurried_args = root_config.get_uncurried_args(version);
+    let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
 
     let file = "../../".to_string() + file;
     (
@@ -291,7 +292,14 @@ fn generate_ast(
     workspace_root: &Option<String>,
 ) -> Result<(String, Option<String>), String> {
     let build_path_abs = package.get_build_path();
-    let (ast_path, parser_args) = parser_args(&package, &root_package, filename, version, workspace_root);
+    let (ast_path, parser_args) = parser_args(
+        &package.bsconfig,
+        &root_package.bsconfig,
+        filename,
+        version,
+        workspace_root,
+        &root_package.path,
+    );
 
     /* Create .ast */
     if let Some(res_to_ast) = Some(

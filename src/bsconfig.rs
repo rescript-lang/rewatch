@@ -1,3 +1,5 @@
+use crate::build::packages;
+use convert_case::{Case, Casing};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -104,7 +106,7 @@ pub struct Reason {
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum Namespace {
+pub enum NamespaceConfig {
     Bool(bool),
     String(String),
 }
@@ -135,7 +137,7 @@ pub struct JsxSpecs {
 /// # bsconfig.json representation
 /// This is tricky, there is a lot of ambiguity. This is probably incomplete.
 #[derive(Deserialize, Debug, Clone)]
-pub struct T {
+pub struct Config {
     pub name: String,
     pub sources: OneOrMore<Source>,
     #[serde(rename = "package-specs")]
@@ -153,7 +155,7 @@ pub struct T {
     #[serde(rename = "bsc-flags")]
     pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
-    pub namespace: Option<Namespace>,
+    pub namespace: Option<NamespaceConfig>,
     pub jsx: Option<JsxSpecs>,
     pub uncurried: Option<bool>,
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
@@ -231,11 +233,116 @@ pub fn flatten_ppx_flags(
 }
 
 /// Try to convert a bsconfig from a certain path to a bsconfig struct
-pub fn read(path: String) -> T {
+pub fn read(path: String) -> Config {
     fs::read_to_string(path.clone())
         .map_err(|e| format!("Could not read bsconfig. {path} - {e}"))
         .and_then(|x| {
-            serde_json::from_str::<T>(&x).map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
+            serde_json::from_str::<Config>(&x).map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
         })
         .expect("Errors reading bsconfig")
+}
+
+fn check_if_rescript11_or_higher(version: &str) -> bool {
+    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
+}
+
+fn namespace_from_package_name(package_name: &str) -> String {
+    package_name
+        .to_owned()
+        .replace("@", "")
+        .replace("/", "_")
+        .to_case(Case::Pascal)
+}
+
+impl Config {
+    pub fn get_namespace(&self) -> packages::Namespace {
+        let namespace_from_package = namespace_from_package_name(&self.name);
+        match (self.namespace.as_ref(), self.namespace_entry.as_ref()) {
+            (Some(NamespaceConfig::Bool(false)), _) => packages::Namespace::NoNamespace,
+            (None, _) => packages::Namespace::NoNamespace,
+            (Some(NamespaceConfig::Bool(true)), None) => {
+                packages::Namespace::Namespace(namespace_from_package)
+            }
+            (Some(NamespaceConfig::Bool(true)), Some(entry)) => packages::Namespace::NamespaceWithEntry {
+                namespace: namespace_from_package,
+                entry: entry.to_string(),
+            },
+            (Some(NamespaceConfig::String(str)), None) => match str.as_str() {
+                "true" => packages::Namespace::Namespace(namespace_from_package),
+                namespace if namespace.is_case(Case::UpperFlat) => {
+                    packages::Namespace::Namespace(namespace.to_string())
+                }
+                namespace => packages::Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
+            },
+            (Some(self::NamespaceConfig::String(str)), Some(entry)) => match str.as_str() {
+                "true" => packages::Namespace::NamespaceWithEntry {
+                    namespace: namespace_from_package,
+                    entry: entry.to_string(),
+                },
+                namespace if namespace.is_case(Case::UpperFlat) => packages::Namespace::NamespaceWithEntry {
+                    namespace: namespace.to_string(),
+                    entry: entry.to_string(),
+                },
+                namespace => packages::Namespace::NamespaceWithEntry {
+                    namespace: namespace.to_string().to_case(Case::Pascal),
+                    entry: entry.to_string(),
+                },
+            },
+        }
+    }
+    pub fn get_jsx_args(&self) -> Vec<String> {
+        match (self.reason.to_owned(), self.jsx.to_owned()) {
+            (_, Some(jsx)) => match jsx.version {
+                Some(version) if version == 3 || version == 4 => {
+                    vec!["-bs-jsx".to_string(), version.to_string()]
+                }
+                Some(_version) => panic!("Unsupported JSX version"),
+                None => vec![],
+            },
+            (Some(reason), None) => {
+                vec!["-bs-jsx".to_string(), format!("{}", reason.react_jsx)]
+            }
+            _ => vec![],
+        }
+    }
+
+    pub fn get_jsx_mode_args(&self) -> Vec<String> {
+        match self.jsx.to_owned() {
+            Some(jsx) => match jsx.mode {
+                Some(JsxMode::Classic) => {
+                    vec!["-bs-jsx-mode".to_string(), "classic".to_string()]
+                }
+                Some(JsxMode::Automatic) => {
+                    vec!["-bs-jsx-mode".to_string(), "automatic".to_string()]
+                }
+
+                None => vec![],
+            },
+            _ => vec![],
+        }
+    }
+
+    pub fn get_jsx_module_args(&self) -> Vec<String> {
+        match self.jsx.to_owned() {
+            Some(jsx) => match jsx.module {
+                Some(JsxModule::React) => {
+                    vec!["-bs-jsx-module".to_string(), "react".to_string()]
+                }
+                None => vec![],
+            },
+            _ => vec![],
+        }
+    }
+
+    pub fn get_uncurried_args(&self, version: &str) -> Vec<String> {
+        if check_if_rescript11_or_higher(version) {
+            match self.uncurried.to_owned() {
+                // v11 is always uncurried except iff explicitly set to false in the root rescript.json
+                Some(false) => vec![],
+                _ => vec!["-uncurried".to_string()],
+            }
+        } else {
+            vec![]
+        }
+    }
 }

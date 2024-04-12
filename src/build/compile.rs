@@ -164,6 +164,8 @@ pub fn compile(
                                         true,
                                         &build_state.bsc_path,
                                         &build_state.packages,
+                                        &build_state.project_root,
+                                        &build_state.workspace_root,
                                     );
                                     Some(result)
                                 }
@@ -178,6 +180,8 @@ pub fn compile(
                                 false,
                                 &build_state.bsc_path,
                                 &build_state.packages,
+                                &build_state.project_root,
+                                &build_state.workspace_root,
                             );
                             // if let Err(error) = result.to_owned() {
                             //     println!("{}", error);
@@ -358,23 +362,22 @@ pub fn compile(
 }
 
 pub fn compiler_args(
-    package: &packages::Package,
-    root_package: &packages::Package,
+    config: &bsconfig::Config,
+    root_config: &bsconfig::Config,
     ast_path: &str,
     version: &str,
     file_path: &str,
     is_interface: bool,
     has_interface: bool,
-    packages: &AHashMap<String, packages::Package>,
+    project_root: &str,
+    workspace_root: &Option<String>,
+    // if packages are known, we pass a reference here
+    // this saves us a scan to find their paths
+    packages: &Option<&AHashMap<String, packages::Package>>,
 ) -> Vec<String> {
-    let normal_deps = package
-        .bsconfig
-        .bs_dependencies
-        .as_ref()
-        .unwrap_or(&vec![])
-        .to_owned();
+    let normal_deps = config.bs_dependencies.as_ref().unwrap_or(&vec![]).to_owned();
 
-    let bsc_flags = bsconfig::flatten_flags(&package.bsconfig.bsc_flags);
+    let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
     // don't compile dev-deps yet
     // let dev_deps = source
     //     .package
@@ -386,24 +389,30 @@ pub fn compiler_args(
 
     let deps = vec![normal_deps]
         .concat()
-        .into_iter()
-        .map(|x| {
-            let package = &packages.get(&x).expect("expect package");
-            vec![
-                "-I".to_string(),
-                helpers::canonicalize_string_path(&package.get_build_path()).unwrap(),
-            ]
+        .par_iter()
+        .map(|package_name| {
+            let canonicalized_path = if let Some(packages) = packages {
+                packages
+                    .get(package_name)
+                    .expect("expect package")
+                    .path
+                    .to_string()
+            } else {
+                packages::read_dependency(package_name, project_root, project_root, workspace_root)
+                    .expect("cannot find dep")
+            };
+            vec!["-I".to_string(), packages::get_build_path(&canonicalized_path)]
         })
         .collect::<Vec<Vec<String>>>();
 
-    let module_name = helpers::file_path_to_module_name(file_path, &package.namespace);
+    let module_name = helpers::file_path_to_module_name(file_path, &config.get_namespace());
 
-    let namespace_args = match &package.namespace {
+    let namespace_args = match &config.get_namespace() {
         packages::Namespace::NamespaceWithEntry { namespace: _, entry } if &module_name == entry => {
             // if the module is the entry we just want to open the namespace
             vec![
                 "-open".to_string(),
-                package.namespace.to_suffix().unwrap().to_string(),
+                config.get_namespace().to_suffix().unwrap().to_string(),
             ]
         }
         packages::Namespace::Namespace(_)
@@ -413,18 +422,18 @@ pub fn compiler_args(
         } => {
             vec![
                 "-bs-ns".to_string(),
-                package.namespace.to_suffix().unwrap().to_string(),
+                config.get_namespace().to_suffix().unwrap().to_string(),
             ]
         }
         packages::Namespace::NoNamespace => vec![],
     };
 
-    let jsx_args = root_package.get_jsx_args();
-    let jsx_module_args = root_package.get_jsx_module_args();
-    let jsx_mode_args = root_package.get_jsx_mode_args();
-    let uncurried_args = package.get_uncurried_args(version, &root_package);
+    let jsx_args = root_config.get_jsx_args();
+    let jsx_module_args = root_config.get_jsx_module_args();
+    let jsx_mode_args = root_config.get_jsx_mode_args();
+    let uncurried_args = root_config.get_uncurried_args(version);
 
-    let warning_args: Vec<String> = match package.bsconfig.warnings.to_owned() {
+    let warning_args: Vec<String> = match config.warnings.to_owned() {
         None => vec![],
         Some(warnings) => {
             let warn_number = match warnings.number {
@@ -466,14 +475,14 @@ pub fn compiler_args(
         debug!("Compiling file: {}", &module_name);
 
         // TODO: Also read suffix from package-spec.
-        let suffix = match root_package.bsconfig.suffix.to_owned() {
+        let suffix = match root_config.suffix.to_owned() {
             Some(suffix) => suffix,
             None => String::from(bsconfig::DEFAULT_SUFFIX),
         };
 
         vec![
             "-bs-package-name".to_string(),
-            package.bsconfig.name.to_owned(),
+            config.name.to_owned(),
             "-bs-package-output".to_string(),
             format!(
                 "es6:{}:{}",
@@ -520,6 +529,8 @@ fn compile_file(
     is_interface: bool,
     bsc_path: &str,
     packages: &AHashMap<String, packages::Package>,
+    project_root: &str,
+    workspace_root: &Option<String>,
 ) -> Result<Option<String>, String> {
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match module.source_type {
@@ -529,14 +540,16 @@ fn compile_file(
     let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
     let has_interface = module.get_interface().is_some();
     let to_mjs_args = compiler_args(
-        package,
-        root_package,
+        &package.bsconfig,
+        &root_package.bsconfig,
         ast_path,
         version,
         &implementation_file_path,
         is_interface,
         has_interface,
-        packages,
+        project_root,
+        workspace_root,
+        &Some(packages),
     );
 
     let to_mjs = Command::new(bsc_path)

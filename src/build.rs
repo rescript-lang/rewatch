@@ -50,36 +50,34 @@ pub struct CompilerArgs {
     pub parser_args: Vec<String>,
 }
 
-pub fn get_compiler_args(path: &str) -> String {
+pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String {
     let filename = &helpers::get_abs_path(path);
     let package_root = helpers::get_abs_path(
         &helpers::get_nearest_bsconfig(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
     );
     let workspace_root = get_workspace_root(&package_root).map(|p| helpers::get_abs_path(&p));
-    let root_config_name =
-        packages::get_package_name(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
-    let package_name = packages::get_package_name(&package_root);
-    let bsc_path = helpers::get_bsc(&package_root, workspace_root.to_owned());
-    let rescript_version = helpers::get_rescript_version(&bsc_path);
-    let packages = packages::make(
-        &None,
-        &workspace_root.to_owned().unwrap_or(package_root.to_owned()),
-        &workspace_root,
-    );
+    let root_rescript_config =
+        packages::read_bsconfig(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
+    let rescript_config = packages::read_bsconfig(&package_root);
+    let rescript_version = if let Some(rescript_version) = rescript_version {
+        rescript_version
+    } else {
+        let bsc_path = helpers::get_bsc(&package_root, workspace_root.to_owned());
+        helpers::get_rescript_version(&bsc_path)
+    };
     // make PathBuf from package root and get the relative path for filename
     let relative_filename = PathBuf::from(&filename)
         .strip_prefix(PathBuf::from(&package_root).parent().unwrap())
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let root_package = packages.get(&root_config_name).unwrap();
-    let package = packages.get(&package_name).unwrap();
     let (ast_path, parser_args) = parser_args(
-        package,
-        root_package,
+        &rescript_config,
+        &root_rescript_config,
         &relative_filename,
         &rescript_version,
         &workspace_root,
+        workspace_root.as_ref().unwrap_or(&package_root),
     );
     let is_interface = filename.ends_with("i");
     let has_interface = if is_interface {
@@ -90,14 +88,16 @@ pub fn get_compiler_args(path: &str) -> String {
         PathBuf::from(&interface_filename).exists()
     };
     let compiler_args = compiler_args(
-        package,
-        root_package,
+        &rescript_config,
+        &root_rescript_config,
         &ast_path,
         &rescript_version,
         &relative_filename,
         is_interface,
         has_interface,
-        &packages,
+        &package_root,
+        &workspace_root,
+        &None,
     );
     serde_json::to_string_pretty(&CompilerArgs {
         compiler_args,
