@@ -345,7 +345,10 @@ impl Config {
     pub fn get_module(&self) -> String {
         match &self.package_specs {
             Some(OneOrMore::Single(PackageSpec { module, .. })) => module.to_string(),
-            Some(OneOrMore::Multiple(_)) => panic!("Multiple package specs not supported"),
+            Some(OneOrMore::Multiple(vec)) => match vec.first() {
+                Some(PackageSpec { module, .. }) => module.to_string(),
+                None => "commonjs".to_string(),
+            },
             _ => "commonjs".to_string(),
         }
     }
@@ -353,7 +356,11 @@ impl Config {
     pub fn get_suffix(&self) -> String {
         match &self.package_specs {
             Some(OneOrMore::Single(PackageSpec { suffix, .. })) => suffix.to_owned(),
-            Some(OneOrMore::Multiple(_)) => panic!("Multiple package specs not supported"),
+            Some(OneOrMore::Multiple(vec)) => match vec.first() {
+                Some(PackageSpec { suffix, .. }) => suffix.to_owned(),
+                None => None,
+            },
+
             _ => self.suffix.to_owned(),
         }
         .unwrap_or(".js".to_string())
