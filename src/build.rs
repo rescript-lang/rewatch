@@ -16,6 +16,7 @@ use build_types::*;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
+use std::fmt;
 use std::io::{stdout, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -106,11 +107,28 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
     .unwrap()
 }
 
+#[derive(Debug, Clone)]
+pub enum InitializeBuildError {
+    PackageDependencyValidation,
+}
+
+impl fmt::Display for InitializeBuildError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::PackageDependencyValidation => write!(
+                f,
+                "{}  {}Could not Validate Package Dependencies",
+                LINE_CLEAR, CROSS,
+            ),
+        }
+    }
+}
+
 pub fn initialize_build(
     default_timing: Option<Duration>,
     filter: &Option<regex::Regex>,
     path: &str,
-) -> Result<BuildState, ()> {
+) -> Result<BuildState, InitializeBuildError> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let bsc_path = helpers::get_bsc(&project_root, workspace_root.to_owned());
@@ -134,7 +152,7 @@ pub fn initialize_build(
     );
 
     if !packages::validate_packages_dependencies(&packages) {
-        return Err(());
+        return Err(InitializeBuildError::PackageDependencyValidation);
     }
 
     let timing_source_files = Instant::now();
@@ -208,12 +226,27 @@ fn format_step(current: usize, total: usize) -> console::StyledObject<String> {
     style(format!("[{}/{}]", current, total)).bold().dim()
 }
 
+#[derive(Debug, Clone)]
+pub enum IncrementalBuildError {
+    SourceFileParseError,
+    CompileError,
+}
+
+impl fmt::Display for IncrementalBuildError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::SourceFileParseError => write!(f, "{}  {}Could not parse Source Files", LINE_CLEAR, CROSS,),
+            Self::CompileError => write!(f, "{}  {}Failed to Compile. See Errors Above", LINE_CLEAR, CROSS,),
+        }
+    }
+}
+
 pub fn incremental_build(
     build_state: &mut BuildState,
     default_timing: Option<Duration>,
     initial_build: bool,
     only_incremental: bool,
-) -> Result<(), ()> {
+) -> Result<(), IncrementalBuildError> {
     logs::initialize(&build_state.packages);
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
     let pb = ProgressBar::new(num_dirty_modules);
@@ -254,7 +287,7 @@ pub fn incremental_build(
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
             print!("{}", &err);
-            return Err(());
+            return Err(IncrementalBuildError::SourceFileParseError);
         }
     }
     let timing_deps = Instant::now();
@@ -326,7 +359,7 @@ pub fn incremental_build(
                 module.compile_dirty = true;
             }
         }
-        Err(())
+        Err(IncrementalBuildError::CompileError)
     } else {
         println!(
             "{}{} {}Compiled {} modules in {:.2}s",
@@ -343,14 +376,37 @@ pub fn incremental_build(
     }
 }
 
-pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, ()> {
+#[derive(Debug, Clone)]
+pub enum BuildError {
+    InitializeBuild(InitializeBuildError),
+    IncrementalBuild(IncrementalBuildError),
+}
+
+impl fmt::Display for BuildError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InitializeBuild(e) => {
+                write!(f, "{}  {}Error Initializing Build: {}", LINE_CLEAR, CROSS, e)
+            }
+            Self::IncrementalBuild(e) => write!(
+                f,
+                "{}  {}Error Running Incremental Build: {}",
+                LINE_CLEAR, CROSS, e
+            ),
+        }
+    }
+}
+
+pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, BuildError> {
     let default_timing: Option<std::time::Duration> = if no_timing {
         Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
     } else {
         None
     };
     let timing_total = Instant::now();
-    let mut build_state = initialize_build(default_timing, filter, path)?;
+    let mut build_state =
+        initialize_build(default_timing, filter, path).map_err(BuildError::InitializeBuild)?;
+
     match incremental_build(&mut build_state, default_timing, true, false) {
         Ok(_) => {
             let timing_total_elapsed = timing_total.elapsed();
@@ -363,9 +419,9 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
             clean::cleanup_after_build(&build_state);
             Ok(build_state)
         }
-        Err(_) => {
+        Err(e) => {
             clean::cleanup_after_build(&build_state);
-            Err(())
+            Err(BuildError::IncrementalBuild(e))
         }
     }
 }
