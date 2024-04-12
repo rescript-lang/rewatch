@@ -80,7 +80,10 @@ fn main() {
             Command::Clean => build::clean::clean(&folder),
             Command::Build => {
                 match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
-                    Err(()) => std::process::exit(1),
+                    Err(e) => {
+                        eprintln!("Error Building: {e}");
+                        std::process::exit(1)
+                    }
                     Ok(_) => {
                         if let Some(args_after_build) = args.after_build {
                             cmd::run(args_after_build)
