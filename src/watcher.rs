@@ -178,9 +178,10 @@ async fn async_watch(
         match needs_compile_type {
             CompileType::Incremental => {
                 let timing_total = Instant::now();
-                if build::incremental_build(&mut build_state, None, initial_build, !initial_build).is_ok()
-                {
-                    if let Some(a) = after_build.clone() { cmd::run(a) }
+                if build::incremental_build(&mut build_state, None, initial_build, !initial_build).is_ok() {
+                    if let Some(a) = after_build.clone() {
+                        cmd::run(a)
+                    }
                     let timing_total_elapsed = timing_total.elapsed();
                     println!(
                         "\n{}{}Finished {} compilation in {:.2}s\n",
@@ -197,7 +198,9 @@ async fn async_watch(
                 let timing_total = Instant::now();
                 build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
                 let _ = build::incremental_build(&mut build_state, None, initial_build, false);
-                if let Some(a) = after_build.clone() { cmd::run(a) }
+                if let Some(a) = after_build.clone() {
+                    cmd::run(a)
+                }
                 let timing_total_elapsed = timing_total.elapsed();
                 println!(
                     "\n{}{}Finished compilation in {:.2}s\n",

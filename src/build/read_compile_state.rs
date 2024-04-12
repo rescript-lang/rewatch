@@ -94,19 +94,19 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                         .get(&build_state.root_config_name)
                         .expect("Could not find root package");
                     if let Some(res_file_path) = res_file_path {
-                            let _ = ast_modules.insert(
-                                res_file_path.to_owned(),
-                                AstModule {
-                                    module_name,
-                                    package_name: package_name.to_owned(),
-                                    namespace: package_namespace.to_owned(),
-                                    last_modified: last_modified.to_owned(),
-                                    ast_file_path,
-                                    is_root: *package_is_root,
-                                    suffix: root_package.bsconfig.suffix.to_owned(),
-                                },
-                            );
-                            let _ = ast_rescript_file_locations.insert(res_file_path);
+                        let _ = ast_modules.insert(
+                            res_file_path.to_owned(),
+                            AstModule {
+                                module_name,
+                                package_name: package_name.to_owned(),
+                                namespace: package_namespace.to_owned(),
+                                last_modified: last_modified.to_owned(),
+                                ast_file_path,
+                                is_root: *package_is_root,
+                                suffix: root_package.bsconfig.suffix.to_owned(),
+                            },
+                        );
+                        let _ = ast_rescript_file_locations.insert(res_file_path);
                     }
                 }
                 "cmi" => {
