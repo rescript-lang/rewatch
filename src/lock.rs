@@ -1,5 +1,6 @@
 use std::fs;
 use std::fs::File;
+use std::io::prelude::*;
 use std::path::Path;
 use std::process;
 use sysinfo::{PidExt, System, SystemExt};
@@ -42,7 +43,6 @@ fn exists(to_check_pid: u32) -> bool {
 }
 
 fn create(lockfile_location: &Path, pid: u32) -> Lock {
-    use std::io::prelude::*;
     // Create /lib if not exists
     match lockfile_location
         .parent()
