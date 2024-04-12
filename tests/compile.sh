@@ -30,7 +30,7 @@ else
   exit 1
 fi
 
-node ./packages/main/src/Main.js > ./packages/main/src/output.txt
+node ./packages/main/src/Main.mjs > ./packages/main/src/output.txt
 
 mv ./packages/main/src/Main.res ./packages/main/src/Main2.res
 rewatch build --no-timing=true &> ../tests/snapshots/rename-file.txt
