@@ -1,6 +1,5 @@
 use super::build_types::*;
 use super::packages;
-use crate::bsconfig;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::AHashSet;
@@ -75,11 +74,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                         .join(&source_file.implementation.path)
                         .to_string_lossy()
                         .to_string(),
-                    root_package
-                        .bsconfig
-                        .suffix
-                        .to_owned()
-                        .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
+                    root_package.bsconfig.get_suffix(),
                 ))
             }
             _ => None,
@@ -130,12 +125,7 @@ pub fn cleanup_previous_build(
                 .get(package_name)
                 .expect("Could not find package");
             remove_compile_assets(package, res_file_location);
-            remove_mjs_file(
-                res_file_location,
-                &suffix
-                    .to_owned()
-                    .unwrap_or(String::from(bsconfig::DEFAULT_SUFFIX)),
-            );
+            remove_mjs_file(res_file_location, &suffix);
             remove_iast(package, res_file_location);
             remove_ast(package, res_file_location);
             match helpers::get_extension(ast_file_path).as_str() {

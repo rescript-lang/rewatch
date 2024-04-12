@@ -4,8 +4,6 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub static DEFAULT_SUFFIX: &str = ".mjs";
-
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum OneOrMore<T> {
@@ -83,6 +81,7 @@ pub struct PackageSpec {
     pub module: String,
     #[serde(rename = "in-source")]
     pub in_source: bool,
+    pub suffix: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -341,5 +340,22 @@ impl Config {
         } else {
             vec![]
         }
+    }
+
+    pub fn get_module(&self) -> String {
+        match &self.package_specs {
+            Some(OneOrMore::Single(PackageSpec { module, .. })) => module.to_string(),
+            Some(OneOrMore::Multiple(_)) => panic!("Multiple package specs not supported"),
+            _ => "commonjs".to_string(),
+        }
+    }
+
+    pub fn get_suffix(&self) -> String {
+        match &self.package_specs {
+            Some(OneOrMore::Single(PackageSpec { suffix, .. })) => suffix.to_owned(),
+            Some(OneOrMore::Multiple(_)) => panic!("Multiple package specs not supported"),
+            _ => self.suffix.to_owned(),
+        }
+        .unwrap_or(".js".to_string())
     }
 }

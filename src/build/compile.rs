@@ -476,20 +476,15 @@ pub fn compiler_args(
     } else {
         debug!("Compiling file: {}", &module_name);
 
-        // TODO: Also read suffix from package-spec.
-        let suffix = match root_config.suffix.to_owned() {
-            Some(suffix) => suffix,
-            None => String::from(bsconfig::DEFAULT_SUFFIX),
-        };
-
         vec![
             "-bs-package-name".to_string(),
             config.name.to_owned(),
             "-bs-package-output".to_string(),
             format!(
-                "es6:{}:{}",
+                "{}:{}:{}",
+                root_config.get_module(),
                 Path::new(file_path).parent().unwrap().to_str().unwrap(),
-                suffix
+                root_config.get_suffix()
             ),
         ]
     };
