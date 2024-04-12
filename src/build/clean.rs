@@ -367,7 +367,7 @@ pub fn clean(path: &str) {
         "{}{} {}Cleaned compiler assets in {:.2}s",
         LINE_CLEAR,
         style("[1/2]").bold().dim(),
-        CHECKMARK,
+        SWEEP,
         timing_clean_compiler_assets_elapsed.as_secs_f64()
     );
     std::io::stdout().flush().unwrap();
@@ -390,7 +390,7 @@ pub fn clean(path: &str) {
         "{}{} {}Cleaned mjs files in {:.2}s",
         LINE_CLEAR,
         style("[2/2]").bold().dim(),
-        CHECKMARK,
+        SWEEP,
         timing_clean_mjs_elapsed.as_secs_f64()
     );
     std::io::stdout().flush().unwrap();
