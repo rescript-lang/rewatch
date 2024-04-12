@@ -44,10 +44,10 @@ pub fn run(command_string: String) {
 
         let subcommand_duration = start_subcommand.elapsed();
         println!(
-            "{}\n{} {}Ran subcommand in {:.2}s",
-            style("────────"),
+            "{}{} {}Ran subcommand in {:.2}s",
+            LINE_CLEAR,
             style("[...]").bold().dim(),
-            CHECKMARK,
+            COMMAND,
             subcommand_duration.as_secs_f64(),
         );
     }
