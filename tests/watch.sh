@@ -23,7 +23,7 @@ echo 'Js.log("added-by-test")' >> ./packages/main/src/Main.res
 
 sleep 1
 
-if node ./packages/main/src/Main.mjs | grep 'added-by-test' &> /dev/null; 
+if node ./packages/main/src/Main.js | grep 'added-by-test' &> /dev/null; 
 then
   success "Output is correct"
 else 
