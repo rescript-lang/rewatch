@@ -79,7 +79,7 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
         &workspace_root,
         workspace_root.as_ref().unwrap_or(&package_root),
     );
-    let is_interface = filename.ends_with("i");
+    let is_interface = filename.ends_with('i');
     let has_interface = if is_interface {
         true
     } else {
@@ -106,7 +106,7 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
     .unwrap()
 }
 
-pub fn initialize_build<'a>(
+pub fn initialize_build(
     default_timing: Option<Duration>,
     filter: &Option<regex::Regex>,
     path: &str,
@@ -120,7 +120,7 @@ pub fn initialize_build<'a>(
     print!("{}{}Building package tree...", style("[1/7]").bold().dim(), TREE);
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
-    let packages = packages::make(&filter, &project_root, &workspace_root);
+    let packages = packages::make(filter, &project_root, &workspace_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     println!(
@@ -307,7 +307,7 @@ pub fn incremental_build(
 
     logs::finalize(&build_state.packages);
     pb.finish();
-    if compile_errors.len() > 0 {
+    if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {
             println!("{}", &compile_warnings);
         }
@@ -326,7 +326,7 @@ pub fn incremental_build(
                 module.compile_dirty = true;
             }
         }
-        return Err(());
+        Err(())
     } else {
         println!(
             "{}{} {}Compiled {} modules in {:.2}s",

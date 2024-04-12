@@ -9,7 +9,7 @@ use crate::queue::*;
 use futures_timer::Delay;
 use notify::event::ModifyKind;
 use notify::{Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -21,24 +21,24 @@ enum CompileType {
     None,
 }
 
-fn is_rescript_file(path_buf: &PathBuf) -> bool {
+fn is_rescript_file(path_buf: &Path) -> bool {
     let extension = path_buf.extension().and_then(|ext| ext.to_str());
 
     if let Some(extension) = extension {
-        helpers::is_implementation_file(&extension) || helpers::is_interface_file(&extension)
+        helpers::is_implementation_file(extension) || helpers::is_interface_file(extension)
     } else {
         false
     }
 }
 
-fn is_in_build_path(path_buf: &PathBuf) -> bool {
+fn is_in_build_path(path_buf: &Path) -> bool {
     path_buf
         .to_str()
         .map(|x| x.contains("/lib/bs/") || x.contains("/lib/ocaml/"))
         .unwrap_or(false)
 }
 
-fn matches_filter(path_buf: &PathBuf, filter: &Option<regex::Regex>) -> bool {
+fn matches_filter(path_buf: &Path, filter: &Option<regex::Regex>) -> bool {
     let name = path_buf
         .file_name()
         .map(|x| x.to_string_lossy().to_string())
@@ -79,9 +79,8 @@ async fn async_watch(
             Delay::new(Duration::from_millis(50)).await;
         }
         while !q.is_empty() {
-            match q.pop() {
-                Ok(event) => events.push(event),
-                Err(_) => (),
+            if let Ok(event) = q.pop() {
+                events.push(event)
             }
         }
 
@@ -127,7 +126,7 @@ async fn async_watch(
                                             .expect("Package not found");
                                         let canonicalized_implementation_file =
                                             std::path::PathBuf::from(package.path.to_string())
-                                                .join(source_file.implementation.path.to_string());
+                                                .join(&source_file.implementation.path);
                                         if canonicalized_path_buf == canonicalized_implementation_file {
                                             if let Ok(modified) =
                                                 canonicalized_path_buf.metadata().and_then(|x| x.modified())
@@ -142,7 +141,7 @@ async fn async_watch(
                                         if let Some(ref mut interface) = source_file.interface {
                                             let canonicalized_interface_file =
                                                 std::path::PathBuf::from(package.path.to_string())
-                                                    .join(interface.path.to_string());
+                                                    .join(&interface.path);
                                             if canonicalized_path_buf == canonicalized_interface_file {
                                                 if let Ok(modified) = canonicalized_path_buf
                                                     .metadata()
@@ -179,24 +178,17 @@ async fn async_watch(
         match needs_compile_type {
             CompileType::Incremental => {
                 let timing_total = Instant::now();
-                match build::incremental_build(
-                    &mut build_state,
-                    None,
-                    initial_build,
-                    if initial_build { false } else { true },
-                ) {
-                    Ok(_) => {
-                        after_build.clone().map(|command| cmd::run(command));
-                        let timing_total_elapsed = timing_total.elapsed();
-                        println!(
-                            "\n{}{}Finished {} compilation in {:.2}s\n",
-                            LINE_CLEAR,
-                            SPARKLES,
-                            if initial_build { "initial" } else { "incremental" },
-                            timing_total_elapsed.as_secs_f64()
-                        );
-                    }
-                    Err(_) => (),
+                if build::incremental_build(&mut build_state, None, initial_build, !initial_build).is_ok()
+                {
+                    if let Some(a) = after_build.clone() { cmd::run(a) }
+                    let timing_total_elapsed = timing_total.elapsed();
+                    println!(
+                        "\n{}{}Finished {} compilation in {:.2}s\n",
+                        LINE_CLEAR,
+                        SPARKLES,
+                        if initial_build { "initial" } else { "incremental" },
+                        timing_total_elapsed.as_secs_f64()
+                    );
                 }
                 needs_compile_type = CompileType::None;
                 initial_build = false;
@@ -205,7 +197,7 @@ async fn async_watch(
                 let timing_total = Instant::now();
                 build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
                 let _ = build::incremental_build(&mut build_state, None, initial_build, false);
-                after_build.clone().map(|command| cmd::run(command));
+                if let Some(a) = after_build.clone() { cmd::run(a) }
                 let timing_total_elapsed = timing_total.elapsed();
                 println!(
                     "\n{}{}Finished compilation in {:.2}s\n",

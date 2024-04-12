@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 mod dependency_cycle;
 
 use super::build_types::*;
@@ -16,8 +18,8 @@ use std::time::SystemTime;
 
 pub fn compile(
     build_state: &mut BuildState,
-    inc: impl Fn() -> () + std::marker::Sync,
-    set_length: impl Fn(u64) -> (),
+    inc: impl Fn() + std::marker::Sync,
+    set_length: impl Fn(u64),
 ) -> (String, String, usize) {
     let mut compiled_modules = AHashSet::<String>::new();
     let dirty_modules = build_state
@@ -86,7 +88,7 @@ pub fn compile(
     let mut in_progress_modules = compile_universe
         .iter()
         .filter(|module_name| {
-            let module = build_state.get_module(*module_name).unwrap();
+            let module = build_state.get_module(module_name).unwrap();
             module.deps.intersection(&compile_universe).count() == 0
         })
         .map(|module_name| module_name.to_string())
@@ -156,8 +158,8 @@ pub fn compile(
                             let interface_result = match source_file.interface.to_owned() {
                                 Some(Interface { path, .. }) => {
                                     let result = compile_file(
-                                        &package,
-                                        &root_package,
+                                        package,
+                                        root_package,
                                         &package.get_iast_path(&path),
                                         module,
                                         &build_state.rescript_version,
@@ -172,8 +174,8 @@ pub fn compile(
                                 _ => None,
                             };
                             let result = compile_file(
-                                &package,
-                                &root_package,
+                                package,
+                                root_package,
                                 &package.get_ast_path(&source_file.implementation.path),
                                 module,
                                 &build_state.rescript_version,
@@ -280,24 +282,24 @@ pub fn compile(
                             match result {
                                 Ok(Some(err)) => {
                                     source_file.implementation.compile_state = CompileState::Warning;
-                                    logs::append(package, &err);
-                                    compile_warnings.push_str(&err);
+                                    logs::append(package, err);
+                                    compile_warnings.push_str(err);
                                 }
                                 Ok(None) => {
                                     source_file.implementation.compile_state = CompileState::Success;
                                 }
                                 Err(err) => {
                                     source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(package, &err);
-                                    compile_errors.push_str(&err);
+                                    logs::append(package, err);
+                                    compile_errors.push_str(err);
                                 }
                             };
                             match interface_result {
                                 Some(Ok(Some(err))) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Warning;
-                                    logs::append(package, &err);
-                                    compile_warnings.push_str(&err);
+                                    logs::append(package, err);
+                                    compile_warnings.push_str(err);
                                 }
                                 Some(Ok(None)) => {
                                     if let Some(interface) = source_file.interface.as_mut() {
@@ -308,8 +310,8 @@ pub fn compile(
                                 Some(Err(err)) => {
                                     source_file.interface.as_mut().unwrap().compile_state =
                                         CompileState::Error;
-                                    logs::append(package, &err);
-                                    compile_errors.push_str(&err);
+                                    logs::append(package, err);
+                                    compile_errors.push_str(err);
                                 }
                                 _ => (),
                             };
@@ -353,7 +355,7 @@ pub fn compile(
                 dependency_cycle::format(&cycle)
             ))
         }
-        if compile_errors.len() > 0 {
+        if !compile_errors.is_empty() {
             break;
         };
     }
@@ -492,7 +494,7 @@ pub fn compiler_args(
         ]
     };
 
-    let to_mjs_args = vec![
+    vec![
         namespace_args,
         read_cmi_args,
         vec!["-I".to_string(), ".".to_string()],
@@ -515,9 +517,7 @@ pub fn compiler_args(
         // ],
         vec![ast_path.to_string()],
     ]
-    .concat();
-
-    to_mjs_args
+    .concat()
 }
 
 fn compile_file(
@@ -544,7 +544,7 @@ fn compile_file(
         &root_package.bsconfig,
         ast_path,
         version,
-        &implementation_file_path,
+        implementation_file_path,
         is_interface,
         has_interface,
         project_root,
@@ -580,7 +580,7 @@ fn compile_file(
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
-                        .join(module_name.to_owned().replace("@", "") + ".cmi"),
+                        .join(module_name.to_owned().replace('@', "") + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
@@ -595,7 +595,7 @@ fn compile_file(
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
-                        .join(module_name.to_owned().replace("@", "") + ".cmt"),
+                        .join(module_name.to_owned().replace('@', "") + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(
@@ -725,13 +725,13 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                     SourceType::MlMap(_) => {
                         for dependent_of_namespace in dependent_module.dependents.iter() {
                             let dependent_module = build_state.modules.get(dependent_of_namespace).unwrap();
-                            match (dependent_module.last_compiled_cmt, module.last_compiled_cmi) {
-                                (Some(last_compiled_dependent), Some(last_compiled)) => {
-                                    if last_compiled_dependent < last_compiled {
-                                        modules_with_expired_deps.insert(dependent.to_string());
-                                    }
+
+                            if let (Some(last_compiled_dependent), Some(last_compiled)) =
+                                (dependent_module.last_compiled_cmt, module.last_compiled_cmi)
+                            {
+                                if last_compiled_dependent < last_compiled {
+                                    modules_with_expired_deps.insert(dependent.to_string());
                                 }
-                                _ => (),
                             }
                         }
                     }

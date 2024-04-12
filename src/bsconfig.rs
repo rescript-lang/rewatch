@@ -172,15 +172,13 @@ pub fn flatten_flags(flags: &Option<Vec<OneOrMore<String>>>) -> Vec<String> {
         None => vec![],
         Some(xs) => xs
             .iter()
-            .map(|x| match x {
+            .flat_map(|x| match x {
                 OneOrMore::Single(y) => vec![y.to_owned()],
                 OneOrMore::Multiple(ys) => ys.to_owned(),
             })
-            .flatten()
             .collect::<Vec<String>>()
             .iter()
-            .map(|str| str.split(" "))
-            .flatten()
+            .flat_map(|str| str.split(' '))
             .map(|str| str.to_string())
             .collect::<Vec<String>>(),
     }
@@ -197,9 +195,9 @@ pub fn flatten_ppx_flags(
         None => vec![],
         Some(xs) => xs
             .iter()
-            .map(|x| match x {
+            .flat_map(|x| match x {
                 OneOrMore::Single(y) => {
-                    let first_character = y.chars().nth(0);
+                    let first_character = y.chars().next();
                     match first_character {
                         Some('.') => {
                             vec![
@@ -210,9 +208,9 @@ pub fn flatten_ppx_flags(
                         _ => vec!["-ppx".to_string(), node_modules_dir.to_owned() + "/" + y],
                     }
                 }
-                OneOrMore::Multiple(ys) if ys.len() == 0 => vec![],
+                OneOrMore::Multiple(ys) if ys.is_empty() => vec![],
                 OneOrMore::Multiple(ys) => {
-                    let first_character = ys[0].chars().nth(0);
+                    let first_character = ys[0].chars().next();
                     let ppx = match first_character {
                         Some('.') => node_modules_dir.to_owned() + "/" + package_name + "/" + &ys[0],
                         _ => node_modules_dir.to_owned() + "/" + &ys[0],
@@ -227,7 +225,6 @@ pub fn flatten_ppx_flags(
                     ]
                 }
             })
-            .flatten()
             .collect::<Vec<String>>(),
     }
 }
@@ -243,14 +240,14 @@ pub fn read(path: String) -> Config {
 }
 
 fn check_if_rescript11_or_higher(version: &str) -> bool {
-    version.split(".").nth(0).unwrap().parse::<usize>().unwrap() >= 11
+    version.split('.').next().unwrap().parse::<usize>().unwrap() >= 11
 }
 
 fn namespace_from_package_name(package_name: &str) -> String {
     package_name
         .to_owned()
-        .replace("@", "")
-        .replace("/", "_")
+        .replace('@', "")
+        .replace('/', "_")
         .to_case(Case::Pascal)
 }
 
