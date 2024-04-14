@@ -367,3 +367,26 @@ impl Config {
         .unwrap_or(".js".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_getters() {
+        let json = r#"
+        {
+            "name": "my-monorepo",
+            "sources": [ { "dir": "src/", "subdirs": true } ],
+            "package-specs": [ { "module": "es6", "in-source": true } ],
+            "suffix": ".mjs",
+            "pinned-dependencies": [ "@teamwalnut/app" ],
+            "bs-dependencies": [ "@teamwalnut/app" ]
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(config.get_suffix(), ".mjs");
+        assert_eq!(config.get_module(), "es6");
+    }
+}
