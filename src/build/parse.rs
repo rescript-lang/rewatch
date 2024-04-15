@@ -93,7 +93,12 @@ pub fn generate_asts(
         .into_iter()
         .for_each(|(module_name, ast_path, iast_path, is_dirty)| {
             if let Some(module) = build_state.modules.get_mut(&module_name) {
-                module.compile_dirty = is_dirty;
+                // if the module is dirty, mark it also compile_dirty
+                // do NOT set to false if the module is not parse_dirty, it needs to keep
+                // the compile_dirty flag if it was set before
+                if is_dirty {
+                    module.compile_dirty = true;
+                }
                 let package = build_state
                     .packages
                     .get(&module.package_name)
