@@ -281,8 +281,7 @@ fn generate_ast(
             if res_to_ast.status.success() {
                 Ok((ast_path, Some(stderr.to_string())))
             } else {
-                println!("err: {}", stderr);
-                Err(stderr.to_string())
+                Err(format!("Error in {}:\n{}", package.name, stderr))
             }
         } else {
             Ok((ast_path, None))
