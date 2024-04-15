@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# ensure that we have at least one argument conforming to semver
+if [ $# -ne 1 ] || ! echo $1 | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
+  echo "Usage: $0 <version>"
+  exit 1
+fi
+
 # ensure we are on the master branch otherwise exit
 if [ $(git rev-parse --abbrev-ref HEAD) != "master" ]; then
   echo "Not on master branch, exiting"
