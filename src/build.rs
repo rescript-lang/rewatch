@@ -72,6 +72,10 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
         .unwrap()
         .to_string_lossy()
         .to_string();
+
+    let file_path = PathBuf::from(&package_root).join(filename);
+    let contents = helpers::read_file(&file_path).expect("Error reading file");
+
     let (ast_path, parser_args) = parser_args(
         &rescript_config,
         &root_rescript_config,
@@ -79,6 +83,7 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
         &rescript_version,
         &workspace_root,
         workspace_root.as_ref().unwrap_or(&package_root),
+        &contents,
     );
     let is_interface = filename.ends_with('i');
     let has_interface = if is_interface {

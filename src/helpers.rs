@@ -1,6 +1,8 @@
 use crate::build::packages;
 use std::ffi::OsString;
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::io::{self, BufRead};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -319,4 +321,11 @@ pub fn get_rescript_version(bsc_path: &str) -> String {
         .expect("Could not read version from rescript")
         .replace('\n', "")
         .replace("ReScript ", "")
+}
+
+pub fn read_file(path: &Path) -> Result<String, std::io::Error> {
+    let mut file = File::open(path).expect("file not found");
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
 }
