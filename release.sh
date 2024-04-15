@@ -22,10 +22,10 @@ cargo build
 
 # commit the changes with the version
 git add Cargo.toml package.json Cargo.lock
-git commit -m "Release v$1"
+git commit -m ":rocket: - Release v$1"
 
 # tag current commit with the first argument
-git tag -a v$1 -m "Release v$1"
+git tag -a v$1 -m ":rocket: - Release v$1"
 
 # push the changes
 git push origin master
