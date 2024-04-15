@@ -13,20 +13,22 @@ if [ $(git rev-parse --abbrev-ref HEAD) != "master" ]; then
 fi
 
 # update the version in package.json
-npm version $1
+sed -i '' -e "s/\"version\": \".*\"/\"version\": \"$1\"/" package.json
+
 
 # update the version in cargo.toml
 sed -i '' -e "s/^version = \".*\"/version = \"$1\"/" Cargo.toml
+cargo build
 
 # commit the changes with the version
-git add Cargo.toml package.json
-git commit -m "Release $1"
+git add Cargo.toml package.json Cargo.lock
+git commit -m "Release v$1"
 
 # tag current commit with the first argument
-git tag -a $1 -m "Release $1"
+git tag -a v$1 -m "Release v$1"
 
 # push the changes
 git push origin master
 
 # push the tag
-git push origin $1
+git push origin v$1
