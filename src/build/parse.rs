@@ -212,6 +212,7 @@ pub fn parser_args(
     version: &str,
     workspace_root: &Option<String>,
     root_path: &str,
+    contents: &str,
 ) -> (String, Vec<String>) {
     let file = &filename.to_string();
     let path = PathBuf::from(filename);
@@ -223,7 +224,7 @@ pub fn parser_args(
         } else {
             format!("{}/node_modules", &root_path)
         },
-        &filter_ppx_flags(&config.ppx_flags),
+        &filter_ppx_flags(&config.ppx_flags, contents),
         &config.name,
     );
     let jsx_args = root_config.get_jsx_args();
@@ -263,6 +264,9 @@ fn generate_ast(
     bsc_path: &str,
     workspace_root: &Option<String>,
 ) -> Result<(String, Option<String>), String> {
+    let file_path = PathBuf::from(&package.path).join(filename);
+    let contents = helpers::read_file(&file_path).expect("Error reading file");
+
     let build_path_abs = package.get_build_path();
     let (ast_path, parser_args) = parser_args(
         &package.bsconfig,
@@ -271,6 +275,7 @@ fn generate_ast(
         version,
         workspace_root,
         &root_package.path,
+        &contents,
     );
 
     /* Create .ast */
@@ -309,19 +314,28 @@ fn path_to_ast_extension(path: &Path) -> &str {
     }
 }
 
-fn filter_ppx_flags(ppx_flags: &Option<Vec<OneOrMore<String>>>) -> Option<Vec<OneOrMore<String>>> {
+fn include_ppx(flag: &str, contents: &str) -> bool {
+    if flag.contains("bisect") {
+        return std::env::var("BISECT_ENABLE").is_ok();
+    } else if flag.contains("graphql-ppx") && !contents.contains("%graphql") {
+        return false;
+    } else if flag.contains("spice") && !contents.contains("@spice") {
+        return false;
+    }
+    return true;
+}
+
+fn filter_ppx_flags(
+    ppx_flags: &Option<Vec<OneOrMore<String>>>,
+    contents: &str,
+) -> Option<Vec<OneOrMore<String>>> {
     // get the environment variable "BISECT_ENABLE" if it exists set the filter to "bisect"
-    let filter = match std::env::var("BISECT_ENABLE") {
-        Ok(_) => None,
-        Err(_) => Some("bisect"),
-    };
     ppx_flags.as_ref().map(|flags| {
         flags
             .iter()
-            .filter(|flag| match (flag, filter) {
-                (bsconfig::OneOrMore::Single(str), Some(filter)) => !str.contains(filter),
-                (bsconfig::OneOrMore::Multiple(str), Some(filter)) => !str.first().unwrap().contains(filter),
-                _ => true,
+            .filter(|flag| match flag {
+                bsconfig::OneOrMore::Single(str) => include_ppx(str, contents),
+                bsconfig::OneOrMore::Multiple(str) => include_ppx(str.first().unwrap(), contents),
             })
             .map(|x| x.to_owned())
             .collect::<Vec<OneOrMore<String>>>()
