@@ -35,7 +35,7 @@ pub fn generate_asts(
                 SourceType::SourceFile(source_file) => {
                     let root_package = build_state.get_package(&build_state.root_config_name).unwrap();
 
-                    let (ast_path, iast_path, dirty) = if source_file.implementation.parse_dirty
+                    let (ast_result, iast_result, dirty) = if source_file.implementation.parse_dirty
                         || source_file
                             .interface
                             .as_ref()
@@ -80,18 +80,18 @@ pub fn generate_asts(
                         )
                     };
 
-                    (module_name.to_owned(), ast_path, iast_path, dirty)
+                    (module_name.to_owned(), ast_result, iast_result, dirty)
                 }
             }
         })
         .collect::<Vec<(
             String,
-            Result<(String, Option<String>), String>,
-            Result<Option<(String, Option<String>)>, String>,
+            Result<(String, Option<helpers::StdErr>), String>,
+            Result<Option<(String, Option<helpers::StdErr>)>, String>,
             bool,
         )>>()
         .into_iter()
-        .for_each(|(module_name, ast_path, iast_path, is_dirty)| {
+        .for_each(|(module_name, ast_result, iast_result, is_dirty)| {
             if let Some(module) = build_state.modules.get_mut(&module_name) {
                 // if the module is dirty, mark it also compile_dirty
                 // do NOT set to false if the module is not parse_dirty, it needs to keep
@@ -104,18 +104,24 @@ pub fn generate_asts(
                     .get(&module.package_name)
                     .expect("Package not found");
                 if let SourceType::SourceFile(ref mut source_file) = module.source_type {
-                    match ast_path {
-                        // supress warnings in non-pinned deps
-                        Ok((_path, Some(err))) if package.is_pinned_dep => {
+                    // We get Err(x) when there is a parse error. When it's Ok(_, Some(
+                    // stderr_warnings )), the outputs are warnings
+                    match ast_result {
+                        // In case of a pinned (internal) dependency, we want to keep on
+                        // propagating the warning with every compile. So we mark it as dirty for
+                        // the next round
+                        Ok((_path, Some(stderr_warnings))) if package.is_pinned_dep => {
                             source_file.implementation.parse_state = ParseState::Warning;
                             source_file.implementation.parse_dirty = true;
                             if let Some(interface) = source_file.interface.as_mut() {
                                 interface.parse_dirty = false;
                             }
-                            logs::append(package, &err);
-                            stderr.push_str(&err);
+                            logs::append(package, &stderr_warnings);
+                            stderr.push_str(&stderr_warnings);
                         }
-                        Ok((_path, None)) => {
+                        Ok((_path, Some(_))) | Ok((_path, None)) => {
+                            // If we do have stderr_warnings here, the file is not a pinned
+                            // dependency (so some external dep). We can ignore those
                             source_file.implementation.parse_state = ParseState::Success;
                             source_file.implementation.parse_dirty = false;
                             if let Some(interface) = source_file.interface.as_mut() {
@@ -123,38 +129,52 @@ pub fn generate_asts(
                             }
                         }
                         Err(err) => {
+                            // Some compilation error
                             source_file.implementation.parse_state = ParseState::ParseError;
                             source_file.implementation.parse_dirty = true;
                             logs::append(package, &err);
                             has_failure = true;
                             stderr.push_str(&err);
                         }
-                        _ => (),
                     };
-                }
 
-                match (iast_path, module.source_type.to_owned()) {
-                    (Ok(Some((_path, Some(err)))), SourceType::SourceFile(ref mut source_file))
-                        if package.is_pinned_dep =>
-                    {
-                        // supress warnings in non-pinned deps
-                        if let Some(interface) = source_file.interface.as_mut() {
-                            interface.parse_state = ParseState::Warning;
-                            interface.parse_dirty = true;
+                    // We get Err(x) when there is a parse error. When it's Ok(_, Some(( _path,
+                    // stderr_warnings ))), the outputs are warnings
+                    match iast_result {
+                        // In case of a pinned (internal) dependency, we want to keep on
+                        // propagating the warning with every compile. So we mark it as dirty for
+                        // the next round
+                        Ok(Some((_path, Some(stderr_warnings)))) if package.is_pinned_dep => {
+                            if let Some(interface) = source_file.interface.as_mut() {
+                                interface.parse_state = ParseState::Warning;
+                                interface.parse_dirty = true;
+                            }
+                            logs::append(package, &stderr_warnings);
+                            stderr.push_str(&stderr_warnings);
                         }
-                        logs::append(package, &err);
-                        stderr.push_str(&err);
-                    }
-                    (Err(err), SourceType::SourceFile(ref mut source_file)) => {
-                        if let Some(interface) = source_file.interface.as_mut() {
-                            interface.parse_state = ParseState::ParseError;
-                            interface.parse_dirty = true;
+                        Ok(Some((_, None))) | Ok(Some((_, Some(_)))) => {
+                            // If we do have stderr_warnings here, the file is not a pinned
+                            // dependency (so some external dep). We can ignore those
+                            if let Some(interface) = source_file.interface.as_mut() {
+                                interface.parse_state = ParseState::Success;
+                                interface.parse_dirty = false;
+                            }
                         }
-                        logs::append(package, &err);
-                        has_failure = true;
-                        stderr.push_str(&err);
+                        Err(err) => {
+                            // Some compilation error
+                            if let Some(interface) = source_file.interface.as_mut() {
+                                interface.parse_state = ParseState::ParseError;
+                                interface.parse_dirty = true;
+                            }
+                            logs::append(package, &err);
+                            has_failure = true;
+                            stderr.push_str(&err);
+                        }
+                        Ok(None) => {
+                            // The file had no interface file associated
+                            ()
+                        }
                     }
-                    _ => (),
                 };
             }
         });
@@ -263,7 +283,7 @@ fn generate_ast(
     version: &str,
     bsc_path: &str,
     workspace_root: &Option<String>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<helpers::StdErr>), String> {
     let file_path = PathBuf::from(&package.path).join(filename);
     let contents = helpers::read_file(&file_path).expect("Error reading file");
 
