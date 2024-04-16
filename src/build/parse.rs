@@ -349,9 +349,14 @@ fn path_to_ast_extension(path: &Path) -> &str {
 fn include_ppx(flag: &str, contents: &str) -> bool {
     if flag.contains("bisect") {
         return std::env::var("BISECT_ENABLE").is_ok();
-    } else if flag.contains("graphql-ppx") && !contents.contains("%graphql") {
+    } else if (flag.contains("graphql-ppx") || flag.contains("graphql_ppx")) && !contents.contains("%graphql")
+    {
         return false;
     } else if flag.contains("spice") && !contents.contains("@spice") {
+        return false;
+    } else if flag.contains("rescript-relay") && !contents.contains("%relay") {
+        return false;
+    } else if flag.contains("re-formality") && !contents.contains("%form") {
         return false;
     }
     return true;
