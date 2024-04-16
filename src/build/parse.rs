@@ -103,35 +103,35 @@ pub fn generate_asts(
                     .packages
                     .get(&module.package_name)
                     .expect("Package not found");
-                match (ast_path, module.source_type.to_owned()) {
-                    // supress warnings in non-pinned deps
-                    (Ok((_path, Some(err))), SourceType::SourceFile(ref mut source_file))
-                        if package.is_pinned_dep =>
-                    {
-                        source_file.implementation.parse_state = ParseState::Warning;
-                        source_file.implementation.parse_dirty = true;
-                        if let Some(interface) = source_file.interface.as_mut() {
-                            interface.parse_dirty = false;
+                if let SourceType::SourceFile(ref mut source_file) = module.source_type {
+                    match ast_path {
+                        // supress warnings in non-pinned deps
+                        Ok((_path, Some(err))) if package.is_pinned_dep => {
+                            source_file.implementation.parse_state = ParseState::Warning;
+                            source_file.implementation.parse_dirty = true;
+                            if let Some(interface) = source_file.interface.as_mut() {
+                                interface.parse_dirty = false;
+                            }
+                            logs::append(package, &err);
+                            stderr.push_str(&err);
                         }
-                        logs::append(package, &err);
-                        stderr.push_str(&err);
-                    }
-                    (Ok((_path, None)), SourceType::SourceFile(ref mut source_file)) => {
-                        source_file.implementation.parse_state = ParseState::Success;
-                        source_file.implementation.parse_dirty = false;
-                        if let Some(interface) = source_file.interface.as_mut() {
-                            interface.parse_dirty = false;
+                        Ok((_path, None)) => {
+                            source_file.implementation.parse_state = ParseState::Success;
+                            source_file.implementation.parse_dirty = false;
+                            if let Some(interface) = source_file.interface.as_mut() {
+                                interface.parse_dirty = false;
+                            }
                         }
-                    }
-                    (Err(err), SourceType::SourceFile(ref mut source_file)) => {
-                        source_file.implementation.parse_state = ParseState::ParseError;
-                        source_file.implementation.parse_dirty = true;
-                        logs::append(package, &err);
-                        has_failure = true;
-                        stderr.push_str(&err);
-                    }
-                    _ => (),
-                };
+                        Err(err) => {
+                            source_file.implementation.parse_state = ParseState::ParseError;
+                            source_file.implementation.parse_dirty = true;
+                            logs::append(package, &err);
+                            has_failure = true;
+                            stderr.push_str(&err);
+                        }
+                        _ => (),
+                    };
+                }
 
                 match (iast_path, module.source_type.to_owned()) {
                     (Ok(Some((_path, Some(err)))), SourceType::SourceFile(ref mut source_file))
