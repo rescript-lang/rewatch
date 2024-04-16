@@ -8,6 +8,8 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub type StdErr = String;
+
 pub mod emojis {
     use console::Emoji;
     pub static COMMAND: Emoji<'_, '_> = Emoji("🏃 ", "");
