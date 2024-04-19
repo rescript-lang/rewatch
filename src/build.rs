@@ -11,6 +11,7 @@ pub mod read_compile_state;
 use crate::build::compile::{mark_modules_with_deleted_deps_dirty, mark_modules_with_expired_deps_dirty};
 use crate::helpers::emojis::*;
 use crate::helpers::{self, get_workspace_root};
+use crate::sourcedirs;
 use ahash::AHashSet;
 use build_types::*;
 use console::style;
@@ -344,6 +345,7 @@ pub fn incremental_build(
     let compile_duration = start_compiling.elapsed();
 
     logs::finalize(&build_state.packages);
+    sourcedirs::print(&build_state);
     pb.finish();
     if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {

@@ -1,13 +1,7 @@
 use clap::{Parser, ValueEnum};
 use regex::Regex;
 
-pub mod bsconfig;
-pub mod build;
-pub mod cmd;
-pub mod helpers;
-pub mod lock;
-pub mod queue;
-pub mod watcher;
+use rewatch::{build, cmd, lock, watcher};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Command {
