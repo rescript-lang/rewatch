@@ -252,6 +252,7 @@ pub fn incremental_build(
     default_timing: Option<Duration>,
     initial_build: bool,
     only_incremental: bool,
+    create_sourcedirs: bool,
 ) -> Result<(), IncrementalBuildError> {
     logs::initialize(&build_state.packages);
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
@@ -345,7 +346,9 @@ pub fn incremental_build(
     let compile_duration = start_compiling.elapsed();
 
     logs::finalize(&build_state.packages);
-    sourcedirs::print(&build_state);
+    if create_sourcedirs {
+        sourcedirs::print(&build_state);
+    }
     pb.finish();
     if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {
@@ -404,7 +407,12 @@ impl fmt::Display for BuildError {
     }
 }
 
-pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Result<BuildState, BuildError> {
+pub fn build(
+    filter: &Option<regex::Regex>,
+    path: &str,
+    no_timing: bool,
+    create_sourcedirs: bool,
+) -> Result<BuildState, BuildError> {
     let default_timing: Option<std::time::Duration> = if no_timing {
         Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
     } else {
@@ -414,7 +422,7 @@ pub fn build(filter: &Option<regex::Regex>, path: &str, no_timing: bool) -> Resu
     let mut build_state =
         initialize_build(default_timing, filter, path).map_err(BuildError::InitializeBuild)?;
 
-    match incremental_build(&mut build_state, default_timing, true, false) {
+    match incremental_build(&mut build_state, default_timing, true, false, create_sourcedirs) {
         Ok(_) => {
             let timing_total_elapsed = timing_total.elapsed();
             println!(

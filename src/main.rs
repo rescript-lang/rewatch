@@ -40,6 +40,11 @@ struct Args {
     #[arg(short, long)]
     no_timing: Option<bool>,
 
+    /// This creates a source_dirs.json file at the root of the monorepo, which is needed when you
+    /// want to use Reanalyze
+    #[arg(short, long)]
+    create_sourcedirs: Option<bool>,
+
     #[arg(long)]
     compiler_args: Option<String>,
 
@@ -73,7 +78,12 @@ fn main() {
         lock::Lock::Aquired(_) => match command {
             Command::Clean => build::clean::clean(&folder),
             Command::Build => {
-                match build::build(&filter, &folder, args.no_timing.unwrap_or(false)) {
+                match build::build(
+                    &filter,
+                    &folder,
+                    args.no_timing.unwrap_or(false),
+                    args.create_sourcedirs.unwrap_or(false),
+                ) {
                     Err(e) => {
                         eprintln!("Error Building: {e}");
                         std::process::exit(1)
@@ -87,7 +97,12 @@ fn main() {
                 };
             }
             Command::Watch => {
-                watcher::start(&filter, &folder, args.after_build);
+                watcher::start(
+                    &filter,
+                    &folder,
+                    args.after_build,
+                    args.create_sourcedirs.unwrap_or(false),
+                );
             }
         },
     }

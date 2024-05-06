@@ -51,6 +51,7 @@ async fn async_watch(
     path: &str,
     filter: &Option<regex::Regex>,
     after_build: Option<String>,
+    create_sourcedirs: bool,
 ) -> notify::Result<()> {
     let mut build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
     let mut needs_compile_type = CompileType::Incremental;
@@ -178,7 +179,15 @@ async fn async_watch(
         match needs_compile_type {
             CompileType::Incremental => {
                 let timing_total = Instant::now();
-                if build::incremental_build(&mut build_state, None, initial_build, !initial_build).is_ok() {
+                if build::incremental_build(
+                    &mut build_state,
+                    None,
+                    initial_build,
+                    !initial_build,
+                    create_sourcedirs,
+                )
+                .is_ok()
+                {
                     if let Some(a) = after_build.clone() {
                         cmd::run(a)
                     }
@@ -197,7 +206,8 @@ async fn async_watch(
             CompileType::Full => {
                 let timing_total = Instant::now();
                 build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
-                let _ = build::incremental_build(&mut build_state, None, initial_build, false);
+                let _ =
+                    build::incremental_build(&mut build_state, None, initial_build, false, create_sourcedirs);
                 if let Some(a) = after_build.clone() {
                     cmd::run(a)
                 }
@@ -220,7 +230,12 @@ async fn async_watch(
     }
 }
 
-pub fn start(filter: &Option<regex::Regex>, folder: &str, after_build: Option<String>) {
+pub fn start(
+    filter: &Option<regex::Regex>,
+    folder: &str,
+    after_build: Option<String>,
+    create_sourcedirs: bool,
+) {
     futures::executor::block_on(async {
         let queue = Arc::new(FifoQueue::<Result<Event, Error>>::new());
         let producer = queue.clone();
@@ -232,7 +247,7 @@ pub fn start(filter: &Option<regex::Regex>, folder: &str, after_build: Option<St
             .watch(folder.as_ref(), RecursiveMode::Recursive)
             .expect("Could not start watcher");
 
-        if let Err(e) = async_watch(consumer, folder, filter, after_build).await {
+        if let Err(e) = async_watch(consumer, folder, filter, after_build, create_sourcedirs).await {
             println!("error: {:?}", e)
         }
     })

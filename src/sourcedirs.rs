@@ -85,7 +85,7 @@ pub fn print(buildstate: &BuildState) {
 
             // Write sourcedirs.json
             write_sourcedirs_files(
-                package.get_build_path(),
+                package.get_bs_build_path(),
                 &SourceDirs {
                     dirs: &dirs.clone().into_iter().collect::<Vec<Dir>>(),
                     pkgs: &pkgs.clone().flatten().collect::<Vec<Pkg>>(),
@@ -101,12 +101,18 @@ pub fn print(buildstate: &BuildState) {
         })
         .unzip();
 
+    let mut merged_dirs: AHashSet<Dir> = AHashSet::new();
+    let mut merged_pkgs: AHashMap<PackageName, AbsolutePath> = AHashMap::new();
+
+    dirs.into_iter().for_each(|dir_set| merged_dirs.extend(dir_set));
+    pkgs.into_iter().for_each(|pkg_set| merged_pkgs.extend(pkg_set));
+
     // Write sourcedirs.json
     write_sourcedirs_files(
         root_package.get_bs_build_path(),
         &SourceDirs {
-            dirs: &dirs.into_iter().flatten().collect::<Vec<Dir>>(),
-            pkgs: &pkgs.into_iter().flatten().collect::<Vec<Pkg>>(),
+            dirs: &merged_dirs.into_iter().collect::<Vec<Dir>>(),
+            pkgs: &merged_pkgs.into_iter().collect::<Vec<Pkg>>(),
             generated: &vec![],
         },
     )
