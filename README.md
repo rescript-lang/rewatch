@@ -87,7 +87,7 @@ Options:
   - [NodeJS](https://nodejs.org/en/) - For running testscripts only
   - [Yarn](https://yarnpkg.com/) or [Npm](https://www.npmjs.com/) - Npm probably comes with your node installation
 
-  1. `cd testrepo && yarn` (install dependencies for submodule)
+  1. `cd testrepo_yarn && yarn` (install dependencies for submodule)
   2. `cargo run`
 
   Running tests:

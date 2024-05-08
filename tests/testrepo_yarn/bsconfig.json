@@ -1,5 +1,5 @@
 {
-  "name": "testrepo",
+  "name": "testrepo_yarn",
   "sources": {
     "dir": "src",
     "subdirs": true
@@ -15,16 +15,16 @@
   },
   "suffix": ".mjs",
   "pinned-dependencies": [
-    "@testrepo/main",
-    "@testrepo/dep01",
-    "@testrepo/dep02",
-    "@testrepo/new-namespace"
+    "@testrepo_yarn/main",
+    "@testrepo_yarn/dep01",
+    "@testrepo_yarn/dep02",
+    "@testrepo_yarn/new-namespace"
   ],
   "bs-dependencies": [
-    "@testrepo/main",
-    "@testrepo/dep01",
-    "@testrepo/dep02",
-    "@testrepo/new-namespace"
+    "@testrepo_yarn/main",
+    "@testrepo_yarn/dep01",
+    "@testrepo_yarn/dep02",
+    "@testrepo_yarn/new-namespace"
   ],
   "reason": {
     "react-jsx": 3

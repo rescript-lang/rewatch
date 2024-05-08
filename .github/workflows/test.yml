@@ -24,6 +24,6 @@ jobs:
       - name: Run unit test
         run: cargo test
       - name: Install Yarn Dependencies
-        run: cd ./testrepo && yarn install
+        run: cd ./tests/testrepo && yarn install
       - name: Run Test
         run: ./tests/suite-ci.sh

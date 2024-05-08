@@ -1,5 +1,5 @@
 {
-  "name": "testrepo",
+  "name": "testrepo_yarn",
   "private": true,
   "workspaces": {
     "packages": [

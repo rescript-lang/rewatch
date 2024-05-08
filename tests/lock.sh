@@ -1,5 +1,5 @@
 source "./utils.sh"
-cd ../testrepo
+cd ../testrepo_yarn
 
 bold "Test: It should lock - when watching"
 

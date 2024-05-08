@@ -13,12 +13,12 @@ else
   exit 1
 fi
 
-bold "Make sure the testrepo is clean"
-if git diff --exit-code ../testrepo &> /dev/null; 
+bold "Make sure the testrepo_yarn is clean"
+if git diff --exit-code ../testrepo_yarn &> /dev/null; 
 then
-  success "Testrepo has no changes"
+  success "testrepo_yarn has no changes"
 else 
-  error "Testrepo is not clean to start with"
+  error "testrepo_yarn is not clean to start with"
   exit 1
 fi
 

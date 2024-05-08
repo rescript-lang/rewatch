@@ -9,7 +9,7 @@ use std::io::prelude::*;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("build-package-tree", |b| {
-        // Folder for the testrepo
+        // Folder for the testrepo_yarn
         let folder = "walnut_monorepo";
         let project_root = helpers::get_abs_path(folder);
 
@@ -19,9 +19,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     c.bench_function("clean-build-change-build", |b| {
-        // Folder for the testrepo
-        let folder = "testrepo";
-        let filename = "testrepo/packages/dep02/src/Dep02.res";
+        // Folder for the testrepo_yarn
+        let folder = "testrepo_yarn";
+        let filename = "testrepo_yarn/packages/dep02/src/Dep02.res";
         // Clean the build
         clean::clean(folder);
         // Read the file we'll be mutating

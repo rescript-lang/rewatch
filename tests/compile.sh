@@ -1,7 +1,7 @@
 #!/bin/bash
 cd $(dirname $0)
 source "./utils.sh"
-cd ../testrepo
+cd ../testrepo_yarn
 
 bold "Test: It should compile"
 
@@ -24,7 +24,7 @@ fi
 
 if git diff --exit-code ./; 
 then
-  success "Testrepo has no changes"
+  success "testrepo_yarn has no changes"
 else 
   error "Build has changed"
   exit 1

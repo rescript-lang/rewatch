@@ -1,5 +1,5 @@
 {
-  "name": "@testrepo/dep02",
+  "name": "@testrepo_yarn/dep02",
   "version": "0.0.1",
   "scripts": {
     "res:build": "rescript",

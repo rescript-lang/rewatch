@@ -1,5 +1,5 @@
 {
-  "name": "@testrepo/new-namespace",
+  "name": "@testrepo_yarn/new-namespace",
   "namespace": "NewNamespace",
   "namespace-entry": "NS",
   "sources": {
@@ -10,6 +10,6 @@
     "module": "es6",
     "in-source": true
   },
-  "bs-dependencies": ["@testrepo/dep01"],
+  "bs-dependencies": ["@testrepo_yarn/dep01"],
   "suffix": ".bs.js"
 }

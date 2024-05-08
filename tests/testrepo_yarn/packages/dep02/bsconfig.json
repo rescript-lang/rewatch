@@ -1,5 +1,5 @@
 {
-  "name": "@testrepo/dep02",
+  "name": "@testrepo_yarn/dep02",
   "sources": {
     "dir": "src",
     "subdirs": true
@@ -9,5 +9,5 @@
     "in-source": true
   },
   "suffix": ".bs.js",
-  "bs-dependencies": ["@testrepo/new-namespace"]
+  "bs-dependencies": ["@testrepo_yarn/new-namespace"]
 }
