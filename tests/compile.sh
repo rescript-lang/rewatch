@@ -25,7 +25,7 @@ fi
 
 if git diff --exit-code ./; 
 then
-  success "testrepo_yarn has no changes"
+  success "testrepo has no changes"
 else 
   error "Build has changed"
   exit 1
