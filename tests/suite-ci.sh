@@ -35,10 +35,10 @@ bold "Yarn Tests"
 ./compile.sh "testrepo_yarn" \
         && ./watch.sh "testrepo_yarn" \
         && ./lock.sh "testrepo_yarn" \
-        && ./suffix.sh "testrepo_yarn"
+        && ./suffix.sh "testrepo_yarn";
 
 bold "PNPM Tests"
 ./compile.sh "testrepo_pnpm" \
         && ./watch.sh "testrepo_pnpm" \
         && ./lock.sh "testrepo_pnpm" \
-        && ./suffix.sh "testrepo_pnpm"
+        && ./suffix.sh "testrepo_pnpm";

@@ -23,9 +23,11 @@ jobs:
         run: cargo build --release
       - name: Run unit test
         run: cargo test
+      - name: Install PNPM
+        run: npm i -g pnpm
       - name: Install Yarn Dependencies
         run: cd ./tests/testrepo_yarn && yarn install
-      - name: Install Pnpm Dependencies
+      - name: Install PNPM Dependencies
         run: cd ./tests/testrepo_pnpm && pnpm install
       - name: Run Test
         run: ./tests/suite-ci.sh
