@@ -1,0 +1,13 @@
+{
+  "name": "@testrepo_pnpm/dep02",
+  "sources": {
+    "dir": "src",
+    "subdirs": true
+  },
+  "package-specs": {
+    "module": "es6",
+    "in-source": true
+  },
+  "suffix": ".bs.js",
+  "bs-dependencies": ["@testrepo_pnpm/new-namespace"]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "testrepo_pnpm",
+  "sources": {
+    "dir": "src",
+    "subdirs": true
+  },
+  "package-specs": [
+    {
+      "module": "es6",
+      "in-source": true
+    }
+  ],
+  "warnings": {
+    "error": false
+  },
+  "suffix": ".mjs",
+  "pinned-dependencies": [
+    "@testrepo_pnpm/main",
+    "@testrepo_pnpm/dep01",
+    "@testrepo_pnpm/dep02",
+    "@testrepo_pnpm/new-namespace"
+  ],
+  "bs-dependencies": [
+    "@testrepo_pnpm/main",
+    "@testrepo_pnpm/dep01",
+    "@testrepo_pnpm/dep02",
+    "@testrepo_pnpm/new-namespace"
+  ],
+  "reason": {
+    "react-jsx": 3
+  }
+}

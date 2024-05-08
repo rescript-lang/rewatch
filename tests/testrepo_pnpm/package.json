@@ -1,0 +1,20 @@
+{
+  "name": "testrepo_pnpm",
+  "private": true,
+  "scripts": {
+    "build": "../target/release/rewatch build .",
+    "build:rescript": "rescript build -with-deps",
+    "watch": "../target/release/rewatch watch .",
+    "watch:rescript": "rescript watch -with-deps",
+    "clean": "../target/release/rewatch clean .",
+    "clean:rescript": "rescript clean"
+  },
+  "devDependencies": {
+    "@testrepo_pnpm/main": "workspace:*",
+    "@testrepo_pnpm/dep01": "workspace:*",
+    "@testrepo_pnpm/dep02": "workspace:*",
+    "@testrepo_pnpm/new-namespace": "workspace:*",
+    "@rolandpeelen/rewatch": "^1.0.1",
+    "rescript": "^11.1.0-rc.7"
+  }
+}

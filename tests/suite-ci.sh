@@ -22,7 +22,21 @@ else
   exit 1
 fi
 
+bold "Make sure the testrepo_pnpm is clean"
+if git diff --exit-code ./testrepo_pnpm &> /dev/null; 
+then
+  success "testrepo_pnpm has no changes"
+else 
+  error "testrepo_pnpm is not clean to start with"
+  exit 1
+fi
+
 ./compile.sh "testrepo_yarn" \
         && ../watch.sh "testrepo_yarn" \
         && ../lock.sh "testrepo_yarn" \
         && ../suffix.sh "testrepo_yarn"
+
+./compile.sh "testrepo_pnpm" \
+        && ../watch.sh "testrepo_pnpm" \
+        && ../lock.sh "testrepo_pnpm" \
+        && ../suffix.sh "testrepo_pnpm"

@@ -1,0 +1,75 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@rolandpeelen/rewatch':
+        specifier: ^1.0.1
+        version: 1.0.6
+      '@testrepo_pnpm/dep01':
+        specifier: workspace:*
+        version: link:packages/dep01
+      '@testrepo_pnpm/dep02':
+        specifier: workspace:*
+        version: link:packages/dep02
+      '@testrepo_pnpm/main':
+        specifier: workspace:*
+        version: link:packages/main
+      '@testrepo_pnpm/new-namespace':
+        specifier: workspace:*
+        version: link:packages/new-namespace
+      rescript:
+        specifier: ^11.1.0-rc.7
+        version: 11.1.0
+
+  packages/dep01:
+    dependencies:
+      '@testrepo_pnpm/dep02':
+        specifier: workspace:*
+        version: link:../dep02
+      rescript:
+        specifier: '*'
+        version: 11.1.0
+
+  packages/dep02:
+    dependencies:
+      rescript:
+        specifier: '*'
+        version: 11.1.0
+
+  packages/main:
+    dependencies:
+      '@testrepo_pnpm/dep01':
+        specifier: workspace:*
+        version: link:../dep01
+      rescript:
+        specifier: '*'
+        version: 11.1.0
+
+  packages/new-namespace:
+    dependencies:
+      rescript:
+        specifier: '*'
+        version: 11.1.0
+
+packages:
+
+  '@rolandpeelen/rewatch@1.0.6':
+    resolution: {integrity: sha512-i5On4uY6oHTIxFrcrpIU8Zsq3+MCB9D9DTD/9vY62pKlVyQbz0aKoAhXoceSK+rZ5xzIabdRlsmUKv8M7zWdgQ==}
+    hasBin: true
+
+  rescript@11.1.0:
+    resolution: {integrity: sha512-9la2Dv+ACylQ77I8s4spPu1JnLZXbH5WgxcLHLLUBWgFFSiv0wXqgzWztrBIZqwFgVX5BYcwldUqUVcEzdCyHg==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+snapshots:
+
+  '@rolandpeelen/rewatch@1.0.6': {}
+
+  rescript@11.1.0: {}
