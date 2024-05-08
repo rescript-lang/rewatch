@@ -22,4 +22,7 @@ else
   exit 1
 fi
 
-./compile.sh && ./watch.sh && ./lock.sh && ./suffix.sh
+./compile.sh "testrepo_yarn" \
+        && ../watch.sh "testrepo_yarn" \
+        && ../lock.sh "testrepo_yarn" \
+        && ../suffix.sh "testrepo_yarn"

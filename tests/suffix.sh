@@ -1,10 +1,13 @@
-source "./utils.sh"
-cd ./testrepo_yarn
+#!/bin/bash
 
+cd $(dirname $0)
+source "./utils.sh"
+cd "$1" || exit
+
+source "./utils.sh"
 bold "Test: It should support custom suffixes"
 
 # Clean Repo
-sleep 1
 if rewatch clean &> /dev/null;
 then
   success "Repo Cleaned"

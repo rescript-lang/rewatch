@@ -1,6 +1,10 @@
-source "./utils.sh"
-cd ./testrepo_yarn || exit
+#!/bin/bash
 
+cd $(dirname $0)
+source "./utils.sh"
+cd "$1" || exit
+
+source "./utils.sh"
 bold "Test: It should watch"
 
 if rewatch clean &> /dev/null;

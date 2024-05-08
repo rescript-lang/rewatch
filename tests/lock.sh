@@ -1,9 +1,10 @@
+#!/bin/bash
+
+cd $(dirname $0)
 source "./utils.sh"
-cd ./testrepo_yarn || exit
+cd "$1" || exit
 
 bold "Test: It should lock - when watching"
-
-sleep 1
 
 if rewatch clean &> /dev/null;
 then

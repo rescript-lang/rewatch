@@ -1,11 +1,12 @@
 #!/bin/bash
-cd $(dirname $0) || exit
+
+cd $(dirname $0)
 source "./utils.sh"
-cd ./testrepo_yarn || exit
+cd "$1" || exit
 
 bold "Test: It should compile"
 
-if rewatch clean &> /dev/null;
+if rewatch clean
 then
   success "Repo Cleaned"
 else 
