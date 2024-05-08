@@ -1,5 +1,5 @@
 source "./utils.sh"
-cd ../testrepo_yarn
+cd ./testrepo_yarn || exit
 
 bold "Test: It should watch"
 

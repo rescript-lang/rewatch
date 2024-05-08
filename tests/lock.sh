@@ -1,5 +1,5 @@
 source "./utils.sh"
-cd ../testrepo_yarn
+cd ./testrepo_yarn || exit
 
 bold "Test: It should lock - when watching"
 
@@ -41,7 +41,7 @@ success "Watcher Started"
 
 sleep 1
 
-if cat tmp.txt | grep 'Error while trying to get lock:' &> /dev/null; 
+if grep 'Error while trying to get lock:' tmp.txt &> /dev/null; 
 then
   error "Lock not removed correctly"
   exit_watcher

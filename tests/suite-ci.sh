@@ -14,7 +14,7 @@ else
 fi
 
 bold "Make sure the testrepo_yarn is clean"
-if git diff --exit-code ../testrepo_yarn &> /dev/null; 
+if git diff --exit-code ./testrepo_yarn &> /dev/null; 
 then
   success "testrepo_yarn has no changes"
 else 
