@@ -33,12 +33,18 @@ fi
 
 bold "Yarn Tests"
 ./compile.sh "testrepo_yarn" \
+        && sleep 1 \
         && ./watch.sh "testrepo_yarn" \
+        && sleep 1 \
         && ./lock.sh "testrepo_yarn" \
+        && sleep 1 \
         && ./suffix.sh "testrepo_yarn";
 
 bold "PNPM Tests"
 ./compile.sh "testrepo_pnpm" \
+        && sleep 1 \
         && ./watch.sh "testrepo_pnpm" \
+        && sleep 1 \
         && ./lock.sh "testrepo_pnpm" \
+        && sleep 1 \
         && ./suffix.sh "testrepo_pnpm";
