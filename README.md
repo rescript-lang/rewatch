@@ -4,7 +4,9 @@
 
 # Info
 
-Rewatch is an alternative build system for the [Rescript Compiler](https://rescript-lang.org/) which uses Ninja. It strives to deliver consistent and faster builds in monorepo setups with multiple packages, where the default build system fails to pick up changed interfaces across multiple packages.
+Rewatch is an alternative build system for the [Rescript Compiler](https://rescript-lang.org/) (which uses a combination of Ninja, OCaml and a Node.js script). It strives to deliver consistent and faster builds in monorepo setups. Bsb doesn't support a watch-mode in a monorepo setup, and when setting up a watcher that runs a global incremental compile it's consistent but very inefficient and thus slow. 
+
+We couldn't find a way to improve this without re-architecting the whole build system. The benefit of having a specialized build system is that it's possible to completely tailor it to ReScript and not being dependent of the constraints of a generic build system like Ninja. This allowed us to have significant performance improvements even in non-monorepo setups (30% to 3x improvements reported).
 
 # Project Status
 
