@@ -23,18 +23,18 @@ This project should be considered in beta status. We run it in production at [Wa
   2. Build / Clean / Watch
 
   ```
-  yarn rewatch build .
+  yarn rewatch build
   ```
 
   ```
-  yarn rewatch clean .
+  yarn rewatch clean
   ```
 
   ```
-  yarn rewatch watch .
+  yarn rewatch watch
   ```
 
-  Where `.` is the folder where the 'root' `bsconfig.json` lives. If you encounter a 'stale build error', either directly, or after a while, a `clean` may be needed to clean up some old compiler assets.
+  You can pass in the folder as the second argument where the 'root' `bsconfig.json` lives. If you encounter a 'stale build error', either directly, or after a while, a `clean` may be needed to clean up some old compiler assets.
 
 ## Full Options
 
