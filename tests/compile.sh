@@ -39,11 +39,15 @@ mv ./packages/main/src/Main2.res ./packages/main/src/Main.res
 # Rename a file with a dependent - this should trigger an error
 mv ./packages/main/src/InternalDep.res ./packages/main/src/InternalDep2.res
 rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep.txt
+# replace the absolute path so the snapshot is the same on all machines
+replace "s/$(pwd | sed "s/\//\\\\\//g")//g" ../tests/snapshots/rename-file-internal-dep.txt
 mv ./packages/main/src/InternalDep2.res ./packages/main/src/InternalDep.res
 
 # Rename a file with a dependent in a namespaced package - this should trigger an error (regression)
 mv ./packages/new-namespace/src/Other_module.res ./packages/new-namespace/src/Other_module2.res
 rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep-namespace.txt
+# replace the absolute path so the snapshot is the same on all machines
+replace "s/$(pwd | sed "s/\//\\\\\//g")//g" ../tests/snapshots/rename-file-internal-dep-namespace.txt
 mv ./packages/new-namespace/src/Other_module2.res ./packages/new-namespace/src/Other_module.res
 
 rewatch build &>  /dev/null
