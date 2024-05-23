@@ -32,7 +32,7 @@ fi
 
 if ls *.gen.* 1> /dev/null 2>&1;
 then
-  error ".gen.* files found"
+  success ".gen.* files found"
 else
   error ".gen.* files not found"
   exit 1
