@@ -36,10 +36,15 @@ mv ./packages/main/src/Main.res ./packages/main/src/Main2.res
 rewatch build --no-timing=true &> ../tests/snapshots/rename-file.txt
 mv ./packages/main/src/Main2.res ./packages/main/src/Main.res
 
-# Rename the internal dep -- this should trigger an error
+# Rename a file with a dependent - this should trigger an error
 mv ./packages/main/src/InternalDep.res ./packages/main/src/InternalDep2.res
 rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep.txt
 mv ./packages/main/src/InternalDep2.res ./packages/main/src/InternalDep.res
+
+# Rename a file with a dependent in a namespaced package - this should trigger an error (regression)
+mv ./packages/new-namespace/src/Other_module.res ./packages/new-namespace/src/Other_module2.res
+rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep.txt
+mv ./packages/new-namespace/src/Other_module2.res ./packages/new-namespace/src/Other_module.res
 
 rewatch build &>  /dev/null
 mv ./packages/main/src/ModuleWithInterface.resi ./packages/main/src/ModuleWithInterface2.resi
