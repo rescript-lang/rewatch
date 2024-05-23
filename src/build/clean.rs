@@ -212,32 +212,27 @@ pub fn cleanup_previous_build(
             }
         });
 
-    let module_names = compile_assets_state
+    let ast_module_names = compile_assets_state
         .ast_modules
         .values()
         .filter_map(
             |AstModule {
                  module_name,
                  ast_file_path,
-                 namespace,
                  ..
              }| {
                 match helpers::get_extension(ast_file_path).as_str() {
                     "iast" => None,
-                    "ast" => Some(helpers::module_name_with_namespace(module_name, namespace)),
+                    "ast" => Some(module_name),
                     _ => None,
                 }
             },
         )
-        .collect::<AHashSet<String>>();
+        .collect::<AHashSet<&String>>();
 
-    let all_module_names = build_state
-        .modules
-        .keys()
-        .map(|s| s.to_string())
-        .collect::<AHashSet<String>>();
+    let all_module_names = build_state.modules.keys().collect::<AHashSet<&String>>();
 
-    let deleted_module_names = module_names
+    let deleted_module_names = ast_module_names
         .difference(&all_module_names)
         .map(|module_name| {
             // if the module is a namespace, we need to mark the whole namespace as dirty when a module has been deleted
