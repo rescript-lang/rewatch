@@ -196,8 +196,6 @@ async fn async_watch(
             }
             CompileType::Full => {
                 let timing_total = Instant::now();
-                // clean up the build state (make sure to remove asts of files that have warnings)
-                clean::cleanup_after_build(&build_state);
                 build_state = build::initialize_build(None, filter, path).expect("Can't initialize build");
                 let _ = build::incremental_build(&mut build_state, None, initial_build, false);
                 if let Some(a) = after_build.clone() {
