@@ -30,7 +30,7 @@ else
   exit 1
 fi
 
-if ls *.gen.* 1> /dev/null 2>&1;
+if ls ./src/*.gen.* 1> /dev/null 2>&1;
 then
   success ".gen.* files found"
 else
