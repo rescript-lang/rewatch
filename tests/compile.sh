@@ -43,7 +43,7 @@ mv ./packages/main/src/InternalDep2.res ./packages/main/src/InternalDep.res
 
 # Rename a file with a dependent in a namespaced package - this should trigger an error (regression)
 mv ./packages/new-namespace/src/Other_module.res ./packages/new-namespace/src/Other_module2.res
-rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep.txt
+rewatch build --no-timing=true &> ../tests/snapshots/rename-file-internal-dep-namespace.txt
 mv ./packages/new-namespace/src/Other_module2.res ./packages/new-namespace/src/Other_module.res
 
 rewatch build &>  /dev/null
