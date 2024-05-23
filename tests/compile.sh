@@ -30,6 +30,14 @@ else
   exit 1
 fi
 
+if ls *.gen.* 1> /dev/null 2>&1;
+then
+  error ".gen.* files found"
+else
+  error ".gen.* files not found"
+  exit 1
+fi
+
 node ./packages/main/src/Main.mjs > ./packages/main/src/output.txt
 
 mv ./packages/main/src/Main.res ./packages/main/src/Main2.res
