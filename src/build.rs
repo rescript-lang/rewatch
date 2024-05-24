@@ -52,7 +52,7 @@ pub struct CompilerArgs {
     pub parser_args: Vec<String>,
 }
 
-pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String {
+pub fn get_compiler_args(path: &str, rescript_version: Option<String>, bsc_path: Option<String>) -> String {
     let filename = &helpers::get_abs_path(path);
     let package_root = helpers::get_abs_path(
         &helpers::get_nearest_bsconfig(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
@@ -64,7 +64,10 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>) -> String
     let rescript_version = if let Some(rescript_version) = rescript_version {
         rescript_version
     } else {
-        let bsc_path = helpers::get_bsc(&package_root, workspace_root.to_owned());
+        let bsc_path = match bsc_path {
+            Some(bsc_path) => bsc_path,
+            None => helpers::get_bsc(&package_root, workspace_root.to_owned()),
+        };
         helpers::get_rescript_version(&bsc_path)
     };
     // make PathBuf from package root and get the relative path for filename

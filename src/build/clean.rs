@@ -318,12 +318,16 @@ pub fn cleanup_after_build(build_state: &BuildState) {
     });
 }
 
-pub fn clean(path: &str) {
+pub fn clean(path: &str, bsc_path: Option<String>) {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let packages = packages::make(&None, &project_root, &workspace_root);
     let root_config_name = packages::get_package_name(&project_root);
-    let bsc_path = helpers::get_bsc(&project_root, workspace_root.to_owned());
+    let bsc_path = match bsc_path {
+        Some(bsc_path) => bsc_path,
+        None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
+    };
+
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     let timing_clean_compiler_assets = Instant::now();
