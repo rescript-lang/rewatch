@@ -65,7 +65,10 @@ fn main() {
     match args.compiler_args {
         None => (),
         Some(path) => {
-            println!("{}", build::get_compiler_args(&path, args.rescript_version));
+            println!(
+                "{}",
+                build::get_compiler_args(&path, args.rescript_version, args.bsc_path)
+            );
             std::process::exit(0);
         }
     }
@@ -76,7 +79,7 @@ fn main() {
             std::process::exit(1)
         }
         lock::Lock::Aquired(_) => match command {
-            Command::Clean => build::clean::clean(&folder),
+            Command::Clean => build::clean::clean(&folder, args.bsc_path),
             Command::Build => {
                 match build::build(
                     &filter,
