@@ -237,10 +237,11 @@ pub fn cleanup_previous_build(
         .map(|module_name| {
             // if the module is a namespace, we need to mark the whole namespace as dirty when a module has been deleted
             if let Some(namespace) = helpers::get_namespace_from_module_name(module_name) {
-                return namespace;
+                return vec![namespace, module_name.to_string()];
             }
-            module_name.to_string()
+            vec![module_name.to_string()]
         })
+        .flatten()
         .collect::<AHashSet<String>>();
 
     build_state.deleted_modules = deleted_module_names;
