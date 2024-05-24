@@ -50,6 +50,9 @@ struct Args {
 
     #[arg(long)]
     rescript_version: Option<String>,
+
+    #[arg(long)]
+    bsc_path: Option<String>,
 }
 
 fn main() {
@@ -83,6 +86,7 @@ fn main() {
                     &folder,
                     args.no_timing.unwrap_or(false),
                     args.create_sourcedirs.unwrap_or(false),
+                    args.bsc_path,
                 ) {
                     Err(e) => {
                         eprintln!("Error Building: {e}");
