@@ -45,12 +45,16 @@ struct Args {
     #[arg(short, long)]
     create_sourcedirs: Option<bool>,
 
+    /// This prints the compiler arguments. It expects the path to a rescript.json file.
+    /// This also requires --bsc-path and --rescript-version to be present
     #[arg(long)]
     compiler_args: Option<String>,
 
+    /// To be used in conjunction with compiler_args
     #[arg(long)]
     rescript_version: Option<String>,
 
+    /// A custom path to bsc
     #[arg(long)]
     bsc_path: Option<String>,
 }

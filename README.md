@@ -41,6 +41,8 @@ This project should be considered in beta status. We run it in production at [Wa
 Find this output by running `yarn rewatch --help`.
 
 ```
+Rewatch is an alternative build system for the Rescript Compiler bsb (which uses Ninja internally). It strives to deliver consistent and faster builds in monorepo setups with multiple packages, where the default build system fails to pick up changed interfaces across multiple packages
+
 Usage: rewatch [OPTIONS] [COMMAND] [FOLDER]
 
 Arguments:
@@ -69,10 +71,13 @@ Options:
           [possible values: true, false]
 
       --compiler-args <COMPILER_ARGS>
-          
+          This prints the compiler arguments. It expects the path to a rescript.json file. This also requires --bsc-path and --rescript-version to be present
 
       --rescript-version <RESCRIPT_VERSION>
-          
+          To be used in conjunction with compiler_args
+
+      --bsc-path <BSC_PATH>
+          A custom path to bsc
 
   -h, --help
           Print help (see a summary with '-h')
