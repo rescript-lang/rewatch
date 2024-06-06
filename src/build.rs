@@ -18,6 +18,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use std::fmt;
+use std::fs::File;
 use std::io::{stdout, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -414,6 +415,20 @@ impl fmt::Display for BuildError {
     }
 }
 
+pub fn write_build_ninja(build_state: &BuildState) {
+    // write build.ninja files in the packages after a non-incremental build
+    // this is necessary to bust the editor tooling cache. The editor tooling
+    // is watching this file.
+    // we don't need to do this in an incremental build because there are no file
+    // changes (deletes / additions)
+    for package in build_state.packages.values() {
+        // write empty file:
+        let mut f = File::create(std::path::Path::new(&package.get_bs_build_path()).join("build.ninja"))
+            .expect("Unable to write file");
+        f.write_all(b"").expect("unable to write to ninja file");
+    }
+}
+
 pub fn build(
     filter: &Option<regex::Regex>,
     path: &str,
@@ -440,10 +455,12 @@ pub fn build(
                 default_timing.unwrap_or(timing_total_elapsed).as_secs_f64()
             );
             clean::cleanup_after_build(&build_state);
+            write_build_ninja(&build_state);
             Ok(build_state)
         }
         Err(e) => {
             clean::cleanup_after_build(&build_state);
+            write_build_ninja(&build_state);
             Err(BuildError::IncrementalBuild(e))
         }
     }
