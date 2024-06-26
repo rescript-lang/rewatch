@@ -15,9 +15,9 @@ pub mod emojis {
     pub static COMMAND: Emoji<'_, '_> = Emoji("🏃 ", "");
     pub static TREE: Emoji<'_, '_> = Emoji("📦 ", "");
     pub static SWEEP: Emoji<'_, '_> = Emoji("🧹 ", "");
-    pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🕵️  ", "");
+    pub static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🕵️ ", "");
     pub static CODE: Emoji<'_, '_> = Emoji("🧱 ", "");
-    pub static SWORDS: Emoji<'_, '_> = Emoji("🤺 ️", "");
+    pub static SWORDS: Emoji<'_, '_> = Emoji("⚔️ ", "");
     pub static DEPS: Emoji<'_, '_> = Emoji("️🌴 ", "");
     pub static CHECKMARK: Emoji<'_, '_> = Emoji("️✅ ", "");
     pub static CROSS: Emoji<'_, '_> = Emoji("️🛑 ", "");

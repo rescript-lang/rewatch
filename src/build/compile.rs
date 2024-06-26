@@ -9,8 +9,7 @@ use crate::bsconfig;
 use crate::helpers;
 use ahash::{AHashMap, AHashSet};
 use console::style;
-use log::debug;
-use log::{info, log_enabled, Level::Info};
+use log::{debug, log_enabled, trace, Level::Info};
 use rayon::prelude::*;
 use std::path::Path;
 use std::process::Command;
@@ -98,7 +97,7 @@ pub fn compile(
         files_current_loop_count = 0;
         loop_count += 1;
 
-        info!(
+        trace!(
             "Compiled: {} out of {}. Compile loop: {}",
             files_total_count,
             compile_universe.len(),

@@ -65,6 +65,12 @@ Options:
   -n, --no-timing <NO_TIMING>
           [possible values: true, false]
 
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
   -c, --create-sourcedirs <CREATE_SOURCEDIRS>
           This creates a source_dirs.json file at the root of the monorepo, which is needed when you want to use Reanalyze
           
@@ -84,6 +90,7 @@ Options:
 
   -V, --version
           Print version
+
 ```
 
 # Contributing
