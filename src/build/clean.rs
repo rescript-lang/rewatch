@@ -319,7 +319,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
     });
 }
 
-pub fn clean(path: &str, bsc_path: Option<String>) {
+pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let packages = packages::make(&None, &project_root, &workspace_root);
@@ -332,21 +332,25 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     let timing_clean_compiler_assets = Instant::now();
-    print!(
-        "{} {} Cleaning compiler assets...",
-        style("[1/2]").bold().dim(),
-        SWEEP
-    );
-    std::io::stdout().flush().unwrap();
-    packages.iter().for_each(|(_, package)| {
-        print!(
-            "{}{} {} Cleaning {}...",
-            LINE_CLEAR,
+    if show_progress {
+        println!(
+            "{} {}Cleaning compiler assets...",
             style("[1/2]").bold().dim(),
-            SWEEP,
-            package.name
+            SWEEP
         );
-        std::io::stdout().flush().unwrap();
+        let _ = std::io::stdout().flush();
+    };
+    packages.iter().for_each(|(_, package)| {
+        if show_progress {
+            println!(
+                "{}{} {}Cleaning {}...",
+                LINE_CLEAR,
+                style("[1/2]").bold().dim(),
+                SWEEP,
+                package.name
+            );
+            let _ = std::io::stdout().flush();
+        }
 
         let path_str = package.get_build_path();
         let path = std::path::Path::new(&path_str);
@@ -358,18 +362,22 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     });
     let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
 
-    println!(
-        "{}{} {}Cleaned compiler assets in {:.2}s",
-        LINE_CLEAR,
-        style("[1/2]").bold().dim(),
-        SWEEP,
-        timing_clean_compiler_assets_elapsed.as_secs_f64()
-    );
-    std::io::stdout().flush().unwrap();
+    if show_progress {
+        println!(
+            "{}{} {}Cleaned compiler assets in {:.2}s",
+            LINE_CLEAR,
+            style("[1/2]").bold().dim(),
+            SWEEP,
+            timing_clean_compiler_assets_elapsed.as_secs_f64()
+        );
+        let _ = std::io::stdout().flush();
+    }
 
     let timing_clean_mjs = Instant::now();
-    print!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
-    std::io::stdout().flush().unwrap();
+    if show_progress {
+        println!("{} {}Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
+        let _ = std::io::stdout().flush();
+    }
     let mut build_state = BuildState::new(
         project_root.to_owned(),
         root_config_name,
@@ -381,12 +389,15 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     packages::parse_packages(&mut build_state);
     clean_mjs_files(&build_state);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
-    println!(
-        "{}{} {}Cleaned mjs files in {:.2}s",
-        LINE_CLEAR,
-        style("[2/2]").bold().dim(),
-        SWEEP,
-        timing_clean_mjs_elapsed.as_secs_f64()
-    );
-    std::io::stdout().flush().unwrap();
+
+    if show_progress {
+        println!(
+            "{}{} {}Cleaned mjs files in {:.2}s",
+            LINE_CLEAR,
+            style("[2/2]").bold().dim(),
+            SWEEP,
+            timing_clean_mjs_elapsed.as_secs_f64()
+        );
+        let _ = std::io::stdout().flush();
+    }
 }
