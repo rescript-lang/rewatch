@@ -41,7 +41,7 @@ jobs:
             x86_64-apple-darwin \
             x86_64-pc-windows-gnu
       - name: Install cargo zigbuild
-        run: cargo install cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild
       - name: macOS - build universal2
         run: cargo zigbuild --target universal2-apple-darwin --release
       - name: Linux - build x86_64 musl
