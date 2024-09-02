@@ -575,7 +575,7 @@ fn compile_file(
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
-                        .join(module_name.to_owned().replace('@', "") + ".cmi"),
+                        .join(module_name.to_owned() + ".cmi"),
                 );
                 let _ = std::fs::copy(
                     build_path_abs.to_string() + "/" + &module_name + ".cmj",
@@ -590,7 +590,7 @@ fn compile_file(
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
-                        .join(module_name.to_owned().replace('@', "") + ".cmt"),
+                        .join(module_name.to_owned() + ".cmt"),
                 );
             } else {
                 let _ = std::fs::copy(

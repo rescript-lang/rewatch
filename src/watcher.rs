@@ -212,6 +212,9 @@ async fn async_watch(
                 if let Some(a) = after_build.clone() {
                     cmd::run(a)
                 }
+
+                build::write_build_ninja(&build_state);
+
                 let timing_total_elapsed = timing_total.elapsed();
                 println!(
                     "\n{}{}Finished compilation in {:.2}s\n",
