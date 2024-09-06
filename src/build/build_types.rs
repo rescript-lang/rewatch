@@ -36,9 +36,19 @@ pub struct Implementation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Embed {
+    pub tag: String,
+    pub file_path: String,
+    pub content: String,
+    pub hash: String,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
     pub implementation: Implementation,
     pub interface: Option<Interface>,
+    pub embeds: Vec<Embed>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
