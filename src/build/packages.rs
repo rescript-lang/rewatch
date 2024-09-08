@@ -150,7 +150,7 @@ pub fn read_folders(
         if metadata.file_type().is_dir() && recurse {
             match read_folders(filter, package_dir, &new_path, recurse) {
                 Ok(s) => map.extend(s),
-                Err(e) => println!("Error reading directory: {}", e),
+                Err(e) => log::error!("Error reading directory: {}", e),
             }
         }
 
@@ -167,8 +167,8 @@ pub fn read_folders(
                     );
                 }
 
-                Ok(_) => println!("Filtered: {:?}", name),
-                Err(ref e) => println!("Error reading directory: {}", e),
+                Ok(_) => log::info!("Filtered: {:?}", name),
+                Err(ref e) => log::error!("Error reading directory: {}", e),
             },
             _ => (),
         }
@@ -309,7 +309,7 @@ fn read_dependencies(
             let (bsconfig, canonical_path) =
                 match read_dependency(package_name, parent_path, project_root, &workspace_root) {
                     Err(error) => {
-                        print!(
+                        log::error!(
                             "{} {} Error building package tree. {}",
                             style("[1/2]").bold().dim(),
                             CROSS,
@@ -453,12 +453,12 @@ pub fn get_source_files(
         match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
             Err(_e) if type_ == &Some("dev".to_string()) => {
-                println!(
+                log::warn!(
                     "Could not read folder: {}... Probably ok as type is dev",
                     path_dir.to_string_lossy()
                 )
             }
-            Err(_e) => println!("Could not read folder: {}...", path_dir.to_string_lossy()),
+            Err(_e) => log::error!("Could not read folder: {}...", path_dir.to_string_lossy()),
         }
     }
 
@@ -666,7 +666,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                         implementation_filename.pop();
                         match source_files.get(&implementation_filename) {
                             None => {
-                                println!(
+                                log::warn!(
                                 "{}Warning: No implementation file found for interface file (skipping): {}",
                                 LINE_CLEAR, file
                             )
@@ -799,7 +799,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         });
     }
     for (package_name, unallowed_deps) in detected_unallowed_dependencies.iter() {
-        println!(
+        log::error!(
             "\n{}: {} has the following unallowed dependencies:",
             console::style("Error").red(),
             console::style(package_name).bold()
@@ -813,7 +813,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         .iter()
         .for_each(|(deps_type, map)| {
             if !map.is_empty() {
-                println!(
+                log::info!(
                     "{} dependencies: {}",
                     console::style(deps_type).bold().dim(),
                     console::style(map.join(" \n -")).bold().dim()
@@ -824,7 +824,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
     let has_any_unallowed_dependent = detected_unallowed_dependencies.len() > 0;
 
     if has_any_unallowed_dependent {
-        println!(
+        log::error!(
             "\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
             console::style("unallowed_dependents").bold().dim(),
             console::style("bsconfig.json").bold().dim()

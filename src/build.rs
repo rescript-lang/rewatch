@@ -16,6 +16,7 @@ use ahash::AHashSet;
 use build_types::*;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
+use log::{log_enabled, Level::Info};
 use serde::Serialize;
 use std::fmt;
 use std::fs::File;
@@ -149,13 +150,13 @@ pub fn initialize_build(
     let root_config_name = packages::get_package_name(&project_root);
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
-    print!("{}{}Building package tree...", style("[1/7]").bold().dim(), TREE);
+    log::info!("{}{}Building package tree...", style("[1/7]").bold().dim(), TREE);
     let _ = stdout().flush();
     let timing_package_tree = Instant::now();
     let packages = packages::make(filter, &project_root, &workspace_root);
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
-    println!(
+    log::info!(
         "{}{} {}Built package tree in {:.2}s",
         LINE_CLEAR,
         style("[1/7]").bold().dim(),
@@ -171,7 +172,7 @@ pub fn initialize_build(
 
     let timing_source_files = Instant::now();
 
-    print!(
+    log::info!(
         "{} {}Finding source files...",
         style("[2/7]").bold().dim(),
         LOOKING_GLASS
@@ -187,7 +188,7 @@ pub fn initialize_build(
     );
     packages::parse_packages(&mut build_state);
     let timing_source_files_elapsed = timing_source_files.elapsed();
-    println!(
+    log::info!(
         "{}{} {}Found source files in {:.2}s",
         LINE_CLEAR,
         style("[2/7]").bold().dim(),
@@ -197,7 +198,7 @@ pub fn initialize_build(
             .as_secs_f64()
     );
 
-    print!(
+    log::info!(
         "{} {}Reading compile state...",
         style("[3/7]").bold().dim(),
         COMPILE_STATE
@@ -206,7 +207,7 @@ pub fn initialize_build(
     let timing_compile_state = Instant::now();
     let compile_assets_state = read_compile_state::read(&mut build_state);
     let timing_compile_state_elapsed = timing_compile_state.elapsed();
-    println!(
+    log::info!(
         "{}{} {}Read compile state {:.2}s",
         LINE_CLEAR,
         style("[3/7]").bold().dim(),
@@ -216,7 +217,7 @@ pub fn initialize_build(
             .as_secs_f64()
     );
 
-    print!(
+    log::info!(
         "{} {}Cleaning up previous build...",
         style("[4/7]").bold().dim(),
         SWEEP
@@ -224,7 +225,7 @@ pub fn initialize_build(
     let timing_cleanup = Instant::now();
     let (diff_cleanup, total_cleanup) = clean::cleanup_previous_build(&mut build_state, compile_assets_state);
     let timing_cleanup_elapsed = timing_cleanup.elapsed();
-    println!(
+    log::info!(
         "{}{} {}Cleaned {}/{} {:.2}s",
         LINE_CLEAR,
         style("[4/7]").bold().dim(),
@@ -264,7 +265,11 @@ pub fn incremental_build(
 ) -> Result<(), IncrementalBuildError> {
     logs::initialize(&build_state.packages);
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
-    let pb = ProgressBar::new(num_dirty_modules);
+    let pb = if log_enabled!(Info) {
+        ProgressBar::new(num_dirty_modules)
+    } else {
+        ProgressBar::hidden()
+    };
     let mut current_step = if only_incremental { 1 } else { 5 };
     let total_steps = if only_incremental { 3 } else { 7 };
     pb.set_style(
@@ -282,7 +287,7 @@ pub fn incremental_build(
 
     match result_asts {
         Ok(err) => {
-            println!(
+            log::info!(
                 "{}{} {}Parsed {} source files in {:.2}s",
                 LINE_CLEAR,
                 format_step(current_step, total_steps),
@@ -290,18 +295,18 @@ pub fn incremental_build(
                 num_dirty_modules,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
-            print!("{}", &err);
+            log::warn!("{}", &err);
         }
         Err(err) => {
             logs::finalize(&build_state.packages);
-            println!(
+            log::error!(
                 "{}{} {}Error parsing source files in {:.2}s",
                 LINE_CLEAR,
                 format_step(current_step, total_steps),
                 CROSS,
                 default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
             );
-            print!("{}", &err);
+            log::error!("{}", &err);
             return Err(IncrementalBuildError::SourceFileParseError);
         }
     }
@@ -310,7 +315,7 @@ pub fn incremental_build(
     let timing_deps_elapsed = timing_deps.elapsed();
     current_step += 1;
 
-    println!(
+    log::info!(
         "{}{} {}Collected deps in {:.2}s",
         LINE_CLEAR,
         format_step(current_step, total_steps),
@@ -340,15 +345,12 @@ pub fn incremental_build(
     // }
 
     let start_compiling = Instant::now();
-    let pb = ProgressBar::new(build_state.modules.len().try_into().unwrap());
-    pb.set_style(
-        ProgressStyle::with_template(&format!(
-            "{} {}Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
-            format_step(current_step, total_steps),
-            SWORDS
-        ))
-        .unwrap(),
-    );
+    let pb = if log_enabled!(Info) {
+        ProgressBar::new(build_state.modules.len().try_into().unwrap())
+    } else {
+        ProgressBar::hidden()
+    };
+
     let (compile_errors, compile_warnings, num_compiled_modules) =
         compile::compile(build_state, || pb.inc(1), |size| pb.set_length(size));
     let compile_duration = start_compiling.elapsed();
@@ -360,9 +362,9 @@ pub fn incremental_build(
     pb.finish();
     if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {
-            println!("{}", &compile_warnings);
+            log::error!("{}", &compile_warnings);
         }
-        println!(
+        log::info!(
             "{}{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
             format_step(current_step, total_steps),
@@ -370,7 +372,7 @@ pub fn incremental_build(
             num_compiled_modules,
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
-        print!("{}", &compile_errors);
+        log::error!("{}", &compile_errors);
         // mark the original files as dirty again, because we didn't complete a full build
         for (module_name, module) in build_state.modules.iter_mut() {
             if tracked_dirty_modules.contains(module_name) {
@@ -379,7 +381,7 @@ pub fn incremental_build(
         }
         Err(IncrementalBuildError::CompileError)
     } else {
-        println!(
+        log::info!(
             "{}{} {}Compiled {} modules in {:.2}s",
             LINE_CLEAR,
             format_step(current_step, total_steps),
@@ -388,7 +390,7 @@ pub fn incremental_build(
             default_timing.unwrap_or(compile_duration).as_secs_f64()
         );
         if helpers::contains_ascii_characters(&compile_warnings) {
-            print!("{}", &compile_warnings);
+            log::warn!("{}", &compile_warnings);
         }
         Ok(())
     }
@@ -448,7 +450,7 @@ pub fn build(
     match incremental_build(&mut build_state, default_timing, true, false, create_sourcedirs) {
         Ok(_) => {
             let timing_total_elapsed = timing_total.elapsed();
-            println!(
+            log::info!(
                 "\n{}{}Finished Compilation in {:.2}s",
                 LINE_CLEAR,
                 SPARKLES,

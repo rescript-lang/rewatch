@@ -340,7 +340,8 @@ fn generate_ast(
             Ok((ast_path, None))
         }
     } else {
-        println!("Parsing file {}...", filename);
+        log::info!("Parsing file {}...", filename);
+
         Err(format!(
             "Could not find canonicalize_string_path for file {} in package {}",
             filename, package.name

@@ -82,7 +82,7 @@ fn main() {
 
     match lock::get(&folder) {
         lock::Lock::Error(ref e) => {
-            eprintln!("Error while trying to get lock: {e}");
+            log::error!("Error while trying to get lock: {e}");
             std::process::exit(1)
         }
         lock::Lock::Aquired(_) => match command {
@@ -96,7 +96,7 @@ fn main() {
                     args.bsc_path,
                 ) {
                     Err(e) => {
-                        eprintln!("Error Building: {e}");
+                        log::error!("Error Building: {e}");
                         std::process::exit(1)
                     }
                     Ok(_) => {

@@ -332,14 +332,14 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     let timing_clean_compiler_assets = Instant::now();
-    print!(
+    log::info!(
         "{} {} Cleaning compiler assets...",
         style("[1/2]").bold().dim(),
         SWEEP
     );
     std::io::stdout().flush().unwrap();
     packages.iter().for_each(|(_, package)| {
-        print!(
+        log::info!(
             "{}{} {} Cleaning {}...",
             LINE_CLEAR,
             style("[1/2]").bold().dim(),
@@ -358,7 +358,7 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     });
     let timing_clean_compiler_assets_elapsed = timing_clean_compiler_assets.elapsed();
 
-    println!(
+    log::info!(
         "{}{} {}Cleaned compiler assets in {:.2}s",
         LINE_CLEAR,
         style("[1/2]").bold().dim(),
@@ -368,7 +368,7 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     std::io::stdout().flush().unwrap();
 
     let timing_clean_mjs = Instant::now();
-    print!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
+    log::info!("{} {} Cleaning mjs files...", style("[2/2]").bold().dim(), SWEEP);
     std::io::stdout().flush().unwrap();
     let mut build_state = BuildState::new(
         project_root.to_owned(),
@@ -381,7 +381,7 @@ pub fn clean(path: &str, bsc_path: Option<String>) {
     packages::parse_packages(&mut build_state);
     clean_mjs_files(&build_state);
     let timing_clean_mjs_elapsed = timing_clean_mjs.elapsed();
-    println!(
+    log::info!(
         "{}{} {}Cleaned mjs files in {:.2}s",
         LINE_CLEAR,
         style("[2/2]").bold().dim(),

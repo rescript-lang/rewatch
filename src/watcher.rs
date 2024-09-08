@@ -70,7 +70,7 @@ async fn async_watch(
 
     loop {
         if *ctrlc_pressed_clone.lock().unwrap() {
-            println!("\nExiting...");
+            log::info!("\nExiting...");
             clean::cleanup_after_build(&build_state);
             break Ok(());
         }
@@ -192,7 +192,7 @@ async fn async_watch(
                         cmd::run(a)
                     }
                     let timing_total_elapsed = timing_total.elapsed();
-                    println!(
+                    log::info!(
                         "\n{}{}Finished {} compilation in {:.2}s\n",
                         LINE_CLEAR,
                         SPARKLES,
@@ -216,7 +216,7 @@ async fn async_watch(
                 build::write_build_ninja(&build_state);
 
                 let timing_total_elapsed = timing_total.elapsed();
-                println!(
+                log::info!(
                     "\n{}{}Finished compilation in {:.2}s\n",
                     LINE_CLEAR,
                     SPARKLES,
@@ -252,7 +252,7 @@ pub fn start(
             .expect("Could not start watcher");
 
         if let Err(e) = async_watch(consumer, folder, filter, after_build, create_sourcedirs).await {
-            println!("error: {:?}", e)
+            log::error!("error: {:?}", e)
         }
     })
 }
