@@ -157,12 +157,22 @@ pub struct Config {
     pub namespace: Option<NamespaceConfig>,
     pub jsx: Option<JsxSpecs>,
     pub uncurried: Option<bool>,
+    #[serde(rename = "embed-generators")]
+    pub embed_generators: Option<Vec<EmbedGenerator>>,
+
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
     #[serde(rename = "namespace-entry")]
     pub namespace_entry: Option<String>,
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
     #[serde(rename = "allowed-dependents")]
     pub allowed_dependents: Option<Vec<String>>,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct EmbedGenerator {
+    pub name: String,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub package: Option<String>,
 }
 
 /// This flattens string flags

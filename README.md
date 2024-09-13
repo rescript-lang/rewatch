@@ -130,7 +130,25 @@ Running tests:
     -> /lib/ocaml/**generated**/MyModule.graphql.0.res
     -> /lib/ocaml/**generated**/MyModule.graphql.1.res
 
+-> Parse the outputs of the embeds
 -> Determine the dependency tree (and add the embeds as deps)
 -> Run compiler
+
+#### configuration of embeds
+
+- bsconfig.json
+
+```json
+        {
+                "embed-generators": [
+                        {
+                        "name": "graphql",
+                        "tags": ["graphql"],
+                        "path": "./path/to/graphql/embed"
+                        "package": "my-generator-package"
+                        }
+                ]
+        }
+```
 
 -> Profit

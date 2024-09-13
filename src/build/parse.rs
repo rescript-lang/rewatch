@@ -10,6 +10,7 @@ use log::debug;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 pub fn generate_asts(
     build_state: &mut BuildState,
@@ -79,6 +80,15 @@ pub fn generate_asts(
                             false,
                         )
                     };
+
+                    // After generating ASTs, handle embeds
+                    // Process embeds for the source file
+                    if let Err(err) =
+                        process_embeds(build_state, package, source_file, &build_state.workspace_root)
+                    {
+                        has_failure = true;
+                        stderr.push_str(&err);
+                    }
 
                     (module_name.to_owned(), ast_result, iast_result, dirty)
                 }
@@ -368,6 +378,167 @@ fn path_to_ast_extension(path: &Path) -> &str {
     } else {
         ".ast"
     }
+}
+
+// Function to process embeds
+fn process_embeds(
+    build_state: &mut BuildState,
+    package: &packages::Package,
+    source_file: &mut SourceFile,
+    workspace_root: &Option<String>,
+) -> Result<(), String> {
+    let source_file_path = &source_file.implementation.path;
+
+    let ast_path = Path::new(&package.get_ast_path(&source_file.implementation.path));
+    let embeds_json_path = ast_path.with_extension("embeds.json");
+
+    // Read and parse the embeds JSON file
+    if embeds_json_path.exists() {
+        let embeds_json = helpers::read_file(&embeds_json_path).map_err(|e| e.to_string())?;
+        let embeds_data: Vec<EmbedJsonData> =
+            serde_json::from_str(&embeds_json).map_err(|e| e.to_string())?;
+
+        // Process each embed
+        let embeds = embeds_data
+            .into_iter()
+            .map(|embed_data| {
+                let embed_path = package.generated_file_folder.join(&embed_data.filename);
+                let hash = helpers::compute_string_hash(&embed_data.contents);
+                let dirty = is_embed_dirty(&embed_path, &embed_data, &hash.to_string());
+                // embed_path is the path of the generated rescript file, let's add this path to the build state
+                // Add the embed_path as a rescript source file to the build state
+                let relative_path = Path::new(&embed_path)
+                    .strip_prefix(&package.path)
+                    .unwrap()
+                    .to_string_lossy();
+                let module_name = helpers::file_path_to_module_name(&relative_path, &package.namespace);
+                let last_modified = std::fs::metadata(&embed_path)
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(SystemTime::now());
+
+                if dirty {
+                    // run the embed file
+                    // Find the embed generator based on the tag
+                    if let Some(embed_generator) =
+                        package.bsconfig.embed_generators.as_ref().and_then(|generators| {
+                            generators.iter().find(|gen| gen.tags.contains(&embed_data.tag))
+                        })
+                    {
+                        // Prepare the command
+                        // let mut command = if let Some(package_name) = &embed_generator.package {
+                        //     let node_modules_path = workspace_root
+                        //         .as_ref()
+                        //         .map(|root| Path::new(root).join("node_modules"))
+                        //         .unwrap_or_else(|| Path::new(&package.path).join("node_modules"));
+                        //     let generator_path =
+                        //         node_modules_path.join(package_name).join(&embed_generator.path);
+                        //     Command::new("node").arg(generator_path)
+                        // } else {
+                        //     Command::new(&embed_generator.path)
+                        // };
+                        let mut command = Command::new(&embed_generator.path);
+
+                        // Run the embed generator
+                        let output = command
+                            .stdin(std::process::Stdio::piped())
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .spawn()
+                            .and_then(|mut child| {
+                                use std::io::Write;
+                                let contents = format!("{}\n{}", embed_data.tag, embed_data.contents);
+                                child.stdin.as_mut().unwrap().write_all(contents.as_bytes())?;
+                                child.wait_with_output()
+                            })
+                            .map_err(|e| format!("Failed to run embed generator: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "Embed generator failed: {}",
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+
+                        // Write the output to the embed file
+                        std::fs::write(&embed_path, output.stdout)
+                            .map_err(|e| format!("Failed to write embed file: {}", e))?;
+                    } else {
+                        return Err(format!("No embed generator found for tag: {}", embed_data.tag));
+                    }
+                }
+                if !build_state.modules.contains_key(&module_name) {
+                    let implementation = Implementation {
+                        path: relative_path.to_string(),
+                        parse_state: ParseState::Pending,
+                        compile_state: CompileState::Pending,
+                        last_modified,
+                        parse_dirty: true,
+                    };
+
+                    let source_file = SourceFile {
+                        implementation,
+                        interface: None,
+                        embeds: Vec::new(),
+                    };
+
+                    let module = Module {
+                        source_type: SourceType::SourceFile(source_file),
+                        deps: AHashSet::new(),
+                        dependents: AHashSet::new(),
+                        package_name: package.name.clone(),
+                        compile_dirty: true,
+                        last_compiled_cmi: None,
+                        last_compiled_cmt: None,
+                    };
+
+                    build_state.insert_module(&module_name, module);
+                } else if dirty {
+                    if let Some(module) = build_state.modules.get_mut(&module_name) {
+                        if let SourceType::SourceFile(source_file) = &mut module.source_type {
+                            source_file.implementation.parse_dirty = true;
+                        }
+                    }
+                }
+
+                Ok(Embed {
+                    hash: hash.to_string(),
+                    embed: embed_data,
+                    dirty,
+                })
+            })
+            .collect::<Vec<Result<Embed, String>>>();
+
+        // Update the source file's embeds
+        source_file.embeds = embeds.into_iter().filter_map(|result| result.ok()).collect();
+    }
+
+    Ok(())
+}
+
+fn is_embed_dirty(embed_path: &Path, embed_data: &EmbedJsonData, hash: &str) -> bool {
+    // Check if the embed file exists and compare hashes
+    // the first line of the generated rescript file is a comment with the following format:
+    // "// HASH: <hash>"
+    // if the hash is different from the hash in the embed_data, the embed is dirty
+    // if the file does not exist, the embed is dirty
+    // if the file exists but the hash is not present, the embed is dirty
+    // if the file exists but the hash is present but different from the hash in the embed_data, the embed is dirty
+    // if the file exists but the hash is present and the same as the hash in the embed_data, the embed is not dirty
+    if !embed_path.exists() {
+        return true;
+    }
+
+    let first_line = match helpers::read_file(embed_path) {
+        Ok(contents) => contents.lines().next().unwrap_or("").to_string(),
+        Err(_) => return true,
+    };
+
+    if !first_line.starts_with("// HASH: ") {
+        return true;
+    }
+
+    let file_hash = first_line.trim_start_matches("// HASH: ");
+    file_hash != hash
 }
 
 fn include_ppx(flag: &str, contents: &str) -> bool {

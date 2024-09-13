@@ -1,5 +1,6 @@
 use crate::build::packages::{Namespace, Package};
 use ahash::{AHashMap, AHashSet};
+use serde::Deserialize;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,11 +36,48 @@ pub struct Implementation {
     pub parse_dirty: bool,
 }
 
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct Location {
+    line: u32,
+    col: u32,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct EmbedLoc {
+    start: Location,
+    end: Location,
+}
+
+// example of the *.embeds.json file
+// [
+//   {
+//     "tag": "sql.one",
+//     "filename": "Tst__sql_one_1.res",
+//     "contents": "\n  SELECT * FROM tst.res\n  WHERE id = 1\n",
+//     "loc": {"start": {"line": 1, "col": 22}, "end": {"line": 4, "col": 64}}
+//   },
+//   {
+//     "tag": "sql.many",
+//     "filename": "Tst__sql_many_1.res",
+//     "contents": "\n  SELECT * FROM tst.res\n  WHERE id > 1\n",
+//     "loc": {"start": {"line": 6, "col": 86}, "end": {"line": 9, "col": 128}}
+//   },
+//   {
+//     "tag": "sql.one",
+//     "filename": "Tst__sql_one_2.res",
+//     "contents":
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct EmbedJsonData {
+    pub tag: String,
+    pub filename: String,
+    pub contents: String,
+    pub loc: EmbedLoc,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Embed {
-    pub tag: String,
-    pub file_path: String,
-    pub content: String,
+    pub embed: EmbedJsonData,
     pub hash: String,
     pub dirty: bool,
 }
@@ -48,7 +86,7 @@ pub struct Embed {
 pub struct SourceFile {
     pub implementation: Implementation,
     pub interface: Option<Interface>,
-    pub embeds: Vec<Embed>,
+    pub embeds: Vec<Embed>, // Added embeds field
 }
 
 #[derive(Debug, Clone, PartialEq)]

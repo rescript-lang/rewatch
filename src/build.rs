@@ -278,6 +278,7 @@ pub fn incremental_build(
 
     let timing_ast = Instant::now();
     let result_asts = parse::generate_asts(build_state, || pb.inc(1));
+    let result_asts = parse::generate_asts(build_state, || pb.inc(1));
     let timing_ast_elapsed = timing_ast.elapsed();
 
     match result_asts {
