@@ -6,6 +6,7 @@ use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
 use ahash::AHashSet;
+use core::str;
 use log::debug;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -413,6 +414,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
         SourceType::SourceFile(source_file) => source_file,
         _ => panic!("Module {} is not a source file", module_name),
     };
+    let source_file_path = source_file.implementation.path.clone();
 
     let ast_path_str = package.get_ast_path(&source_file.implementation.path);
     let ast_path = Path::new(&ast_path_str);
@@ -424,6 +426,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
         let embeds_data: Vec<EmbedJsonData> =
             serde_json::from_str(&embeds_json).map_err(|e| e.to_string())?;
 
+        // TODO(embed) Run in parallel?
         // Process each embed
         let embeds = embeds_data
             .into_iter()
@@ -447,7 +450,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                             generators.iter().find(|gen| gen.tags.contains(&embed_data.tag))
                         })
                     {
-                        // TODO(embed) Needs to be relative to package root? Join with package path?
+                        // TODO(embed) Needs to be relative to relevant package root? Join with package path?
                         let mut command = Command::new(&embed_generator.path);
 
                         // Run the embed generator
@@ -458,26 +461,57 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                             .spawn()
                             .and_then(|mut child| {
                                 use std::io::Write;
-                                let contents = format!("{}\n{}", embed_data.tag, embed_data.contents);
-                                child.stdin.as_mut().unwrap().write_all(contents.as_bytes())?;
+                                let embed_generator_config = EmbedGeneratorConfig {
+                                    tag: embed_data.tag.clone(),
+                                    content: embed_data.contents.clone(),
+                                    source_file_path: source_file_path.clone(),
+                                };
+                                let contents = serde_json::to_vec(&embed_generator_config).unwrap();
+                                child.stdin.as_mut().unwrap().write_all(&contents)?;
                                 child.wait_with_output()
                             })
                             .map_err(|e| format!("Failed to run embed generator: {}", e))?;
 
                         if !output.status.success() {
-                            return Err(format!(
-                                "Embed generator failed: {}",
-                                String::from_utf8_lossy(&output.stderr)
-                            ));
+                            let stderr_str = str::from_utf8(&output.stderr).unwrap();
+                            let error_response: Result<EmbedGeneratorResponseError, serde_json::Error> =
+                                serde_json::from_str(stderr_str);
+
+                            match error_response {
+                                Ok(_error_response) => {
+                                    // TODO(embeds) Pass along error properly here
+                                    return Err(format!("Embed generator failed: {}", stderr_str));
+                                }
+                                Err(error_response) => {
+                                    // TODO(embeds) Proper error here
+                                    return Err(format!(
+                                        "Parsing JSON from embed generator error failed: {}",
+                                        error_response
+                                    ));
+                                }
+                            };
                         }
 
-                        let generated_content = String::from_utf8_lossy(&output.stdout).into_owned();
-                        let generated_file_contents = format!("// HASH: {}\n{}", hash, generated_content);
+                        let stdout_str = str::from_utf8(&output.stdout).unwrap();
+                        let success_response: Result<EmbedGeneratorResponseOk, serde_json::Error> =
+                            serde_json::from_str(&stdout_str);
 
-                        // Write the output to the embed file
-                        std::fs::write(&embed_path, generated_file_contents)
-                            .map_err(|e| format!("Failed to write embed file: {}", e))?;
+                        match success_response {
+                            Err(err) => {
+                                // TODO(embeds) Proper error here
+                                return Err(format!("Parsing JSON from embed generator failed: {}", err));
+                            }
+                            Ok(success_response) => {
+                                let generated_file_contents =
+                                    format!("// HASH: {}\n{}", hash, success_response.content);
+
+                                // Write the output to the embed file
+                                std::fs::write(&embed_path, generated_file_contents)
+                                    .map_err(|e| format!("Failed to write embed file: {}", e))?;
+                            }
+                        };
                     } else {
+                        // TODO(embeds) Proper error here
                         return Err(format!("No embed generator found for tag: {}", embed_data.tag));
                     }
                 }

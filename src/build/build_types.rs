@@ -1,6 +1,6 @@
 use crate::build::packages::{Namespace, Package};
 use ahash::{AHashMap, AHashSet};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,13 +36,13 @@ pub struct Implementation {
     pub parse_dirty: bool,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct Location {
     line: u32,
     col: u32,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct EmbedLoc {
     start: Location,
     end: Location,
@@ -80,6 +80,29 @@ pub struct Embed {
     pub embed: EmbedJsonData,
     pub hash: String,
     pub dirty: bool,
+}
+
+#[derive(Serialize, Clone, PartialEq, Eq)]
+pub struct EmbedGeneratorConfig {
+    pub tag: String,
+    pub content: String,
+    pub source_file_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmbedGeneratorResponseOk {
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmbedGeneratorError {
+    pub message: String,
+    pub loc: EmbedLoc,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmbedGeneratorResponseError {
+    pub errors: Vec<EmbedGeneratorError>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
