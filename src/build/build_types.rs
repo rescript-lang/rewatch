@@ -38,14 +38,14 @@ pub struct Implementation {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct Location {
-    line: u32,
-    col: u32,
+    pub line: u32,
+    pub col: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct EmbedLoc {
-    start: Location,
-    end: Location,
+    pub start: Location,
+    pub end: Location,
 }
 
 // example of the *.embeds.json file
@@ -94,7 +94,7 @@ pub struct EmbedGeneratorResponseOk {
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EmbedGeneratorError {
     pub message: String,
     pub loc: EmbedLoc,
@@ -103,6 +103,32 @@ pub struct EmbedGeneratorError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EmbedGeneratorResponseError {
     pub errors: Vec<EmbedGeneratorError>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratorReturnedError {
+    pub errors: Vec<EmbedGeneratorError>,
+    pub source_file_path: String,
+    pub embed_data: EmbedJsonData,
+    pub package_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProcessEmbedsErrorReason {
+    EmbedsJsonFileCouldNotBeRead(String),
+    EmbedsJsonDataParseError(String),
+    CouldNotWriteToGeneratorStdin(String, String),
+    RunningGeneratorCommandFailed(String, String),
+    GeneratorReturnedError(GeneratorReturnedError),
+    GeneratorReturnedInvalidJSON(String),
+    CouldNotWriteGeneratedFile(String),
+    NoEmbedGeneratorFoundForTag(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessEmbedsError {
+    pub reason: ProcessEmbedsErrorReason,
+    pub generator_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

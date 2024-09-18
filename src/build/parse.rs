@@ -6,9 +6,12 @@ use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
 use ahash::AHashSet;
+use core::panic;
 use core::str;
 use log::debug;
 use rayon::prelude::*;
+use std::cmp::max;
+use std::cmp::min;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
@@ -206,7 +209,100 @@ pub fn generate_asts(
                 Ok(()) => {
                     if let Err(err) = process_embeds(build_state, &module_name) {
                         has_failure = true;
-                        stderr.push_str(&err);
+                        err.into_iter().for_each(|err: ProcessEmbedsError| {
+                            let error_str = match &err.reason {
+                                ProcessEmbedsErrorReason::CouldNotWriteGeneratedFile(err) => {
+                                    Some((String::from("[CouldNotWriteGeneratedFile]"), err))
+                                }
+                                ProcessEmbedsErrorReason::CouldNotWriteToGeneratorStdin(_generator, err) => {
+                                    Some((String::from("[CouldNotWriteToGeneratorStdin]"), err))
+                                }
+                                ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(err) => {
+                                    Some((String::from("[GeneratorReturnedInvalidJSON]"), err))
+                                }
+                                ProcessEmbedsErrorReason::NoEmbedGeneratorFoundForTag(err) => {
+                                    Some((String::from("[NoEmbedGeneratorFoundForTag]"), err))
+                                }
+                                ProcessEmbedsErrorReason::RunningGeneratorCommandFailed(_generator, err) => {
+                                    Some((String::from("[RunningGeneratorCommandFailed]"), err))
+                                }
+                                _ => None,
+                            };
+                            match error_str {
+                                Some((pre, err)) => stderr.push_str(format!("\n{}\n{}\n", pre, err).as_str()),
+                                None => (),
+                            }
+
+                            // Handle real embed errors, which should be transformed and pushed onto the compiler log
+                            match err.reason {
+                                ProcessEmbedsErrorReason::GeneratorReturnedError(generator_error) => {
+                                    generator_error.errors.iter().for_each(|error| {
+                                        // TODO(embeds) Figure out locs properly...
+                                        let transformed_loc = EmbedLoc {
+                                            start: Location {
+                                                line: max(
+                                                    generator_error.embed_data.loc.start.line
+                                                        + error.loc.start.line,
+                                                    generator_error.embed_data.loc.start.line,
+                                                ),
+                                                col: min(
+                                                    generator_error.embed_data.loc.start.col
+                                                        + error.loc.start.col,
+                                                    generator_error.embed_data.loc.start.col + 1,
+                                                ),
+                                            },
+                                            end: Location {
+                                                line: max(
+                                                    generator_error.embed_data.loc.end.line
+                                                        + error.loc.end.line,
+                                                    generator_error.embed_data.loc.end.line,
+                                                ),
+                                                col: min(
+                                                    generator_error.embed_data.loc.end.col
+                                                        + error.loc.end.col,
+                                                    generator_error.embed_data.loc.end.col,
+                                                ),
+                                            },
+                                        };
+
+                                        let package = build_state
+                                            .get_package(&generator_error.package_name)
+                                            .expect("Package not found");
+
+                                        // TODO(embeds) Figure out where the LSP off-by-one on line/col transform makes most sense to happen.
+                                        let error_output = format!(
+                                            "  We've found a bug for you!\n{}:{}:{}-{}\n\n  {}\n{}\n",
+                                            helpers::canonicalize_string_path(
+                                                &generator_error.source_file_path
+                                            )
+                                            .unwrap(),
+                                            transformed_loc.start.line - 1,
+                                            transformed_loc.start.col,
+                                            if transformed_loc.start.line == transformed_loc.end.line {
+                                                format!("{}", transformed_loc.end.col)
+                                            } else {
+                                                format!(
+                                                    "{}:{}",
+                                                    transformed_loc.end.line - 1,
+                                                    transformed_loc.end.col
+                                                )
+                                            },
+                                            match &err.generator_name {
+                                                Some(generator_name) =>
+                                                    format!("  Error from generator: {}\n", generator_name),
+                                                None => format!("  Error from generator\n"),
+                                            },
+                                            error.message
+                                        );
+
+                                        logs::append(&package, &error_output);
+
+                                        stderr.push_str(&error_output);
+                                    });
+                                }
+                                _ => (),
+                            }
+                        });
                     }
                 }
                 Err(()) => (),
@@ -407,7 +503,7 @@ fn path_to_ast_extension(path: &Path) -> &str {
 }
 
 // Function to process embeds
-fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(), String> {
+fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(), Vec<ProcessEmbedsError>> {
     let module = build_state.modules.get(module_name).unwrap();
     let package = build_state.packages.get(&module.package_name).unwrap();
     let source_file = match &module.source_type {
@@ -422,11 +518,20 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
 
     // Read and parse the embeds JSON file
     if embeds_json_path.exists() {
-        let embeds_json = helpers::read_file(&embeds_json_path).map_err(|e| e.to_string())?;
-        let embeds_data: Vec<EmbedJsonData> =
-            serde_json::from_str(&embeds_json).map_err(|e| e.to_string())?;
+        let embeds_json = helpers::read_file(&embeds_json_path).map_err(|e| {
+            vec![ProcessEmbedsError {
+                reason: ProcessEmbedsErrorReason::EmbedsJsonFileCouldNotBeRead(e.to_string()),
+                generator_name: None,
+            }]
+        })?;
+        let embeds_data: Vec<EmbedJsonData> = serde_json::from_str(&embeds_json).map_err(|e| {
+            vec![ProcessEmbedsError {
+                reason: ProcessEmbedsErrorReason::EmbedsJsonDataParseError(e.to_string()),
+                generator_name: None,
+            }]
+        })?;
 
-        // TODO(embed) Run in parallel?
+        // TODO(embeds) Run in parallel?
         // Process each embed
         let embeds = embeds_data
             .into_iter()
@@ -450,7 +555,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                             generators.iter().find(|gen| gen.tags.contains(&embed_data.tag))
                         })
                     {
-                        // TODO(embed) Needs to be relative to relevant package root? Join with package path?
+                        // TODO(embeds) Needs to be relative to relevant package root? Join with package path?
                         let mut command = Command::new(&embed_generator.path);
 
                         // Run the embed generator
@@ -466,11 +571,31 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                                     content: embed_data.contents.clone(),
                                     source_file_path: source_file_path.clone(),
                                 };
-                                let contents = serde_json::to_vec(&embed_generator_config).unwrap();
-                                child.stdin.as_mut().unwrap().write_all(&contents)?;
+                                let contents = serde_json::to_vec(&embed_generator_config)?;
+                                // TODO(embeds) These ? unwraps seems wrong...
+                                child
+                                    .stdin
+                                    .as_mut()
+                                    .unwrap()
+                                    .write_all(&contents)
+                                    .map_err(|e| ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::CouldNotWriteToGeneratorStdin(
+                                            embed_generator.name.clone(),
+                                            e.to_string(),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    })
+                                    .unwrap();
                                 child.wait_with_output()
                             })
-                            .map_err(|e| format!("Failed to run embed generator: {}", e))?;
+                            .map_err(|e| ProcessEmbedsError {
+                                reason: ProcessEmbedsErrorReason::RunningGeneratorCommandFailed(
+                                    embed_generator.name.clone(),
+                                    e.to_string(),
+                                ),
+                                generator_name: Some(embed_generator.name.clone()),
+                            })
+                            .unwrap();
 
                         if !output.status.success() {
                             let stderr_str = str::from_utf8(&output.stderr).unwrap();
@@ -478,16 +603,26 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                                 serde_json::from_str(stderr_str);
 
                             match error_response {
-                                Ok(_error_response) => {
-                                    // TODO(embeds) Pass along error properly here
-                                    return Err(format!("Embed generator failed: {}", stderr_str));
+                                Ok(err) => {
+                                    return Err(ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::GeneratorReturnedError(
+                                            GeneratorReturnedError {
+                                                package_name: package.name.clone(),
+                                                errors: err.errors,
+                                                embed_data: embed_data.clone(),
+                                                source_file_path: source_file_path.clone(),
+                                            },
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    });
                                 }
-                                Err(error_response) => {
-                                    // TODO(embeds) Proper error here
-                                    return Err(format!(
-                                        "Parsing JSON from embed generator error failed: {}",
-                                        error_response
-                                    ));
+                                Err(err) => {
+                                    return Err(ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(
+                                            format!("Error: {}\n\nRaw content:\n{}", err, stderr_str),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    });
                                 }
                             };
                         }
@@ -498,21 +633,33 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
 
                         match success_response {
                             Err(err) => {
-                                // TODO(embeds) Proper error here
-                                return Err(format!("Parsing JSON from embed generator failed: {}", err));
+                                return Err(ProcessEmbedsError {
+                                    reason: ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(
+                                        err.to_string(),
+                                    ),
+                                    generator_name: Some(embed_generator.name.clone()),
+                                });
                             }
                             Ok(success_response) => {
                                 let generated_file_contents =
                                     format!("// HASH: {}\n{}", hash, success_response.content);
 
                                 // Write the output to the embed file
-                                std::fs::write(&embed_path, generated_file_contents)
-                                    .map_err(|e| format!("Failed to write embed file: {}", e))?;
+                                std::fs::write(&embed_path, generated_file_contents).map_err(|e| {
+                                    ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::CouldNotWriteGeneratedFile(
+                                            e.to_string(),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    }
+                                })?;
                             }
                         };
                     } else {
-                        // TODO(embeds) Proper error here
-                        return Err(format!("No embed generator found for tag: {}", embed_data.tag));
+                        return Err(ProcessEmbedsError {
+                            reason: ProcessEmbedsErrorReason::NoEmbedGeneratorFoundForTag(embed_data.tag),
+                            generator_name: None,
+                        });
                     }
                 }
                 if !build_state.modules.contains_key(&module_name) {
@@ -556,15 +703,28 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                     dirty,
                 })
             })
-            .collect::<Vec<Result<Embed, String>>>();
+            .collect::<Vec<Result<Embed, ProcessEmbedsError>>>();
 
         let module = build_state.modules.get_mut(module_name).unwrap();
+
+        let embed_errors = embeds
+            .iter()
+            .filter_map(|result| match result {
+                Ok(_) => None,
+                Err(err) => Some(err.clone()),
+            })
+            .collect::<Vec<ProcessEmbedsError>>();
+
         match module.source_type {
             SourceType::SourceFile(ref mut source_file) => {
                 source_file.embeds = embeds.into_iter().filter_map(|result| result.ok()).collect();
             }
             _ => (),
         };
+
+        if embed_errors.len() > 0 {
+            return Err(embed_errors);
+        }
     }
 
     Ok(())
