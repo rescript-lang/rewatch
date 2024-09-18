@@ -81,15 +81,6 @@ pub fn generate_asts(
                         )
                     };
 
-                    // After generating ASTs, handle embeds
-                    // Process embeds for the source file
-                    if let Err(err) =
-                        process_embeds(build_state, package, source_file, &build_state.workspace_root)
-                    {
-                        has_failure = true;
-                        stderr.push_str(&err);
-                    }
-
                     (module_name.to_owned(), ast_result, iast_result, dirty)
                 }
             }
@@ -102,21 +93,23 @@ pub fn generate_asts(
         )>>()
         .into_iter()
         .for_each(|(module_name, ast_result, iast_result, is_dirty)| {
-            if let Some(module) = build_state.modules.get_mut(&module_name) {
+            let result = if let Some(module) = build_state.modules.get_mut(&module_name) {
                 // if the module is dirty, mark it also compile_dirty
                 // do NOT set to false if the module is not parse_dirty, it needs to keep
                 // the compile_dirty flag if it was set before
                 if is_dirty {
+                    // module.compile_dirty = true;
                     module.compile_dirty = true;
                 }
                 let package = build_state
                     .packages
                     .get(&module.package_name)
                     .expect("Package not found");
+
                 if let SourceType::SourceFile(ref mut source_file) = module.source_type {
                     // We get Err(x) when there is a parse error. When it's Ok(_, Some(
                     // stderr_warnings )), the outputs are warnings
-                    match ast_result {
+                    let ast_new_result = match ast_result {
                         // In case of a pinned (internal) dependency, we want to keep on
                         // propagating the warning with every compile. So we mark it as dirty for
                         // the next round
@@ -128,6 +121,14 @@ pub fn generate_asts(
                             }
                             logs::append(package, &stderr_warnings);
                             stderr.push_str(&stderr_warnings);
+
+                            // // After generating ASTs, handle embeds
+                            // // Process embeds for the source file
+                            // if let Err(err) = process_embeds(build_state, package, &module_name) {
+                            //     has_failure = true;
+                            //     stderr.push_str(&err);
+                            // }
+                            Ok(())
                         }
                         Ok((_path, Some(_))) | Ok((_path, None)) => {
                             // If we do have stderr_warnings here, the file is not a pinned
@@ -137,6 +138,7 @@ pub fn generate_asts(
                             if let Some(interface) = source_file.interface.as_mut() {
                                 interface.parse_dirty = false;
                             }
+                            Ok(())
                         }
                         Err(err) => {
                             // Some compilation error
@@ -145,12 +147,13 @@ pub fn generate_asts(
                             logs::append(package, &err);
                             has_failure = true;
                             stderr.push_str(&err);
+                            Err(())
                         }
                     };
 
                     // We get Err(x) when there is a parse error. When it's Ok(_, Some(( _path,
                     // stderr_warnings ))), the outputs are warnings
-                    match iast_result {
+                    let iast_new_result = match iast_result {
                         // In case of a pinned (internal) dependency, we want to keep on
                         // propagating the warning with every compile. So we mark it as dirty for
                         // the next round
@@ -161,6 +164,7 @@ pub fn generate_asts(
                             }
                             logs::append(package, &stderr_warnings);
                             stderr.push_str(&stderr_warnings);
+                            Ok(())
                         }
                         Ok(Some((_, None))) | Ok(Some((_, Some(_)))) => {
                             // If we do have stderr_warnings here, the file is not a pinned
@@ -169,6 +173,7 @@ pub fn generate_asts(
                                 interface.parse_state = ParseState::Success;
                                 interface.parse_dirty = false;
                             }
+                            Ok(())
                         }
                         Err(err) => {
                             // Some compilation error
@@ -179,13 +184,31 @@ pub fn generate_asts(
                             logs::append(package, &err);
                             has_failure = true;
                             stderr.push_str(&err);
+                            Err(())
                         }
                         Ok(None) => {
                             // The file had no interface file associated
-                            ()
+                            Ok(())
                         }
+                    };
+                    match (ast_new_result, iast_new_result) {
+                        (Ok(()), Ok(())) => Ok(()),
+                        _ => Err(()),
                     }
-                };
+                } else {
+                    Err(())
+                }
+            } else {
+                Err(())
+            };
+            match result {
+                Ok(()) => {
+                    if let Err(err) = process_embeds(build_state, &module_name) {
+                        has_failure = true;
+                        stderr.push_str(&err);
+                    }
+                }
+                Err(()) => (),
             }
         });
 
@@ -381,15 +404,16 @@ fn path_to_ast_extension(path: &Path) -> &str {
 }
 
 // Function to process embeds
-fn process_embeds(
-    build_state: &mut BuildState,
-    package: &packages::Package,
-    source_file: &mut SourceFile,
-    workspace_root: &Option<String>,
-) -> Result<(), String> {
-    let source_file_path = &source_file.implementation.path;
+fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(), String> {
+    let module = build_state.modules.get(module_name).unwrap();
+    let package = build_state.packages.get(&module.package_name).unwrap();
+    let source_file = match &module.source_type {
+        SourceType::SourceFile(source_file) => source_file,
+        _ => panic!("Module {} is not a source file", module_name),
+    };
 
-    let ast_path = Path::new(&package.get_ast_path(&source_file.implementation.path));
+    let ast_path_str = package.get_ast_path(&source_file.implementation.path);
+    let ast_path = Path::new(&ast_path_str);
     let embeds_json_path = ast_path.with_extension("embeds.json");
 
     // Read and parse the embeds JSON file
@@ -404,7 +428,7 @@ fn process_embeds(
             .map(|embed_data| {
                 let embed_path = package.generated_file_folder.join(&embed_data.filename);
                 let hash = helpers::compute_string_hash(&embed_data.contents);
-                let dirty = is_embed_dirty(&embed_path, &embed_data, &hash.to_string());
+                let dirty = is_embed_dirty(&embed_path, &hash.to_string());
                 // embed_path is the path of the generated rescript file, let's add this path to the build state
                 // Add the embed_path as a rescript source file to the build state
                 let relative_path = Path::new(&embed_path)
@@ -491,7 +515,8 @@ fn process_embeds(
                         last_compiled_cmt: None,
                     };
 
-                    build_state.insert_module(&module_name, module);
+                    build_state.modules.insert(module_name.to_string(), module);
+                    build_state.module_names.insert(module_name.to_string());
                 } else if dirty {
                     if let Some(module) = build_state.modules.get_mut(&module_name) {
                         if let SourceType::SourceFile(source_file) = &mut module.source_type {
@@ -508,14 +533,19 @@ fn process_embeds(
             })
             .collect::<Vec<Result<Embed, String>>>();
 
-        // Update the source file's embeds
-        source_file.embeds = embeds.into_iter().filter_map(|result| result.ok()).collect();
+        let module = build_state.modules.get_mut(module_name).unwrap();
+        match module.source_type {
+            SourceType::SourceFile(ref mut source_file) => {
+                source_file.embeds = embeds.into_iter().filter_map(|result| result.ok()).collect();
+            }
+            _ => (),
+        };
     }
 
     Ok(())
 }
 
-fn is_embed_dirty(embed_path: &Path, embed_data: &EmbedJsonData, hash: &str) -> bool {
+fn is_embed_dirty(embed_path: &Path, hash: &str) -> bool {
     // Check if the embed file exists and compare hashes
     // the first line of the generated rescript file is a comment with the following format:
     // "// HASH: <hash>"
