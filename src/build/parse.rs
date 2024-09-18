@@ -308,6 +308,7 @@ pub fn parser_args(
     let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
     let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
+    let embed_flags = bsconfig::get_embed_generators_bsc_flags(&config);
 
     let file = "../../".to_string() + file;
     (
@@ -327,6 +328,7 @@ pub fn parser_args(
                 ast_path.to_string(),
                 file,
             ],
+            embed_flags,
         ]
         .concat(),
     )
@@ -431,10 +433,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                 let dirty = is_embed_dirty(&embed_path, &hash.to_string());
                 // embed_path is the path of the generated rescript file, let's add this path to the build state
                 // Add the embed_path as a rescript source file to the build state
-                let relative_path = Path::new(&embed_path)
-                    .strip_prefix(&package.path)
-                    .unwrap()
-                    .to_string_lossy();
+                let relative_path = Path::new(&embed_path).to_string_lossy();
                 let module_name = helpers::file_path_to_module_name(&relative_path, &package.namespace);
                 let last_modified = std::fs::metadata(&embed_path)
                     .and_then(|metadata| metadata.modified())
@@ -448,18 +447,7 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                             generators.iter().find(|gen| gen.tags.contains(&embed_data.tag))
                         })
                     {
-                        // Prepare the command
-                        // let mut command = if let Some(package_name) = &embed_generator.package {
-                        //     let node_modules_path = workspace_root
-                        //         .as_ref()
-                        //         .map(|root| Path::new(root).join("node_modules"))
-                        //         .unwrap_or_else(|| Path::new(&package.path).join("node_modules"));
-                        //     let generator_path =
-                        //         node_modules_path.join(package_name).join(&embed_generator.path);
-                        //     Command::new("node").arg(generator_path)
-                        // } else {
-                        //     Command::new(&embed_generator.path)
-                        // };
+                        // TODO(embed) Needs to be relative to package root? Join with package path?
                         let mut command = Command::new(&embed_generator.path);
 
                         // Run the embed generator
@@ -483,8 +471,11 @@ fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(),
                             ));
                         }
 
+                        let generated_content = String::from_utf8_lossy(&output.stdout).into_owned();
+                        let generated_file_contents = format!("// HASH: {}\n{}", hash, generated_content);
+
                         // Write the output to the embed file
-                        std::fs::write(&embed_path, output.stdout)
+                        std::fs::write(&embed_path, generated_file_contents)
                             .map_err(|e| format!("Failed to write embed file: {}", e))?;
                     } else {
                         return Err(format!("No embed generator found for tag: {}", embed_data.tag));

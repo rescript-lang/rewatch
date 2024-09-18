@@ -260,6 +260,22 @@ fn namespace_from_package_name(package_name: &str) -> String {
         .to_case(Case::Pascal)
 }
 
+pub fn get_embed_generators_bsc_flags(config: &Config) -> Vec<String> {
+    config
+        .embed_generators
+        .as_ref()
+        .unwrap_or(&vec![])
+        .iter()
+        .flat_map(|generator| {
+            generator
+                .tags
+                .iter()
+                .map(|tag| vec![format!("-embed"), tag.to_string()])
+        })
+        .collect::<Vec<Vec<String>>>()
+        .concat()
+}
+
 impl Config {
     pub fn get_namespace(&self) -> packages::Namespace {
         let namespace_from_package = namespace_from_package_name(&self.name);
