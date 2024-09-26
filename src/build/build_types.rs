@@ -1,5 +1,6 @@
 use crate::build::packages::{Namespace, Package};
 use ahash::{AHashMap, AHashSet};
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,10 +36,106 @@ pub struct Implementation {
     pub parse_dirty: bool,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct Location {
+    pub line: u32,
+    pub col: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct EmbedLoc {
+    pub start: Location,
+    pub end: Location,
+}
+
+// example of the *.embeds.json file
+// [
+//   {
+//     "tag": "sql.one",
+//     "filename": "Tst__sql_one_1.res",
+//     "contents": "\n  SELECT * FROM tst.res\n  WHERE id = 1\n",
+//     "loc": {"start": {"line": 1, "col": 22}, "end": {"line": 4, "col": 64}}
+//   },
+//   {
+//     "tag": "sql.many",
+//     "filename": "Tst__sql_many_1.res",
+//     "contents": "\n  SELECT * FROM tst.res\n  WHERE id > 1\n",
+//     "loc": {"start": {"line": 6, "col": 86}, "end": {"line": 9, "col": 128}}
+//   },
+//   {
+//     "tag": "sql.one",
+//     "filename": "Tst__sql_one_2.res",
+//     "contents":
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct EmbedJsonData {
+    pub tag: String,
+    pub filename: String,
+    pub contents: String,
+    pub loc: EmbedLoc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embed {
+    pub embed: EmbedJsonData,
+    pub hash: String,
+    pub dirty: bool,
+}
+
+#[derive(Serialize, Clone, PartialEq, Eq)]
+pub struct EmbedGeneratorConfig {
+    pub tag: String,
+    pub content: String,
+    pub source_file_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmbedGeneratorResponseOk {
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EmbedGeneratorError {
+    pub message: String,
+    pub loc: EmbedLoc,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmbedGeneratorResponseError {
+    pub errors: Vec<EmbedGeneratorError>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratorReturnedError {
+    pub errors: Vec<EmbedGeneratorError>,
+    pub source_file_path: String,
+    pub embed_data: EmbedJsonData,
+    pub package_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProcessEmbedsErrorReason {
+    EmbedsJsonFileCouldNotBeRead(String),
+    EmbedsJsonDataParseError(String),
+    CouldNotWriteToGeneratorStdin(String, String),
+    RunningGeneratorCommandFailed(String, String),
+    GeneratorReturnedError(GeneratorReturnedError),
+    GeneratorReturnedInvalidJSON(String),
+    CouldNotWriteGeneratedFile(String),
+    NoEmbedGeneratorFoundForTag(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessEmbedsError {
+    pub reason: ProcessEmbedsErrorReason,
+    pub generator_name: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
     pub implementation: Implementation,
     pub interface: Option<Interface>,
+    pub embeds: Vec<Embed>, // Added embeds field
 }
 
 #[derive(Debug, Clone, PartialEq)]

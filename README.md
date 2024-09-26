@@ -4,7 +4,7 @@
 
 # Info
 
-Rewatch is an alternative build system for the [Rescript Compiler](https://rescript-lang.org/) (which uses a combination of Ninja, OCaml and a Node.js script). It strives to deliver consistent and faster builds in monorepo setups. Bsb doesn't support a watch-mode in a monorepo setup, and when setting up a watcher that runs a global incremental compile it's consistent but very inefficient and thus slow. 
+Rewatch is an alternative build system for the [Rescript Compiler](https://rescript-lang.org/) (which uses a combination of Ninja, OCaml and a Node.js script). It strives to deliver consistent and faster builds in monorepo setups. Bsb doesn't support a watch-mode in a monorepo setup, and when setting up a watcher that runs a global incremental compile it's consistent but very inefficient and thus slow.
 
 We couldn't find a way to improve this without re-architecting the whole build system. The benefit of having a specialized build system is that it's possible to completely tailor it to ReScript and not being dependent of the constraints of a generic build system like Ninja. This allowed us to have significant performance improvements even in non-monorepo setups (30% to 3x improvements reported).
 
@@ -14,27 +14,27 @@ This project should be considered in beta status. We run it in production at [Wa
 
 # Usage
 
-  1. Install the package
+1. Install the package
 
-  ```
-  yarn add @rolandpeelen/rewatch
-  ```
+```
+yarn add @rolandpeelen/rewatch
+```
 
-  2. Build / Clean / Watch
+2. Build / Clean / Watch
 
-  ```
-  yarn rewatch build
-  ```
+```
+yarn rewatch build
+```
 
-  ```
-  yarn rewatch clean
-  ```
+```
+yarn rewatch clean
+```
 
-  ```
-  yarn rewatch watch
-  ```
+```
+yarn rewatch watch
+```
 
-  You can pass in the folder as the second argument where the 'root' `bsconfig.json` lives. If you encounter a 'stale build error', either directly, or after a while, a `clean` may be needed to clean up some old compiler assets.
+You can pass in the folder as the second argument where the 'root' `bsconfig.json` lives. If you encounter a 'stale build error', either directly, or after a while, a `clean` may be needed to clean up some old compiler assets.
 
 ## Full Options
 
@@ -67,7 +67,7 @@ Options:
 
   -c, --create-sourcedirs <CREATE_SOURCEDIRS>
           This creates a source_dirs.json file at the root of the monorepo, which is needed when you want to use Reanalyze
-          
+
           [possible values: true, false]
 
       --compiler-args <COMPILER_ARGS>
@@ -88,16 +88,67 @@ Options:
 
 # Contributing
 
-  Pre-requisites:
+Pre-requisites:
 
-  - [Rust](https://rustup.rs/)
-  - [NodeJS](https://nodejs.org/en/) - For running testscripts only
-  - [Yarn](https://yarnpkg.com/) or [Npm](https://www.npmjs.com/) - Npm probably comes with your node installation
+- [Rust](https://rustup.rs/)
+- [NodeJS](https://nodejs.org/en/) - For running testscripts only
+- [Yarn](https://yarnpkg.com/) or [Npm](https://www.npmjs.com/) - Npm probably comes with your node installation
 
-  1. `cd testrepo && yarn` (install dependencies for submodule)
-  2. `cargo run`
+1. `cd testrepo && yarn` (install dependencies for submodule)
+2. `cargo run`
 
-  Running tests:
+Running tests:
 
-  1. `cargo build --release`
-  2. `./tests/suite.sh`
+1. `cargo build --release`
+2. `./tests/suite.sh`
+
+### embed-lang
+
+- Parse -> MyModule.res
+  -> Rescript parser would generate (pass the embeds)
+  ```
+       MyModule.embeds
+       [
+         {
+           "name": "MyModule.graphql.0.embeds.res",
+           "content": "query MyQuery { ... }"
+           "hash": "123" <- fast hash of the rescript file
+         },
+         {
+           "name": "MyModule.graphql.1.embeds.res",
+           "content": "query MyQuery { ... }"
+         }
+       ]
+  ```
+  - after parsing everything, track all the embeds in the build state
+  - remove the embeds that are extraneous
+  - read the first line of the embed -> and mark dirty or not && see if rescript file is there
+  - track the embeds in the compiler state
+- Run the embeds
+  - run the dirty embeds
+    STDIN -> rescript-code -> STDOUT / STDERR (exit code)
+    -> /lib/ocaml/**generated**/MyModule.graphql.0.res
+    -> /lib/ocaml/**generated**/MyModule.graphql.1.res
+
+-> Parse the outputs of the embeds
+-> Determine the dependency tree (and add the embeds as deps)
+-> Run compiler
+
+#### configuration of embeds
+
+- bsconfig.json
+
+```json
+        {
+                "embed-generators": [
+                        {
+                        "name": "graphql",
+                        "tags": ["graphql"],
+                        "path": "./path/to/graphql/embed"
+                        "package": "my-generator-package"
+                        }
+                ]
+        }
+```
+
+-> Profit

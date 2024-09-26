@@ -157,12 +157,22 @@ pub struct Config {
     pub namespace: Option<NamespaceConfig>,
     pub jsx: Option<JsxSpecs>,
     pub uncurried: Option<bool>,
+    #[serde(rename = "embed-generators")]
+    pub embed_generators: Option<Vec<EmbedGenerator>>,
+
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
     #[serde(rename = "namespace-entry")]
     pub namespace_entry: Option<String>,
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
     #[serde(rename = "allowed-dependents")]
     pub allowed_dependents: Option<Vec<String>>,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct EmbedGenerator {
+    pub name: String,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub package: Option<String>,
 }
 
 /// This flattens string flags
@@ -248,6 +258,22 @@ fn namespace_from_package_name(package_name: &str) -> String {
         .replace('@', "")
         .replace('/', "_")
         .to_case(Case::Pascal)
+}
+
+pub fn get_embed_generators_bsc_flags(config: &Config) -> Vec<String> {
+    config
+        .embed_generators
+        .as_ref()
+        .unwrap_or(&vec![])
+        .iter()
+        .flat_map(|generator| {
+            generator
+                .tags
+                .iter()
+                .map(|tag| vec![format!("-embed"), tag.to_string()])
+        })
+        .collect::<Vec<Vec<String>>>()
+        .concat()
 }
 
 impl Config {

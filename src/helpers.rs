@@ -282,11 +282,12 @@ pub fn format_namespaced_module_name(module_name: &str) -> String {
     }
 }
 
+pub fn compute_string_hash(str: &str) -> blake3::Hash {
+    blake3::hash(str.as_bytes())
+}
+
 pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
-    match fs::read(path) {
-        Ok(str) => Some(blake3::hash(&str)),
-        Err(_) => None,
-    }
+    fs::read(path).map(|bytes| blake3::hash(&bytes)).ok()
 }
 
 fn has_rescript_config(path: &Path) -> bool {

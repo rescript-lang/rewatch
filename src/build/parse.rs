@@ -6,10 +6,15 @@ use crate::bsconfig;
 use crate::bsconfig::OneOrMore;
 use crate::helpers;
 use ahash::AHashSet;
+use core::panic;
+use core::str;
 use log::debug;
 use rayon::prelude::*;
+use std::cmp::max;
+use std::cmp::min;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 pub fn generate_asts(
     build_state: &mut BuildState,
@@ -92,21 +97,23 @@ pub fn generate_asts(
         )>>()
         .into_iter()
         .for_each(|(module_name, ast_result, iast_result, is_dirty)| {
-            if let Some(module) = build_state.modules.get_mut(&module_name) {
+            let result = if let Some(module) = build_state.modules.get_mut(&module_name) {
                 // if the module is dirty, mark it also compile_dirty
                 // do NOT set to false if the module is not parse_dirty, it needs to keep
                 // the compile_dirty flag if it was set before
                 if is_dirty {
+                    // module.compile_dirty = true;
                     module.compile_dirty = true;
                 }
                 let package = build_state
                     .packages
                     .get(&module.package_name)
                     .expect("Package not found");
+
                 if let SourceType::SourceFile(ref mut source_file) = module.source_type {
                     // We get Err(x) when there is a parse error. When it's Ok(_, Some(
                     // stderr_warnings )), the outputs are warnings
-                    match ast_result {
+                    let ast_new_result = match ast_result {
                         // In case of a pinned (internal) dependency, we want to keep on
                         // propagating the warning with every compile. So we mark it as dirty for
                         // the next round
@@ -118,6 +125,14 @@ pub fn generate_asts(
                             }
                             logs::append(package, &stderr_warnings);
                             stderr.push_str(&stderr_warnings);
+
+                            // // After generating ASTs, handle embeds
+                            // // Process embeds for the source file
+                            // if let Err(err) = process_embeds(build_state, package, &module_name) {
+                            //     has_failure = true;
+                            //     stderr.push_str(&err);
+                            // }
+                            Ok(())
                         }
                         Ok((_path, Some(_))) | Ok((_path, None)) => {
                             // If we do have stderr_warnings here, the file is not a pinned
@@ -127,6 +142,7 @@ pub fn generate_asts(
                             if let Some(interface) = source_file.interface.as_mut() {
                                 interface.parse_dirty = false;
                             }
+                            Ok(())
                         }
                         Err(err) => {
                             // Some compilation error
@@ -135,12 +151,13 @@ pub fn generate_asts(
                             logs::append(package, &err);
                             has_failure = true;
                             stderr.push_str(&err);
+                            Err(())
                         }
                     };
 
                     // We get Err(x) when there is a parse error. When it's Ok(_, Some(( _path,
                     // stderr_warnings ))), the outputs are warnings
-                    match iast_result {
+                    let iast_new_result = match iast_result {
                         // In case of a pinned (internal) dependency, we want to keep on
                         // propagating the warning with every compile. So we mark it as dirty for
                         // the next round
@@ -151,6 +168,7 @@ pub fn generate_asts(
                             }
                             logs::append(package, &stderr_warnings);
                             stderr.push_str(&stderr_warnings);
+                            Ok(())
                         }
                         Ok(Some((_, None))) | Ok(Some((_, Some(_)))) => {
                             // If we do have stderr_warnings here, the file is not a pinned
@@ -159,6 +177,7 @@ pub fn generate_asts(
                                 interface.parse_state = ParseState::Success;
                                 interface.parse_dirty = false;
                             }
+                            Ok(())
                         }
                         Err(err) => {
                             // Some compilation error
@@ -169,13 +188,124 @@ pub fn generate_asts(
                             logs::append(package, &err);
                             has_failure = true;
                             stderr.push_str(&err);
+                            Err(())
                         }
                         Ok(None) => {
                             // The file had no interface file associated
-                            ()
+                            Ok(())
                         }
+                    };
+                    match (ast_new_result, iast_new_result) {
+                        (Ok(()), Ok(())) => Ok(()),
+                        _ => Err(()),
                     }
-                };
+                } else {
+                    Err(())
+                }
+            } else {
+                Err(())
+            };
+            match result {
+                Ok(()) => {
+                    if let Err(err) = process_embeds(build_state, &module_name) {
+                        has_failure = true;
+                        err.into_iter().for_each(|err: ProcessEmbedsError| {
+                            let error_str = match &err.reason {
+                                ProcessEmbedsErrorReason::CouldNotWriteGeneratedFile(err) => {
+                                    Some((String::from("[CouldNotWriteGeneratedFile]"), err))
+                                }
+                                ProcessEmbedsErrorReason::CouldNotWriteToGeneratorStdin(_generator, err) => {
+                                    Some((String::from("[CouldNotWriteToGeneratorStdin]"), err))
+                                }
+                                ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(err) => {
+                                    Some((String::from("[GeneratorReturnedInvalidJSON]"), err))
+                                }
+                                ProcessEmbedsErrorReason::NoEmbedGeneratorFoundForTag(err) => {
+                                    Some((String::from("[NoEmbedGeneratorFoundForTag]"), err))
+                                }
+                                ProcessEmbedsErrorReason::RunningGeneratorCommandFailed(_generator, err) => {
+                                    Some((String::from("[RunningGeneratorCommandFailed]"), err))
+                                }
+                                _ => None,
+                            };
+                            match error_str {
+                                Some((pre, err)) => stderr.push_str(format!("\n{}\n{}\n", pre, err).as_str()),
+                                None => (),
+                            }
+
+                            // Handle real embed errors, which should be transformed and pushed onto the compiler log
+                            match err.reason {
+                                ProcessEmbedsErrorReason::GeneratorReturnedError(generator_error) => {
+                                    generator_error.errors.iter().for_each(|error| {
+                                        // TODO(embeds) Figure out locs properly...
+                                        let transformed_loc = EmbedLoc {
+                                            start: Location {
+                                                line: max(
+                                                    generator_error.embed_data.loc.start.line
+                                                        + error.loc.start.line,
+                                                    generator_error.embed_data.loc.start.line,
+                                                ),
+                                                col: min(
+                                                    generator_error.embed_data.loc.start.col
+                                                        + error.loc.start.col,
+                                                    generator_error.embed_data.loc.start.col + 1,
+                                                ),
+                                            },
+                                            end: Location {
+                                                line: max(
+                                                    generator_error.embed_data.loc.end.line
+                                                        + error.loc.end.line,
+                                                    generator_error.embed_data.loc.end.line,
+                                                ),
+                                                col: min(
+                                                    generator_error.embed_data.loc.end.col
+                                                        + error.loc.end.col,
+                                                    generator_error.embed_data.loc.end.col,
+                                                ),
+                                            },
+                                        };
+
+                                        let package = build_state
+                                            .get_package(&generator_error.package_name)
+                                            .expect("Package not found");
+
+                                        // TODO(embeds) Figure out where the LSP off-by-one on line/col transform makes most sense to happen.
+                                        let error_output = format!(
+                                            "  We've found a bug for you!\n{}:{}:{}-{}\n\n  {}\n{}\n",
+                                            helpers::canonicalize_string_path(
+                                                &generator_error.source_file_path
+                                            )
+                                            .unwrap(),
+                                            transformed_loc.start.line - 1,
+                                            transformed_loc.start.col,
+                                            if transformed_loc.start.line == transformed_loc.end.line {
+                                                format!("{}", transformed_loc.end.col)
+                                            } else {
+                                                format!(
+                                                    "{}:{}",
+                                                    transformed_loc.end.line - 1,
+                                                    transformed_loc.end.col
+                                                )
+                                            },
+                                            match &err.generator_name {
+                                                Some(generator_name) =>
+                                                    format!("  Error from generator: {}\n", generator_name),
+                                                None => format!("  Error from generator\n"),
+                                            },
+                                            error.message
+                                        );
+
+                                        logs::append(&package, &error_output);
+
+                                        stderr.push_str(&error_output);
+                                    });
+                                }
+                                _ => (),
+                            }
+                        });
+                    }
+                }
+                Err(()) => (),
             }
         });
 
@@ -275,6 +405,7 @@ pub fn parser_args(
     let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
     let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
+    let embed_flags = bsconfig::get_embed_generators_bsc_flags(&config);
 
     let file = "../../".to_string() + file;
     (
@@ -294,6 +425,7 @@ pub fn parser_args(
                 ast_path.to_string(),
                 file,
             ],
+            embed_flags,
         ]
         .concat(),
     )
@@ -368,6 +500,260 @@ fn path_to_ast_extension(path: &Path) -> &str {
     } else {
         ".ast"
     }
+}
+
+// Function to process embeds
+fn process_embeds(build_state: &mut BuildState, module_name: &str) -> Result<(), Vec<ProcessEmbedsError>> {
+    let module = build_state.modules.get(module_name).unwrap();
+    let package = build_state.packages.get(&module.package_name).unwrap();
+    let source_file = match &module.source_type {
+        SourceType::SourceFile(source_file) => source_file,
+        _ => panic!("Module {} is not a source file", module_name),
+    };
+    let source_file_path = source_file.implementation.path.clone();
+
+    let ast_path_str = package.get_ast_path(&source_file.implementation.path);
+    let ast_path = Path::new(&ast_path_str);
+    let embeds_json_path = ast_path.with_extension("embeds.json");
+
+    // Read and parse the embeds JSON file
+    if embeds_json_path.exists() {
+        let embeds_json = helpers::read_file(&embeds_json_path).map_err(|e| {
+            vec![ProcessEmbedsError {
+                reason: ProcessEmbedsErrorReason::EmbedsJsonFileCouldNotBeRead(e.to_string()),
+                generator_name: None,
+            }]
+        })?;
+        let embeds_data: Vec<EmbedJsonData> = serde_json::from_str(&embeds_json).map_err(|e| {
+            vec![ProcessEmbedsError {
+                reason: ProcessEmbedsErrorReason::EmbedsJsonDataParseError(e.to_string()),
+                generator_name: None,
+            }]
+        })?;
+
+        // TODO(embeds) Run in parallel?
+        // Process each embed
+        let embeds = embeds_data
+            .into_iter()
+            .map(|embed_data| {
+                let embed_path = package.generated_file_folder.join(&embed_data.filename);
+                let hash = helpers::compute_string_hash(&embed_data.contents);
+                let dirty = is_embed_dirty(&embed_path, &hash.to_string());
+                // embed_path is the path of the generated rescript file, let's add this path to the build state
+                // Add the embed_path as a rescript source file to the build state
+                let relative_path = Path::new(&embed_path).to_string_lossy();
+                let module_name = helpers::file_path_to_module_name(&relative_path, &package.namespace);
+                let last_modified = std::fs::metadata(&embed_path)
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(SystemTime::now());
+
+                if dirty {
+                    // run the embed file
+                    // Find the embed generator based on the tag
+                    if let Some(embed_generator) =
+                        package.bsconfig.embed_generators.as_ref().and_then(|generators| {
+                            generators.iter().find(|gen| gen.tags.contains(&embed_data.tag))
+                        })
+                    {
+                        // TODO(embeds) Needs to be relative to relevant package root? Join with package path?
+                        let mut command = Command::new(&embed_generator.path);
+
+                        // Run the embed generator
+                        let output = command
+                            .stdin(std::process::Stdio::piped())
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .spawn()
+                            .and_then(|mut child| {
+                                use std::io::Write;
+                                let embed_generator_config = EmbedGeneratorConfig {
+                                    tag: embed_data.tag.clone(),
+                                    content: embed_data.contents.clone(),
+                                    source_file_path: source_file_path.clone(),
+                                };
+                                let contents = serde_json::to_vec(&embed_generator_config)?;
+                                // TODO(embeds) These ? unwraps seems wrong...
+                                child
+                                    .stdin
+                                    .as_mut()
+                                    .unwrap()
+                                    .write_all(&contents)
+                                    .map_err(|e| ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::CouldNotWriteToGeneratorStdin(
+                                            embed_generator.name.clone(),
+                                            e.to_string(),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    })
+                                    .unwrap();
+                                child.wait_with_output()
+                            })
+                            .map_err(|e| ProcessEmbedsError {
+                                reason: ProcessEmbedsErrorReason::RunningGeneratorCommandFailed(
+                                    embed_generator.name.clone(),
+                                    e.to_string(),
+                                ),
+                                generator_name: Some(embed_generator.name.clone()),
+                            })
+                            .unwrap();
+
+                        if !output.status.success() {
+                            let stderr_str = str::from_utf8(&output.stderr).unwrap();
+                            let error_response: Result<EmbedGeneratorResponseError, serde_json::Error> =
+                                serde_json::from_str(stderr_str);
+
+                            match error_response {
+                                Ok(err) => {
+                                    return Err(ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::GeneratorReturnedError(
+                                            GeneratorReturnedError {
+                                                package_name: package.name.clone(),
+                                                errors: err.errors,
+                                                embed_data: embed_data.clone(),
+                                                source_file_path: source_file_path.clone(),
+                                            },
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    });
+                                }
+                                Err(err) => {
+                                    return Err(ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(
+                                            format!("Error: {}\n\nRaw content:\n{}", err, stderr_str),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    });
+                                }
+                            };
+                        }
+
+                        let stdout_str = str::from_utf8(&output.stdout).unwrap();
+                        let success_response: Result<EmbedGeneratorResponseOk, serde_json::Error> =
+                            serde_json::from_str(&stdout_str);
+
+                        match success_response {
+                            Err(err) => {
+                                return Err(ProcessEmbedsError {
+                                    reason: ProcessEmbedsErrorReason::GeneratorReturnedInvalidJSON(
+                                        err.to_string(),
+                                    ),
+                                    generator_name: Some(embed_generator.name.clone()),
+                                });
+                            }
+                            Ok(success_response) => {
+                                let generated_file_contents =
+                                    format!("// HASH: {}\n{}", hash, success_response.content);
+
+                                // Write the output to the embed file
+                                std::fs::write(&embed_path, generated_file_contents).map_err(|e| {
+                                    ProcessEmbedsError {
+                                        reason: ProcessEmbedsErrorReason::CouldNotWriteGeneratedFile(
+                                            e.to_string(),
+                                        ),
+                                        generator_name: Some(embed_generator.name.clone()),
+                                    }
+                                })?;
+                            }
+                        };
+                    } else {
+                        return Err(ProcessEmbedsError {
+                            reason: ProcessEmbedsErrorReason::NoEmbedGeneratorFoundForTag(embed_data.tag),
+                            generator_name: None,
+                        });
+                    }
+                }
+                if !build_state.modules.contains_key(&module_name) {
+                    let implementation = Implementation {
+                        path: relative_path.to_string(),
+                        parse_state: ParseState::Pending,
+                        compile_state: CompileState::Pending,
+                        last_modified,
+                        parse_dirty: true,
+                    };
+
+                    let source_file = SourceFile {
+                        implementation,
+                        interface: None,
+                        embeds: Vec::new(),
+                    };
+
+                    let module = Module {
+                        source_type: SourceType::SourceFile(source_file),
+                        deps: AHashSet::new(),
+                        dependents: AHashSet::new(),
+                        package_name: package.name.clone(),
+                        compile_dirty: true,
+                        last_compiled_cmi: None,
+                        last_compiled_cmt: None,
+                    };
+
+                    build_state.modules.insert(module_name.to_string(), module);
+                    build_state.module_names.insert(module_name.to_string());
+                } else if dirty {
+                    if let Some(module) = build_state.modules.get_mut(&module_name) {
+                        if let SourceType::SourceFile(source_file) = &mut module.source_type {
+                            source_file.implementation.parse_dirty = true;
+                        }
+                    }
+                }
+
+                Ok(Embed {
+                    hash: hash.to_string(),
+                    embed: embed_data,
+                    dirty,
+                })
+            })
+            .collect::<Vec<Result<Embed, ProcessEmbedsError>>>();
+
+        let module = build_state.modules.get_mut(module_name).unwrap();
+
+        let embed_errors = embeds
+            .iter()
+            .filter_map(|result| match result {
+                Ok(_) => None,
+                Err(err) => Some(err.clone()),
+            })
+            .collect::<Vec<ProcessEmbedsError>>();
+
+        match module.source_type {
+            SourceType::SourceFile(ref mut source_file) => {
+                source_file.embeds = embeds.into_iter().filter_map(|result| result.ok()).collect();
+            }
+            _ => (),
+        };
+
+        if embed_errors.len() > 0 {
+            return Err(embed_errors);
+        }
+    }
+
+    Ok(())
+}
+
+fn is_embed_dirty(embed_path: &Path, hash: &str) -> bool {
+    // Check if the embed file exists and compare hashes
+    // the first line of the generated rescript file is a comment with the following format:
+    // "// HASH: <hash>"
+    // if the hash is different from the hash in the embed_data, the embed is dirty
+    // if the file does not exist, the embed is dirty
+    // if the file exists but the hash is not present, the embed is dirty
+    // if the file exists but the hash is present but different from the hash in the embed_data, the embed is dirty
+    // if the file exists but the hash is present and the same as the hash in the embed_data, the embed is not dirty
+    if !embed_path.exists() {
+        return true;
+    }
+
+    let first_line = match helpers::read_file(embed_path) {
+        Ok(contents) => contents.lines().next().unwrap_or("").to_string(),
+        Err(_) => return true,
+    };
+
+    if !first_line.starts_with("// HASH: ") {
+        return true;
+    }
+
+    let file_hash = first_line.trim_start_matches("// HASH: ");
+    file_hash != hash
 }
 
 fn include_ppx(flag: &str, contents: &str) -> bool {

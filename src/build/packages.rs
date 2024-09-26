@@ -50,6 +50,7 @@ pub struct Package {
     pub name: String,
     pub bsconfig: bsconfig::Config,
     pub source_folders: AHashSet<bsconfig::PackageSource>,
+    pub generated_file_folder: PathBuf,
     // these are the relative file paths (relative to the package root)
     pub source_files: Option<AHashMap<String, SourceFileMeta>>,
     pub namespace: Namespace,
@@ -381,6 +382,11 @@ fn make_package(
         source_files: None,
         namespace: bsconfig.get_namespace(),
         modules: None,
+        generated_file_folder: match &bsconfig.sources {
+            bsconfig::OneOrMore::Single(source) => PathBuf::from(bsconfig::to_qualified_without_children(source, None).dir).join("__generated__"),
+            bsconfig::OneOrMore::Multiple(sources) if !sources.is_empty() => PathBuf::from(bsconfig::to_qualified_without_children(&sources[0], None).dir).join("__generated__"),
+            _ => panic!("Error: Invalid or empty sources configuration in bsconfig.json. Please ensure at least one valid source is specified."),
+        },
         // we canonicalize the path name so it's always the same
         path: PathBuf::from(package_path)
             .canonicalize()
@@ -652,6 +658,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                         parse_dirty: true,
                                     },
                                     interface: None,
+                                    embeds: vec![],
                                 }),
                                 deps: AHashSet::new(),
                                 dependents: AHashSet::new(),
@@ -705,6 +712,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                                                 last_modified: metadata.modified,
                                                 parse_dirty: true,
                                             }),
+                                            embeds: vec![],
                                         }),
                                         deps: AHashSet::new(),
                                         dependents: AHashSet::new(),
