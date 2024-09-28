@@ -9,7 +9,9 @@ use crate::queue::*;
 use futures_timer::Delay;
 use notify::event::ModifyKind;
 use notify::{Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::fs::DirEntry;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -47,11 +49,11 @@ fn matches_filter(path_buf: &Path, filter: &Option<regex::Regex>) -> bool {
 }
 
 async fn async_watch(
-    q: Arc<FifoQueue<Result<Event, Error>>>,
+    queues: &mut Vec<Arc<FifoQueue<Result<Event, Error>>>>,
     path: &str,
     filter: &Option<regex::Regex>,
     after_build: Option<String>,
-    create_sourcedirs: bool,
+    create_sourcedirs: bool
 ) -> notify::Result<()> {
     let mut build_state = build::initialize_build(None, filter, path, None).expect("Can't initialize build");
     let mut needs_compile_type = CompileType::Incremental;
@@ -75,13 +77,15 @@ async fn async_watch(
             break Ok(());
         }
         let mut events: Vec<Event> = vec![];
-        if !q.is_empty() {
-            // Wait for events to settle
-            Delay::new(Duration::from_millis(50)).await;
-        }
-        while !q.is_empty() {
-            if let Ok(event) = q.pop() {
-                events.push(event)
+        for q in &mut *queues {
+            if !q.is_empty() {
+                // Wait for events to settle
+                Delay::new(Duration::from_millis(50)).await;
+            }
+            while !q.is_empty() {
+                if let Ok(event) = q.pop() {
+                    events.push(event)
+                }
             }
         }
 
@@ -233,6 +237,33 @@ async fn async_watch(
         }
     }
 }
+// get symlinked dirs in node_modules 
+pub fn get_symlinked_node_modules(folder: &str) -> Vec<PathBuf> {
+    match std::fs::read_dir((folder).to_string() + "/node_modules") {
+        Ok(dirs) => {
+            let mut sym_link_dirs = vec![];
+            dirs.for_each(|folder: Result<DirEntry, std::io::Error>| {
+                match folder {
+                    Ok(file) => {
+                        if file.path().is_symlink() {
+                            match std::fs::canonicalize(file.path()) {
+                                Ok(path) => {
+                                    sym_link_dirs.push(path)
+                                },
+                                Err(err) => {
+                                    println!("error in path {:?}", err)
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                }
+            });
+            sym_link_dirs
+        }
+        Err(_) => vec![],
+    }
+}
 
 pub fn start(
     filter: &Option<regex::Regex>,
@@ -241,17 +272,33 @@ pub fn start(
     create_sourcedirs: bool,
 ) {
     futures::executor::block_on(async {
-        let queue = Arc::new(FifoQueue::<Result<Event, Error>>::new());
-        let producer = queue.clone();
-        let consumer = queue.clone();
-
-        let mut watcher = RecommendedWatcher::new(move |res| producer.push(res), Config::default())
+        // including symlinks also to create watchers.
+        let mut paths: Vec<PathBuf>= get_symlinked_node_modules(folder);
+        paths.push(PathBuf::from(folder));
+        let mut consumer_queues: Vec<Arc<FifoQueue<Result<Event, Error>>>> = vec![];
+        let queue: Arc<FifoQueue<Result<Event, Error>>> = Arc::new(FifoQueue::<Result<Event, Error>>::new());
+        let mut watchers: Vec<_> = vec![];
+        for path in paths {
+            println!("{:?}", path);
+            let producer = queue.clone();
+            let consumer = queue.clone();
+            let mut watcher = RecommendedWatcher::new(move |res| producer.push(res), Config::default())
             .expect("Could not create watcher");
-        watcher
-            .watch(folder.as_ref(), RecursiveMode::Recursive)
-            .expect("Could not start watcher");
-
-        if let Err(e) = async_watch(consumer, folder, filter, after_build, create_sourcedirs).await {
+            watcher
+                .watch(path.as_ref(), RecursiveMode::Recursive)
+                .expect("Could not start watcher");
+            consumer_queues.push(consumer);
+            watchers.push(watcher)
+        }
+        if let Err(e) = async_watch(
+            &mut consumer_queues,
+            folder,
+            filter,
+            after_build.to_owned(),
+            create_sourcedirs
+        )
+        .await
+        {
             println!("error: {:?}", e)
         }
     })
