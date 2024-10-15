@@ -122,6 +122,18 @@ fn matches_filter(filter: &Option<regex::Regex>, path: &str) -> bool {
     }
 }
 
+fn is_broken_symlink<P: AsRef<Path>>(path: P) -> bool {
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        if metadata.file_type().is_symlink() {
+            return match fs::read_link(&path) {
+                Ok(link_target) => fs::metadata(&link_target).is_err(),
+                Err(_) => true,
+            };
+        }
+    }
+    false
+}
+
 pub fn read_folders(
     filter: &Option<regex::Regex>,
     package_dir: &Path,
@@ -142,6 +154,10 @@ pub fn read_folders(
 
     for entry in fs::read_dir(package_dir.join(&path_buf))? {
         let entry_path_buf = entry.map(|entry| entry.path())?;
+        if is_broken_symlink(&entry_path_buf) {
+            println!("Warning: '{}' is a broken symlink", entry_path_buf.display());
+            continue;
+        }
         let metadata = fs::metadata(&entry_path_buf)?;
         let name = entry_path_buf.file_name().unwrap().to_str().unwrap().to_string();
 
@@ -150,7 +166,7 @@ pub fn read_folders(
         if metadata.file_type().is_dir() && recurse {
             match read_folders(filter, package_dir, &new_path, recurse) {
                 Ok(s) => map.extend(s),
-                Err(e) => println!("Error reading directory: {}", e),
+                Err(e) => println!("Error reading directory {}: {}", entry_path_buf.display(), e),
             }
         }
 
@@ -452,13 +468,14 @@ pub fn get_source_files(
     if type_ != &Some("dev".to_string()) {
         match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
-            Err(_e) if type_ == &Some("dev".to_string()) => {
+            Err(e) if type_ == &Some("dev".to_string()) => {
                 println!(
-                    "Could not read folder: {}... Probably ok as type is dev",
-                    path_dir.to_string_lossy()
+                    "Could not read folder {}: {}... Probably ok as type is dev",
+                    path_dir.to_string_lossy(),
+                    e
                 )
             }
-            Err(_e) => println!("Could not read folder: {}...", path_dir.to_string_lossy()),
+            Err(e) => println!("Could not read folder {}: {}", path_dir.to_string_lossy(), e),
         }
     }
 
