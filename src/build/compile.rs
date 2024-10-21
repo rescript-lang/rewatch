@@ -434,6 +434,7 @@ pub fn compiler_args(
     let jsx_module_args = root_config.get_jsx_module_args();
     let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
+    let gentype_arg = root_config.get_gentype_arg();
 
     let warning_args: Vec<String> = match config.warnings.to_owned() {
         None => vec![],
@@ -494,6 +495,7 @@ pub fn compiler_args(
         read_cmi_args,
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
+        gentype_arg,
         jsx_args,
         jsx_module_args,
         jsx_mode_args,
