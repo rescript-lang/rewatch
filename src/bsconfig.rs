@@ -245,7 +245,17 @@ pub fn read(path: String) -> Config {
 }
 
 fn check_if_rescript11_or_higher(version: &str) -> bool {
-    version.split('.').next().unwrap().parse::<usize>().unwrap() >= 11
+    // Non stable rescript versions might contain non-numeric characters
+    let filter_non_number_chars = |s: &str| s.chars().filter(|c| c.is_numeric()).collect::<String>();
+
+    version
+        .split('.')
+        .next()
+        .map(filter_non_number_chars)
+        .unwrap()
+        .parse::<usize>()
+        .unwrap()
+        >= 11
 }
 
 fn namespace_from_package_name(package_name: &str) -> String {
