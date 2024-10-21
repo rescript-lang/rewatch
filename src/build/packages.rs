@@ -864,6 +864,7 @@ mod test {
                 namespace: None,
                 jsx: None,
                 uncurried: None,
+                gentype_config: None,
                 namespace_entry: None,
                 allowed_dependents,
             },

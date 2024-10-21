@@ -133,6 +133,10 @@ pub struct JsxSpecs {
     pub v3_dependencies: Option<Vec<String>>,
 }
 
+/// Empty struct - the gentype config is loaded by bsc
+#[derive(Deserialize, Debug, Clone)]
+pub struct GenTypeConfig {}
+
 /// # bsconfig.json representation
 /// This is tricky, there is a lot of ambiguity. This is probably incomplete.
 #[derive(Deserialize, Debug, Clone)]
@@ -157,6 +161,8 @@ pub struct Config {
     pub namespace: Option<NamespaceConfig>,
     pub jsx: Option<JsxSpecs>,
     pub uncurried: Option<bool>,
+    #[serde(rename = "gentypeconfig")]
+    pub gentype_config: Option<GenTypeConfig>,
     // this is a new feature of rewatch, and it's not part of the bsconfig.json spec
     #[serde(rename = "namespace-entry")]
     pub namespace_entry: Option<String>,
@@ -366,6 +372,13 @@ impl Config {
         .or(self.suffix.to_owned())
         .unwrap_or(".js".to_string())
     }
+
+    pub fn get_gentype_arg(&self) -> Vec<String> {
+        match &self.gentype_config {
+            Some(_) => vec!["-bs-gentype".to_string()],
+            None => vec![],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -388,5 +401,27 @@ mod tests {
         let config = serde_json::from_str::<Config>(json).unwrap();
         assert_eq!(config.get_suffix(), ".mjs");
         assert_eq!(config.get_module(), "es6");
+    }
+
+    #[test]
+    fn test_detect_gentypeconfig() {
+        let json = r#"
+        {
+            "name": "my-monorepo",
+            "sources": [ { "dir": "src/", "subdirs": true } ],
+            "package-specs": [ { "module": "es6", "in-source": true } ],
+            "suffix": ".mjs",
+            "pinned-dependencies": [ "@teamwalnut/app" ],
+            "bs-dependencies": [ "@teamwalnut/app" ],
+            "gentypeconfig": {
+                "module": "esmodule",
+                "generatedFileExtension": ".gen.tsx"
+            }
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(config.gentype_config.is_some(), true);
+        assert_eq!(config.get_gentype_arg(), vec!["-bs-gentype".to_string()]);
     }
 }
