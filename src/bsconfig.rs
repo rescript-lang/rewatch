@@ -133,9 +133,8 @@ pub struct JsxSpecs {
     pub v3_dependencies: Option<Vec<String>>,
 }
 
-/// Empty struct - the gentype config is loaded by bsc
-#[derive(Deserialize, Debug, Clone)]
-pub struct GenTypeConfig {}
+/// We do not care about the internal structure because the gentype config is loaded by bsc.
+pub type GenTypeConfig = serde_json::Value;
 
 /// # bsconfig.json representation
 /// This is tricky, there is a lot of ambiguity. This is probably incomplete.
