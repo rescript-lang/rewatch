@@ -244,17 +244,11 @@ pub fn read(path: String) -> Config {
 }
 
 fn check_if_rescript11_or_higher(version: &str) -> bool {
-    // Non stable rescript versions might contain non-numeric characters
-    let filter_non_number_chars = |s: &str| s.chars().filter(|c| c.is_numeric()).collect::<String>();
-
-    version
-        .split('.')
-        .next()
-        .map(filter_non_number_chars)
-        .unwrap()
-        .parse::<usize>()
-        .unwrap()
-        >= 11
+    if let Some(major) = version.split('.').next().and_then(|s| s.parse::<usize>().ok()) {
+        major >= 11
+    } else {
+        false
+    }
 }
 
 fn namespace_from_package_name(package_name: &str) -> String {
@@ -432,5 +426,24 @@ mod tests {
         let config = serde_json::from_str::<Config>(json).unwrap();
         assert_eq!(config.gentype_config.is_some(), true);
         assert_eq!(config.get_gentype_arg(), vec!["-bs-gentype".to_string()]);
+    }
+
+    #[test]
+    fn test_check_if_rescript11_or_higher() {
+        assert_eq!(check_if_rescript11_or_higher("11.0.0"), true);
+        assert_eq!(check_if_rescript11_or_higher("11.0.1"), true);
+        assert_eq!(check_if_rescript11_or_higher("11.1.0"), true);
+
+        assert_eq!(check_if_rescript11_or_higher("12.0.0"), true);
+
+        assert_eq!(check_if_rescript11_or_higher("10.0.0"), false);
+        assert_eq!(check_if_rescript11_or_higher("9.0.0"), false);
+    }
+
+    #[test]
+    fn test_check_if_rescript11_or_higher_misc() {
+        assert_eq!(check_if_rescript11_or_higher("11"), true);
+        assert_eq!(check_if_rescript11_or_higher("*"), false);
+        assert_eq!(check_if_rescript11_or_higher("12.0.0-alpha.4"), true);
     }
 }
