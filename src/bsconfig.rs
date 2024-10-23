@@ -351,7 +351,7 @@ impl Config {
             },
             Ok(false) => vec![],
             Err(_) => {
-                eprintln!("Could not parse version: {}", version);
+                eprintln!("Could not establish Rescript Version number for uncurried mode. Defaulting to Rescript < 11, disabling uncurried mode. Please specify an exact version if you need > 11 and default uncurried mode. Version: {}", version);
                 vec![]
             }
         }
