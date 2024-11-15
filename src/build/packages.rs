@@ -184,6 +184,9 @@ pub fn read_folders(
 fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHashSet<bsconfig::PackageSource> {
     let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
 
+    let source_folder = bsconfig::to_qualified_without_children(&source, sub_path.to_owned());
+    source_folders.insert(source_folder.to_owned());
+
     let (subdirs, full_recursive) = match source.to_owned() {
         bsconfig::Source::Shorthand(_)
         | bsconfig::Source::Qualified(bsconfig::PackageSource { subdirs: None, .. }) => (None, false),
@@ -197,15 +200,12 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
         }) => (Some(subdirs), false),
     };
 
-    let source_folder = bsconfig::to_qualified_without_children(&source, sub_path.to_owned());
-    source_folders.insert(source_folder.to_owned());
-
     if !full_recursive {
         let sub_path = Path::new(&source_folder.dir).to_path_buf();
         subdirs
             .unwrap_or(vec![])
             .par_iter()
-            .map(|subdir| get_source_dirs(subdir.to_owned(), Some(sub_path.to_owned())))
+            .map(|subsource| get_source_dirs(subsource.set_type(source.get_type()), Some(sub_path.to_owned())))
             .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
             .into_iter()
             .for_each(|subdir| source_folders.extend(subdir))
@@ -453,12 +453,12 @@ pub fn get_source_files(
     if type_ != &Some("dev".to_string()) {
         match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
-            Err(_e) if type_ == &Some("dev".to_string()) => {
-                log::warn!(
-                    "Could not read folder: {}... Probably ok as type is dev",
-                    path_dir.to_string_lossy()
-                )
-            }
+            // Err(_e) if type_ == &Some("dev".to_string()) => {
+            //     log::warn!(
+            //         "Could not read folder: {}... Probably ok as type is dev",
+            //         path_dir.to_string_lossy()
+            //     )
+            // }
             Err(_e) => log::error!(
                 "Could not read folder: {:?}. Specified in dependency: {}, located {:?}...",
                 path_dir.to_path_buf().into_os_string(),

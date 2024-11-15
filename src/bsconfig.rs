@@ -39,7 +39,7 @@ pub fn to_qualified_without_children(s: &Source, sub_path: Option<PathBuf>) -> P
                 .to_string_lossy()
                 .to_string(),
             subdirs: None,
-            type_: None,
+            type_: s.get_type(),
         },
         Source::Qualified(PackageSource {
             dir,
@@ -74,6 +74,31 @@ pub enum Source {
     Shorthand(String),
     Qualified(PackageSource),
 }
+
+impl Source {
+    /// When reading, we should propagate the sources all the way through the tree
+    pub fn get_type(&self) -> Option<String> {
+        match self {
+            Source::Shorthand(_) => None,
+            Source::Qualified(PackageSource { type_, .. }) => type_.clone(),
+        }
+    }
+    pub fn set_type(&self, type_: Option<String>) -> Source {
+        match (self, type_) {
+            (Source::Shorthand(dir), Some(type_)) => Source::Qualified(PackageSource {
+                dir: dir.to_string(),
+                subdirs: None,
+                type_: Some(type_),
+            }),
+            (Source::Qualified(package_source), type_) => Source::Qualified(PackageSource {
+                type_,
+                ..package_source.clone()
+            }),
+            (source, _) => source.clone(),
+        }
+    }
+}
+
 impl Eq for Source {}
 
 #[derive(Deserialize, Debug, Clone)]
@@ -413,6 +438,39 @@ mod tests {
     }
 
     #[test]
+    fn test_sources() {
+        let json = r#"
+        {
+          "name": "@rescript/core",
+          "version": "0.5.0",
+          "sources": {
+              "dir": "test",
+              "subdirs": ["intl"],
+              "type": "dev"
+          },
+          "suffix": ".mjs",
+          "package-specs": {
+            "module": "esmodule",
+            "in-source": true
+          },
+          "bs-dev-dependencies": ["@rescript/tools"],
+          "warnings": {
+            "error": "+101"
+          }
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        if let OneOrMore::Single(source) = config.sources {
+            let source = to_qualified_without_children(&source, None);
+            assert_eq!(source.type_, Some(String::from("dev")));
+        } else {
+            dbg!(config.sources);
+            unreachable!()
+        }
+    }
+
+    #[test]
     fn test_detect_gentypeconfig() {
         let json = r#"
         {
@@ -430,7 +488,7 @@ mod tests {
         "#;
 
         let config = serde_json::from_str::<Config>(json).unwrap();
-        assert_eq!(config.gentype_config.is_some(), true);
+        assert!(config.gentype_config.is_some());
         assert_eq!(config.get_gentype_arg(), vec!["-bs-gentype".to_string()]);
     }
 
