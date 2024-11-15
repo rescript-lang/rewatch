@@ -125,7 +125,7 @@ pub fn cleanup_previous_build(
                 .get(package_name)
                 .expect("Could not find package");
             remove_compile_assets(package, res_file_location);
-            remove_mjs_file(res_file_location, &suffix);
+            remove_mjs_file(res_file_location, suffix);
             remove_iast(package, res_file_location);
             remove_ast(package, res_file_location);
             match helpers::get_extension(ast_file_path).as_str() {
@@ -234,14 +234,13 @@ pub fn cleanup_previous_build(
 
     let deleted_module_names = ast_module_names
         .difference(&all_module_names)
-        .map(|module_name| {
+        .flat_map(|module_name| {
             // if the module is a namespace, we need to mark the whole namespace as dirty when a module has been deleted
             if let Some(namespace) = helpers::get_namespace_from_module_name(module_name) {
                 return vec![namespace, module_name.to_string()];
             }
             vec![module_name.to_string()]
         })
-        .flatten()
         .collect::<AHashSet<String>>();
 
     build_state.deleted_modules = deleted_module_names;

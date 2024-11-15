@@ -278,10 +278,10 @@ pub fn read_dependency(
 
 /// Given a bsconfig, recursively finds all dependencies.
 /// 1. It starts with registering dependencies and
-/// prevents the operation for the ones which are already
-/// registerd for the parent packages. Especially relevant for peerDependencies.
+///    prevents the operation for the ones which are already
+///    registerd for the parent packages. Especially relevant for peerDependencies.
 /// 2. In parallel performs IO to read the dependencies bsconfig and
-/// recursively continues operation for their dependencies as well.
+///    recursively continues operation for their dependencies as well.
 fn read_dependencies(
     registered_dependencies_set: &mut AHashSet<String>,
     parent_bsconfig: &bsconfig::Config,
@@ -292,7 +292,7 @@ fn read_dependencies(
     return parent_bsconfig
         .bs_dependencies
         .to_owned()
-        .unwrap_or(vec![])
+        .unwrap_or_default()
         .iter()
         .filter_map(|package_name| {
             if registered_dependencies_set.contains(package_name) {
@@ -517,6 +517,7 @@ fn extend_with_children(
 /// 1. Get all the packages parsed, and take all the source folders from the bsconfig
 /// 2. Take the (by then deduplicated) packages, and find all the '.re', '.res', '.ml' and
 ///    interface files.
+///
 /// The two step process is there to reduce IO overhead
 pub fn make(
     filter: &Option<regex::Regex>,
@@ -528,12 +529,9 @@ pub fn make(
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(filter, map);
-    result.values().for_each(|package| match &package.dirs {
-        Some(dirs) => dirs.iter().for_each(|dir| {
-            let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
-        }),
-        None => (),
-    });
+    result.values().for_each(|package| if let Some(dirs) = &package.dirs { dirs.iter().for_each(|dir| {
+        let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
+    }) });
     result
 }
 
@@ -778,11 +776,9 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         let pinned_dependencies = &package.bsconfig.pinned_dependencies.to_owned().unwrap_or(vec![]);
         let dev_dependencies = &package.bsconfig.bs_dev_dependencies.to_owned().unwrap_or(vec![]);
 
-        vec![
-            ("bs-dependencies", bs_dependencies),
+        [("bs-dependencies", bs_dependencies),
             ("pinned-dependencies", pinned_dependencies),
-            ("bs-dev-dependencies", dev_dependencies),
-        ]
+            ("bs-dev-dependencies", dev_dependencies)]
         .iter()
         .for_each(|(dependency_type, dependencies)| {
             if let Some(unallowed_dependency_name) =
@@ -812,11 +808,9 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
             console::style(package_name).bold()
         );
 
-        vec![
-            ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
+        [("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
             ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
-            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned()),
-        ]
+            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned())]
         .iter()
         .for_each(|(deps_type, map)| {
             if !map.is_empty() {
@@ -854,7 +848,7 @@ mod test {
         dev_deps: Vec<String>,
         allowed_dependents: Option<Vec<String>>,
     ) -> Package {
-        return Package {
+        Package {
             name: name.clone(),
             bsconfig: crate::bsconfig::Config {
                 name: name.clone(),
@@ -883,7 +877,7 @@ mod test {
             dirs: None,
             is_pinned_dep: false,
             is_root: false,
-        };
+        }
     }
     #[test]
     fn should_return_false_with_invalid_parents_as_bs_dependencies() {
@@ -910,7 +904,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -938,7 +932,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -966,7 +960,7 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, false)
+        assert!(!is_valid)
     }
 
     #[test]
@@ -994,6 +988,6 @@ mod test {
         );
 
         let is_valid = super::validate_packages_dependencies(&packages);
-        assert_eq!(is_valid, true)
+        assert!(is_valid)
     }
 }

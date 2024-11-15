@@ -20,7 +20,7 @@ pub struct SourceDirs<'a> {
     pub generated: &'a Vec<String>,
 }
 
-fn package_to_dirs<'a>(package: &'a Package, root_package_path: &String) -> AHashSet<Dir> {
+fn package_to_dirs(package: &Package, root_package_path: &String) -> AHashSet<Dir> {
     let relative_path = PathBuf::from(&package.path)
         .strip_prefix(PathBuf::from(&root_package_path))
         .unwrap()
@@ -72,7 +72,7 @@ pub fn print(buildstate: &BuildState) {
         .filter(|(_name, package)| !package.is_root)
         .map(|(_name, package)| {
             // Extract Directories
-            let dirs = package_to_dirs(&package, &root_package.path);
+            let dirs = package_to_dirs(package, &root_package.path);
 
             // Extract Pkgs
             let pkgs = [

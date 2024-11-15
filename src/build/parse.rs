@@ -172,7 +172,6 @@ pub fn generate_asts(
                         }
                         Ok(None) => {
                             // The file had no interface file associated
-                            ()
                         }
                     }
                 };
@@ -279,7 +278,7 @@ pub fn parser_args(
     let file = "../../".to_string() + file;
     (
         ast_path.to_string(),
-        vec![
+        [
             vec!["-bs-v".to_string(), format!("{}", version)],
             ppx_flags,
             jsx_args,
@@ -347,17 +346,14 @@ fn generate_ast(
             filename, package.name
         ))
     };
-    match &result {
-        Ok((ast_path, _)) => {
-            let dir = std::path::Path::new(filename).parent().unwrap();
-            let _ = std::fs::copy(
-                build_path_abs.to_string() + "/" + ast_path,
-                std::path::Path::new(&package.get_bs_build_path())
-                    .join(dir)
-                    .join(ast_path),
-            );
-        }
-        Err(_) => (),
+    if let Ok((ast_path, _)) = &result {
+        let dir = std::path::Path::new(filename).parent().unwrap();
+        let _ = std::fs::copy(
+            build_path_abs.to_string() + "/" + ast_path,
+            std::path::Path::new(&package.get_bs_build_path())
+                .join(dir)
+                .join(ast_path),
+        );
     }
     result
 }
@@ -374,17 +370,17 @@ fn path_to_ast_extension(path: &Path) -> &str {
 fn include_ppx(flag: &str, contents: &str) -> bool {
     if flag.contains("bisect") {
         return std::env::var("BISECT_ENABLE").is_ok();
-    } else if (flag.contains("graphql-ppx") || flag.contains("graphql_ppx")) && !contents.contains("%graphql")
+    }
+
+    if ((flag.contains("graphql-ppx") || flag.contains("graphql_ppx")) && !contents.contains("%graphql"))
+        || (flag.contains("spice") && !contents.contains("@spice"))
+        || (flag.contains("rescript-relay") && !contents.contains("%relay"))
+        || (flag.contains("re-formality") && !contents.contains("%form"))
     {
         return false;
-    } else if flag.contains("spice") && !contents.contains("@spice") {
-        return false;
-    } else if flag.contains("rescript-relay") && !contents.contains("%relay") {
-        return false;
-    } else if flag.contains("re-formality") && !contents.contains("%form") {
-        return false;
-    }
-    return true;
+    };
+
+    true
 }
 
 fn filter_ppx_flags(
