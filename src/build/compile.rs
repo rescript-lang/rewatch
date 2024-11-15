@@ -219,11 +219,10 @@ pub fn compile(
                 } else {
                     None
                 }
-                .map(|res| {
+                .inspect(|_res| {
                     if !(log_enabled!(Info)) {
                         inc();
                     }
-                    res
                 })
             })
             .collect::<Vec<
@@ -236,103 +235,100 @@ pub fn compile(
                 )>,
             >>()
             .iter()
-            .for_each(|result| match result {
-                Some((module_name, result, interface_result, is_clean, is_compiled)) => {
-                    in_progress_modules.remove(module_name);
+            .for_each(|result| if let Some((module_name, result, interface_result, is_clean, is_compiled)) = result {
+                in_progress_modules.remove(module_name);
 
-                    if *is_compiled {
-                        num_compiled_modules += 1;
-                    }
+                if *is_compiled {
+                    num_compiled_modules += 1;
+                }
 
-                    files_current_loop_count += 1;
-                    compiled_modules.insert(module_name.to_string());
+                files_current_loop_count += 1;
+                compiled_modules.insert(module_name.to_string());
 
-                    if *is_clean {
-                        // actually add it to a list of clean modules
-                        clean_modules.insert(module_name.to_string());
-                    }
+                if *is_clean {
+                    // actually add it to a list of clean modules
+                    clean_modules.insert(module_name.to_string());
+                }
 
-                    let module_dependents = build_state.get_module(module_name).unwrap().dependents.clone();
+                let module_dependents = build_state.get_module(module_name).unwrap().dependents.clone();
 
-                    // if not clean -- compile modules that depend on this module
-                    for dep in module_dependents.iter() {
+                // if not clean -- compile modules that depend on this module
+                for dep in module_dependents.iter() {
+                    //  mark the reverse dep as dirty when the source is not clean
+                    if !*is_clean {
+                        let dep_module = build_state.modules.get_mut(dep).unwrap();
                         //  mark the reverse dep as dirty when the source is not clean
-                        if !*is_clean {
-                            let dep_module = build_state.modules.get_mut(dep).unwrap();
-                            //  mark the reverse dep as dirty when the source is not clean
-                            dep_module.compile_dirty = true;
-                        }
-                        if !compiled_modules.contains(dep) {
-                            in_progress_modules.insert(dep.to_string());
-                        }
+                        dep_module.compile_dirty = true;
                     }
+                    if !compiled_modules.contains(dep) {
+                        in_progress_modules.insert(dep.to_string());
+                    }
+                }
 
-                    let module = build_state.modules.get_mut(module_name).unwrap();
-                    let package = build_state
-                        .packages
-                        .get(&module.package_name)
-                        .expect("Package not found");
-                    match module.source_type {
-                        SourceType::MlMap(ref mut mlmap) => {
-                            module.compile_dirty = false;
-                            mlmap.parse_dirty = false;
-                        }
-                        SourceType::SourceFile(ref mut source_file) => {
-                            match result {
-                                Ok(Some(err)) => {
-                                    source_file.implementation.compile_state = CompileState::Warning;
-                                    logs::append(package, err);
-                                    compile_warnings.push_str(err);
+                let module = build_state.modules.get_mut(module_name).unwrap();
+                let package = build_state
+                    .packages
+                    .get(&module.package_name)
+                    .expect("Package not found");
+                match module.source_type {
+                    SourceType::MlMap(ref mut mlmap) => {
+                        module.compile_dirty = false;
+                        mlmap.parse_dirty = false;
+                    }
+                    SourceType::SourceFile(ref mut source_file) => {
+                        match result {
+                            Ok(Some(err)) => {
+                                source_file.implementation.compile_state = CompileState::Warning;
+                                logs::append(package, err);
+                                compile_warnings.push_str(err);
+                            }
+                            Ok(None) => {
+                                source_file.implementation.compile_state = CompileState::Success;
+                            }
+                            Err(err) => {
+                                source_file.implementation.compile_state = CompileState::Error;
+                                logs::append(package, err);
+                                compile_errors.push_str(err);
+                            }
+                        };
+                        match interface_result {
+                            Some(Ok(Some(err))) => {
+                                source_file.interface.as_mut().unwrap().compile_state =
+                                    CompileState::Warning;
+                                logs::append(package, err);
+                                compile_warnings.push_str(err);
+                            }
+                            Some(Ok(None)) => {
+                                if let Some(interface) = source_file.interface.as_mut() {
+                                    interface.compile_state = CompileState::Success;
                                 }
-                                Ok(None) => {
-                                    source_file.implementation.compile_state = CompileState::Success;
-                                }
-                                Err(err) => {
-                                    source_file.implementation.compile_state = CompileState::Error;
-                                    logs::append(package, err);
-                                    compile_errors.push_str(err);
-                                }
-                            };
-                            match interface_result {
-                                Some(Ok(Some(err))) => {
-                                    source_file.interface.as_mut().unwrap().compile_state =
-                                        CompileState::Warning;
-                                    logs::append(package, err);
-                                    compile_warnings.push_str(err);
-                                }
-                                Some(Ok(None)) => {
-                                    if let Some(interface) = source_file.interface.as_mut() {
-                                        interface.compile_state = CompileState::Success;
-                                    }
-                                }
+                            }
 
-                                Some(Err(err)) => {
-                                    source_file.interface.as_mut().unwrap().compile_state =
-                                        CompileState::Error;
-                                    logs::append(package, err);
-                                    compile_errors.push_str(err);
-                                }
-                                _ => (),
-                            };
-                            match (result, interface_result) {
-                                // successfull compilation
-                                (Ok(None), Some(Ok(None))) | (Ok(None), None) => {
-                                    module.compile_dirty = false;
-                                    module.last_compiled_cmi = Some(SystemTime::now());
-                                    module.last_compiled_cmt = Some(SystemTime::now());
-                                }
-                                // some error or warning
-                                (Err(_), _)
-                                | (_, Some(Err(_)))
-                                | (Ok(Some(_)), _)
-                                | (_, Some(Ok(Some(_)))) => {
-                                    module.compile_dirty = true;
-                                }
+                            Some(Err(err)) => {
+                                source_file.interface.as_mut().unwrap().compile_state =
+                                    CompileState::Error;
+                                logs::append(package, err);
+                                compile_errors.push_str(err);
+                            }
+                            _ => (),
+                        };
+                        match (result, interface_result) {
+                            // successfull compilation
+                            (Ok(None), Some(Ok(None))) | (Ok(None), None) => {
+                                module.compile_dirty = false;
+                                module.last_compiled_cmi = Some(SystemTime::now());
+                                module.last_compiled_cmt = Some(SystemTime::now());
+                            }
+                            // some error or warning
+                            (Err(_), _)
+                            | (_, Some(Err(_)))
+                            | (Ok(Some(_)), _)
+                            | (_, Some(Ok(Some(_)))) => {
+                                module.compile_dirty = true;
                             }
                         }
                     }
                 }
-                None => (),
             });
 
         files_total_count += files_current_loop_count;
@@ -388,7 +384,7 @@ pub fn compiler_args(
     //     .unwrap_or(&vec![])
     //     .to_owned();
 
-    let deps = vec![normal_deps]
+    let deps = [normal_deps]
         .concat()
         .par_iter()
         .map(|package_name| {
@@ -455,7 +451,7 @@ pub fn compiler_args(
                 _ => vec![],
             };
 
-            vec![warn_number, warn_error].concat()
+            [warn_number, warn_error].concat()
         }
     };
 
