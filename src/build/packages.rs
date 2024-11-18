@@ -358,8 +358,8 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
 
 fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match config.sources.to_owned() {
-        config::OneOrMore::Single(source) => get_source_dirs(source, None),
-        config::OneOrMore::Multiple(sources) => {
+        Some(config::OneOrMore::Single(source)) => get_source_dirs(source, None),
+        Some(config::OneOrMore::Multiple(sources)) => {
             let mut source_folders: AHashSet<config::PackageSource> = AHashSet::new();
             sources
                 .iter()
@@ -368,6 +368,13 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
                 .into_iter()
                 .for_each(|source| source_folders.extend(source));
             source_folders
+        }
+        None => {
+            if !is_root {
+                log::warn!("Package '{}' has not defined any sources, but is not the root package. This is likely a mistake. It is located: {}", config.name, package_path);
+            }
+
+            AHashSet::new()
         }
     };
 
