@@ -263,14 +263,19 @@ fn format_step(current: usize, total: usize) -> console::StyledObject<String> {
 #[derive(Debug, Clone)]
 pub enum IncrementalBuildError {
     SourceFileParseError,
-    CompileError,
+    CompileError(Option<String>),
 }
 
 impl fmt::Display for IncrementalBuildError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::SourceFileParseError => write!(f, "{}  {}Could not parse Source Files", LINE_CLEAR, CROSS,),
-            Self::CompileError => write!(f, "{}  {}Failed to Compile. See Errors Above", LINE_CLEAR, CROSS,),
+            Self::CompileError(Some(e)) => {
+                write!(f, "{}  {}Failed to Compile. Error: {e}", LINE_CLEAR, CROSS,)
+            }
+            Self::CompileError(None) => {
+                write!(f, "{}  {}Failed to Compile. See Errors Above", LINE_CLEAR, CROSS,)
+            }
         }
     }
 }
@@ -380,7 +385,9 @@ pub fn incremental_build(
     };
 
     let (compile_errors, compile_warnings, num_compiled_modules) =
-        compile::compile(build_state, || pb.inc(1), |size| pb.set_length(size));
+        compile::compile(build_state, || pb.inc(1), |size| pb.set_length(size))
+            .map_err(|e| IncrementalBuildError::CompileError(Some(e.to_string())))?;
+
     let compile_duration = start_compiling.elapsed();
 
     logs::finalize(&build_state.packages);
@@ -409,7 +416,7 @@ pub fn incremental_build(
                 module.compile_dirty = true;
             }
         }
-        Err(IncrementalBuildError::CompileError)
+        Err(IncrementalBuildError::CompileError(None))
     } else {
         if show_progress {
             println!(
