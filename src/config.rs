@@ -171,7 +171,9 @@ pub type GenTypeConfig = serde_json::Value;
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub name: String,
-    pub sources: OneOrMore<Source>,
+    // In the case of monorepos, the root source won't necessarily have to have sources. It can
+    // just be sources in packages
+    pub sources: Option<OneOrMore<Source>>,
     #[serde(rename = "package-specs")]
     pub package_specs: Option<OneOrMore<PackageSpec>>,
     pub warnings: Option<Warnings>,
