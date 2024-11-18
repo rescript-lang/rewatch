@@ -1,7 +1,7 @@
 use super::build_types::*;
 use super::namespaces;
 use super::packages;
-use crate::bsconfig;
+use crate::config;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
@@ -39,7 +39,7 @@ impl Namespace {
 #[derive(Debug, Clone)]
 struct Dependency {
     name: String,
-    bsconfig: bsconfig::Config,
+    config: config::Config,
     path: String,
     is_pinned: bool,
     dependencies: Vec<Dependency>,
@@ -48,8 +48,8 @@ struct Dependency {
 #[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
-    pub bsconfig: bsconfig::Config,
-    pub source_folders: AHashSet<bsconfig::PackageSource>,
+    pub config: config::Config,
+    pub source_folders: AHashSet<config::PackageSource>,
     // these are the relative file paths (relative to the package root)
     pub source_files: Option<AHashMap<String, SourceFileMeta>>,
     pub namespace: Namespace,
@@ -177,25 +177,25 @@ pub fn read_folders(
     Ok(map)
 }
 
-/// Given a projects' root folder and a `bsconfig::Source`, this recursively creates all the
+/// Given a projects' root folder and a `config::Source`, this recursively creates all the
 /// sources in a flat list. In the process, it removes the children, as they are being resolved
 /// because of the recursiveness. So you get a flat list of files back, retaining the type_ and
 /// whether it needs to recurse into all structures
-fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHashSet<bsconfig::PackageSource> {
-    let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
+fn get_source_dirs(source: config::Source, sub_path: Option<PathBuf>) -> AHashSet<config::PackageSource> {
+    let mut source_folders: AHashSet<config::PackageSource> = AHashSet::new();
 
     let source_folder = source.to_qualified_without_children(sub_path.to_owned());
     source_folders.insert(source_folder.to_owned());
 
     let (subdirs, full_recursive) = match source.to_owned() {
-        bsconfig::Source::Shorthand(_)
-        | bsconfig::Source::Qualified(bsconfig::PackageSource { subdirs: None, .. }) => (None, false),
-        bsconfig::Source::Qualified(bsconfig::PackageSource {
-            subdirs: Some(bsconfig::Subdirs::Recurse(recurse)),
+        config::Source::Shorthand(_)
+        | config::Source::Qualified(config::PackageSource { subdirs: None, .. }) => (None, false),
+        config::Source::Qualified(config::PackageSource {
+            subdirs: Some(config::Subdirs::Recurse(recurse)),
             ..
         }) => (None, recurse),
-        bsconfig::Source::Qualified(bsconfig::PackageSource {
-            subdirs: Some(bsconfig::Subdirs::Qualified(subdirs)),
+        config::Source::Qualified(config::PackageSource {
+            subdirs: Some(config::Subdirs::Qualified(subdirs)),
             ..
         }) => (Some(subdirs), false),
     };
@@ -205,8 +205,10 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
         subdirs
             .unwrap_or(vec![])
             .par_iter()
-            .map(|subsource| get_source_dirs(subsource.set_type(source.get_type()), Some(sub_path.to_owned())))
-            .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
+            .map(|subsource| {
+                get_source_dirs(subsource.set_type(source.get_type()), Some(sub_path.to_owned()))
+            })
+            .collect::<Vec<AHashSet<config::PackageSource>>>()
             .into_iter()
             .for_each(|subdir| source_folders.extend(subdir))
     }
@@ -214,7 +216,7 @@ fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHash
     source_folders
 }
 
-pub fn read_bsconfig(package_dir: &str) -> bsconfig::Config {
+pub fn read_config(package_dir: &str) -> config::Config {
     let prefix = if package_dir.is_empty() {
         "".to_string()
     } else {
@@ -225,9 +227,9 @@ pub fn read_bsconfig(package_dir: &str) -> bsconfig::Config {
     let bsconfig_json_path = prefix.to_string() + "bsconfig.json";
 
     if Path::new(&rescript_json_path).exists() {
-        bsconfig::read(rescript_json_path)
+        config::read(rescript_json_path)
     } else {
-        bsconfig::read(bsconfig_json_path)
+        config::read(bsconfig_json_path)
     }
 }
 
@@ -276,20 +278,20 @@ pub fn read_dependency(
 
 /// # Make Package
 
-/// Given a bsconfig, recursively finds all dependencies.
+/// Given a config, recursively finds all dependencies.
 /// 1. It starts with registering dependencies and
 ///    prevents the operation for the ones which are already
 ///    registerd for the parent packages. Especially relevant for peerDependencies.
-/// 2. In parallel performs IO to read the dependencies bsconfig and
+/// 2. In parallel performs IO to read the dependencies config and
 ///    recursively continues operation for their dependencies as well.
 fn read_dependencies(
     registered_dependencies_set: &mut AHashSet<String>,
-    parent_bsconfig: &bsconfig::Config,
+    parent_config: &config::Config,
     parent_path: &str,
     project_root: &str,
     workspace_root: Option<String>,
 ) -> Vec<Dependency> {
-    return parent_bsconfig
+    return parent_config
         .bs_dependencies
         .to_owned()
         .unwrap_or_default()
@@ -303,10 +305,10 @@ fn read_dependencies(
             }
         })
         .collect::<Vec<String>>()
-        // Read all bsconfig files in parallel instead of blocking
+        // Read all config files in parallel instead of blocking
         .par_iter()
         .map(|package_name| {
-            let (bsconfig, canonical_path) =
+            let (config, canonical_path) =
                 match read_dependency(package_name, parent_path, project_root, &workspace_root) {
                     Err(error) => {
                         log::error!(
@@ -317,17 +319,17 @@ fn read_dependencies(
                         );
                         std::process::exit(2)
                     }
-                    Ok(canonical_path) => (read_bsconfig(&canonical_path), canonical_path),
+                    Ok(canonical_path) => (read_config(&canonical_path), canonical_path),
                 };
-            let is_pinned = parent_bsconfig
+            let is_pinned = parent_config
                 .pinned_dependencies
                 .as_ref()
-                .map(|p| p.contains(&bsconfig.name))
+                .map(|p| p.contains(&config.name))
                 .unwrap_or(false);
 
             let dependencies = read_dependencies(
                 &mut registered_dependencies_set.to_owned(),
-                &bsconfig,
+                &config,
                 &canonical_path,
                 project_root,
                 workspace_root.to_owned(),
@@ -335,7 +337,7 @@ fn read_dependencies(
 
             Dependency {
                 name: package_name.to_owned(),
-                bsconfig,
+                config,
                 path: canonical_path,
                 is_pinned,
                 dependencies,
@@ -354,20 +356,15 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn make_package(
-    bsconfig: bsconfig::Config,
-    package_path: &str,
-    is_pinned_dep: bool,
-    is_root: bool,
-) -> Package {
-    let source_folders = match bsconfig.sources.to_owned() {
-        bsconfig::OneOrMore::Single(source) => get_source_dirs(source, None),
-        bsconfig::OneOrMore::Multiple(sources) => {
-            let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
+fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
+    let source_folders = match config.sources.to_owned() {
+        config::OneOrMore::Single(source) => get_source_dirs(source, None),
+        config::OneOrMore::Multiple(sources) => {
+            let mut source_folders: AHashSet<config::PackageSource> = AHashSet::new();
             sources
                 .iter()
                 .map(|source| get_source_dirs(source.to_owned(), None))
-                .collect::<Vec<AHashSet<bsconfig::PackageSource>>>()
+                .collect::<Vec<AHashSet<config::PackageSource>>>()
                 .into_iter()
                 .for_each(|source| source_folders.extend(source));
             source_folders
@@ -375,11 +372,11 @@ fn make_package(
     };
 
     Package {
-        name: bsconfig.name.to_owned(),
-        bsconfig: bsconfig.to_owned(),
+        name: config.name.to_owned(),
+        config: config.to_owned(),
         source_folders,
         source_files: None,
-        namespace: bsconfig.get_namespace(),
+        namespace: config.get_namespace(),
         modules: None,
         // we canonicalize the path name so it's always the same
         path: PathBuf::from(package_path)
@@ -394,19 +391,19 @@ fn make_package(
 }
 
 fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap<String, Package> {
-    let root_bsconfig = read_bsconfig(project_root);
+    let root_config = read_config(project_root);
 
     // Store all packages and completely deduplicate them
     let mut map: AHashMap<String, Package> = AHashMap::new();
     map.insert(
-        root_bsconfig.name.to_owned(),
-        make_package(root_bsconfig.to_owned(), project_root, false, true),
+        root_config.name.to_owned(),
+        make_package(root_config.to_owned(), project_root, false, true),
     );
 
     let mut registered_dependencies_set: AHashSet<String> = AHashSet::new();
     let dependencies = flatten_dependencies(read_dependencies(
         &mut registered_dependencies_set,
-        &root_bsconfig,
+        &root_config,
         project_root,
         project_root,
         workspace_root,
@@ -415,7 +412,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
         if !map.contains_key(&d.name) {
             map.insert(
                 d.name.to_owned(),
-                make_package(d.bsconfig.to_owned(), &d.path, d.is_pinned, false),
+                make_package(d.config.to_owned(), &d.path, d.is_pinned, false),
             );
         }
     });
@@ -425,7 +422,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
 
 /// `get_source_files` is essentially a wrapper around `read_structure`, which read a
 /// list of files in a folder to a hashmap of `string` / `fs::Metadata` (file metadata). Reason for
-/// this wrapper is the recursiveness of the `bsconfig.json` subfolders. Some sources in bsconfig
+/// this wrapper is the recursiveness of the `config.json` subfolders. Some sources in config
 /// can be specified as being fully recursive (`{ subdirs: true }`). This wrapper pulls out that
 /// data from the config and pushes it forwards. Another thing is the 'type_', some files / folders
 /// can be marked with the type 'dev'. Which means that they may not be around in the distributed
@@ -435,17 +432,17 @@ pub fn get_source_files(
     package_name: &String,
     package_dir: &Path,
     filter: &Option<regex::Regex>,
-    source: &bsconfig::PackageSource,
+    source: &config::PackageSource,
 ) -> AHashMap<String, SourceFileMeta> {
     let mut map: AHashMap<String, SourceFileMeta> = AHashMap::new();
 
     let (recurse, type_) = match source {
-        bsconfig::PackageSource {
-            subdirs: Some(bsconfig::Subdirs::Recurse(subdirs)),
+        config::PackageSource {
+            subdirs: Some(config::Subdirs::Recurse(subdirs)),
             type_,
             ..
         } => (subdirs.to_owned(), type_),
-        bsconfig::PackageSource { type_, .. } => (false, type_),
+        config::PackageSource { type_, .. } => (false, type_),
     };
 
     let path_dir = Path::new(&source.dir);
@@ -512,9 +509,9 @@ fn extend_with_children(
     build
 }
 
-/// Make turns a folder, that should contain a bsconfig, into a tree of Packages.
+/// Make turns a folder, that should contain a config, into a tree of Packages.
 /// It does so in two steps:
-/// 1. Get all the packages parsed, and take all the source folders from the bsconfig
+/// 1. Get all the packages parsed, and take all the source folders from the config
 /// 2. Take the (by then deduplicated) packages, and find all the '.re', '.res', '.ml' and
 ///    interface files.
 ///
@@ -529,15 +526,19 @@ pub fn make(
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(filter, map);
-    result.values().for_each(|package| if let Some(dirs) = &package.dirs { dirs.iter().for_each(|dir| {
-        let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
-    }) });
+    result.values().for_each(|package| {
+        if let Some(dirs) = &package.dirs {
+            dirs.iter().for_each(|dir| {
+                let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
+            })
+        }
+    });
     result
 }
 
 pub fn get_package_name(path: &str) -> String {
-    let bsconfig = read_bsconfig(path);
-    bsconfig.name
+    let config = read_config(path);
+    config.name
 }
 
 pub fn parse_packages(build_state: &mut BuildState) {
@@ -728,19 +729,19 @@ pub fn parse_packages(build_state: &mut BuildState) {
 
 impl Package {
     pub fn get_jsx_args(&self) -> Vec<String> {
-        self.bsconfig.get_jsx_args()
+        self.config.get_jsx_args()
     }
 
     pub fn get_jsx_mode_args(&self) -> Vec<String> {
-        self.bsconfig.get_jsx_mode_args()
+        self.config.get_jsx_mode_args()
     }
 
     pub fn get_jsx_module_args(&self) -> Vec<String> {
-        self.bsconfig.get_jsx_module_args()
+        self.config.get_jsx_module_args()
     }
 
     pub fn get_uncurried_args(&self, version: &str, root_package: &packages::Package) -> Vec<String> {
-        root_package.bsconfig.get_uncurried_args(version)
+        root_package.config.get_uncurried_args(version)
     }
 }
 
@@ -751,7 +752,7 @@ fn get_unallowed_dependents(
 ) -> Option<String> {
     for deps_package_name in dependencies {
         if let Some(deps_package) = packages.get(deps_package_name) {
-            let deps_allowed_dependents = deps_package.bsconfig.allowed_dependents.to_owned();
+            let deps_allowed_dependents = deps_package.config.allowed_dependents.to_owned();
             if let Some(allowed_dependents) = deps_allowed_dependents {
                 if !allowed_dependents.contains(package_name) {
                     return Some(deps_package_name.to_string());
@@ -772,13 +773,15 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
     let mut detected_unallowed_dependencies: AHashMap<String, UnallowedDependency> = AHashMap::new();
 
     for (package_name, package) in packages {
-        let bs_dependencies = &package.bsconfig.bs_dependencies.to_owned().unwrap_or(vec![]);
-        let pinned_dependencies = &package.bsconfig.pinned_dependencies.to_owned().unwrap_or(vec![]);
-        let dev_dependencies = &package.bsconfig.bs_dev_dependencies.to_owned().unwrap_or(vec![]);
+        let bs_dependencies = &package.config.bs_dependencies.to_owned().unwrap_or(vec![]);
+        let pinned_dependencies = &package.config.pinned_dependencies.to_owned().unwrap_or(vec![]);
+        let dev_dependencies = &package.config.bs_dev_dependencies.to_owned().unwrap_or(vec![]);
 
-        [("bs-dependencies", bs_dependencies),
+        [
+            ("bs-dependencies", bs_dependencies),
             ("pinned-dependencies", pinned_dependencies),
-            ("bs-dev-dependencies", dev_dependencies)]
+            ("bs-dev-dependencies", dev_dependencies),
+        ]
         .iter()
         .for_each(|(dependency_type, dependencies)| {
             if let Some(unallowed_dependency_name) =
@@ -808,9 +811,11 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
             console::style(package_name).bold()
         );
 
-        [("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
+        [
+            ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
             ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
-            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned())]
+            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned()),
+        ]
         .iter()
         .for_each(|(deps_type, map)| {
             if !map.is_empty() {
@@ -828,7 +833,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         log::error!(
             "\nUpdate the {} value in the {} of the unallowed dependencies to solve the issue!",
             console::style("unallowed_dependents").bold().dim(),
-            console::style("bsconfig.json").bold().dim()
+            console::style("config.json").bold().dim()
         )
     }
     !has_any_unallowed_dependent
@@ -836,7 +841,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
 
 #[cfg(test)]
 mod test {
-    use crate::bsconfig::Source;
+    use crate::config::Source;
     use ahash::{AHashMap, AHashSet};
 
     use super::{Namespace, Package};
@@ -850,9 +855,9 @@ mod test {
     ) -> Package {
         Package {
             name: name.clone(),
-            bsconfig: crate::bsconfig::Config {
+            config: crate::config::Config {
                 name: name.clone(),
-                sources: crate::bsconfig::OneOrMore::Single(Source::Shorthand(String::from("Source"))),
+                sources: crate::config::OneOrMore::Single(Source::Shorthand(String::from("Source"))),
                 package_specs: None,
                 warnings: None,
                 suffix: None,
