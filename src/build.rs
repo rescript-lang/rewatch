@@ -57,12 +57,12 @@ pub struct CompilerArgs {
 pub fn get_compiler_args(path: &str, rescript_version: Option<String>, bsc_path: Option<String>) -> String {
     let filename = &helpers::get_abs_path(path);
     let package_root = helpers::get_abs_path(
-        &helpers::get_nearest_bsconfig(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
+        &helpers::get_nearest_config(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
     );
     let workspace_root = get_workspace_root(&package_root).map(|p| helpers::get_abs_path(&p));
     let root_rescript_config =
-        packages::read_bsconfig(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
-    let rescript_config = packages::read_bsconfig(&package_root);
+        packages::read_config(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
+    let rescript_config = packages::read_config(&package_root);
     let rescript_version = if let Some(rescript_version) = rescript_version {
         rescript_version
     } else {

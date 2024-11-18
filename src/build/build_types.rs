@@ -119,6 +119,7 @@ impl BuildState {
             deps_initialized: false,
         }
     }
+
     pub fn insert_module(&mut self, module_name: &str, module: Module) {
         self.modules.insert(module_name.to_owned(), module);
         self.module_names.insert(module_name.to_owned());
