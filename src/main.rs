@@ -25,7 +25,7 @@ struct Args {
     #[arg(value_enum)]
     command: Option<Command>,
 
-    /// The relative path to where the main bsconfig.json resides. IE - the root of your project.
+    /// The relative path to where the main rescript.json resides. IE - the root of your project.
     folder: Option<String>,
 
     /// Filter allows for a regex to be supplied which will filter the files to be compiled. For

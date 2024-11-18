@@ -74,7 +74,7 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                         .join(&source_file.implementation.path)
                         .to_string_lossy()
                         .to_string(),
-                    root_package.bsconfig.get_suffix(),
+                    root_package.config.get_suffix(),
                 ))
             }
             _ => None,

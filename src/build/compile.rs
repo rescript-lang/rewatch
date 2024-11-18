@@ -5,7 +5,7 @@ mod dependency_cycle;
 use super::build_types::*;
 use super::logs;
 use super::packages;
-use crate::bsconfig;
+use crate::config;
 use crate::helpers;
 use ahash::{AHashMap, AHashSet};
 use console::style;
@@ -359,8 +359,8 @@ pub fn compile(
 }
 
 pub fn compiler_args(
-    config: &bsconfig::Config,
-    root_config: &bsconfig::Config,
+    config: &config::Config,
+    root_config: &config::Config,
     ast_path: &str,
     version: &str,
     file_path: &str,
@@ -374,11 +374,11 @@ pub fn compiler_args(
 ) -> Vec<String> {
     let normal_deps = config.bs_dependencies.as_ref().unwrap_or(&vec![]).to_owned();
 
-    let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
+    let bsc_flags = config::flatten_flags(&config.bsc_flags);
     // don't compile dev-deps yet
     // let dev_deps = source
     //     .package
-    //     .bsconfig
+    //     .config
     //     .bs_dev_dependencies
     //     .as_ref()
     //     .unwrap_or(&vec![])
@@ -442,10 +442,10 @@ pub fn compiler_args(
             };
 
             let warn_error = match warnings.error {
-                Some(bsconfig::Error::Catchall(true)) => {
+                Some(config::Error::Catchall(true)) => {
                     vec!["-warn-error".to_string(), "A".to_string()]
                 }
-                Some(bsconfig::Error::Qualified(errors)) => {
+                Some(config::Error::Qualified(errors)) => {
                     vec!["-warn-error".to_string(), errors.to_string()]
                 }
                 _ => vec![],
@@ -532,8 +532,8 @@ fn compile_file(
     let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
     let has_interface = module.get_interface().is_some();
     let to_mjs_args = compiler_args(
-        &package.bsconfig,
-        &root_package.bsconfig,
+        &package.config,
+        &root_package.config,
         ast_path,
         version,
         implementation_file_path,
