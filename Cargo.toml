@@ -24,6 +24,7 @@ clap = { version = "4.3.17", features = ["derive"] }
 sysinfo = "0.29.10"
 ctrlc = "3.4.4"
 clap-verbosity-flag = "2.2.2"
+anyhow = "1.0.93"
 
 
 [profile.release]
