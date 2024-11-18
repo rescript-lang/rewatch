@@ -306,11 +306,11 @@ fn has_rescript_config(path: &Path) -> bool {
 pub fn get_workspace_root(package_root: &str) -> Option<String> {
     std::path::PathBuf::from(&package_root)
         .parent()
-        .and_then(get_nearest_bsconfig)
+        .and_then(get_nearest_config)
 }
 
-// traverse up the directory tree until we find a bsconfig.json, if not return None
-pub fn get_nearest_bsconfig(path_buf: &Path) -> Option<String> {
+// traverse up the directory tree until we find a config.json, if not return None
+pub fn get_nearest_config(path_buf: &Path) -> Option<String> {
     let mut current_dir = path_buf.to_owned();
     loop {
         if has_rescript_config(&current_dir) {

@@ -2,8 +2,8 @@ use super::build_types::*;
 use super::logs;
 use super::namespaces;
 use super::packages;
-use crate::bsconfig;
-use crate::bsconfig::OneOrMore;
+use crate::config;
+use crate::config::OneOrMore;
 use crate::helpers;
 use ahash::AHashSet;
 use log::debug;
@@ -248,8 +248,8 @@ pub fn generate_asts(
 }
 
 pub fn parser_args(
-    config: &bsconfig::Config,
-    root_config: &bsconfig::Config,
+    config: &config::Config,
+    root_config: &config::Config,
     filename: &str,
     version: &str,
     workspace_root: &Option<String>,
@@ -260,7 +260,7 @@ pub fn parser_args(
     let path = PathBuf::from(filename);
     let ast_extension = path_to_ast_extension(&path);
     let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
-    let ppx_flags = bsconfig::flatten_ppx_flags(
+    let ppx_flags = config::flatten_ppx_flags(
         &if let Some(workspace_root) = workspace_root {
             format!("{}/node_modules", &workspace_root)
         } else {
@@ -273,7 +273,7 @@ pub fn parser_args(
     let jsx_module_args = root_config.get_jsx_module_args();
     let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
-    let bsc_flags = bsconfig::flatten_flags(&config.bsc_flags);
+    let bsc_flags = config::flatten_flags(&config.bsc_flags);
 
     let file = "../../".to_string() + file;
     (
@@ -311,8 +311,8 @@ fn generate_ast(
 
     let build_path_abs = package.get_build_path();
     let (ast_path, parser_args) = parser_args(
-        &package.bsconfig,
-        &root_package.bsconfig,
+        &package.config,
+        &root_package.config,
         filename,
         version,
         workspace_root,
@@ -392,8 +392,8 @@ fn filter_ppx_flags(
         flags
             .iter()
             .filter(|flag| match flag {
-                bsconfig::OneOrMore::Single(str) => include_ppx(str, contents),
-                bsconfig::OneOrMore::Multiple(str) => include_ppx(str.first().unwrap(), contents),
+                config::OneOrMore::Single(str) => include_ppx(str, contents),
+                config::OneOrMore::Multiple(str) => include_ppx(str.first().unwrap(), contents),
             })
             .map(|x| x.to_owned())
             .collect::<Vec<OneOrMore<String>>>()
