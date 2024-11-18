@@ -1,4 +1,5 @@
 use crate::build::packages;
+use crate::helpers::deserialize::*;
 use convert_case::{Case, Casing};
 use serde::Deserialize;
 use std::fs;
@@ -25,45 +26,6 @@ pub struct PackageSource {
     pub subdirs: Option<Subdirs>,
     #[serde(rename = "type")]
     pub type_: Option<String>,
-}
-
-/// `to_qualified_without_children` takes a tree like structure of dependencies, coming in from
-/// `bsconfig`, and turns it into a flat list. The main thing we extract here are the source
-/// folders, and optional subdirs, where potentially, the subdirs recurse or not.
-pub fn to_qualified_without_children(s: &Source, sub_path: Option<PathBuf>) -> PackageSource {
-    match s {
-        Source::Shorthand(dir) => PackageSource {
-            dir: sub_path
-                .map(|p| p.join(Path::new(dir)))
-                .unwrap_or(Path::new(dir).to_path_buf())
-                .to_string_lossy()
-                .to_string(),
-            subdirs: None,
-            type_: s.get_type(),
-        },
-        Source::Qualified(PackageSource {
-            dir,
-            type_,
-            subdirs: Some(Subdirs::Recurse(should_recurse)),
-        }) => PackageSource {
-            dir: sub_path
-                .map(|p| p.join(Path::new(dir)))
-                .unwrap_or(Path::new(dir).to_path_buf())
-                .to_string_lossy()
-                .to_string(),
-            subdirs: Some(Subdirs::Recurse(*should_recurse)),
-            type_: type_.to_owned(),
-        },
-        Source::Qualified(PackageSource { dir, type_, .. }) => PackageSource {
-            dir: sub_path
-                .map(|p| p.join(Path::new(dir)))
-                .unwrap_or(Path::new(dir).to_path_buf())
-                .to_string_lossy()
-                .to_string(),
-            subdirs: None,
-            type_: type_.to_owned(),
-        },
-    }
 }
 
 impl Eq for PackageSource {}
@@ -97,6 +59,45 @@ impl Source {
             (source, _) => source.clone(),
         }
     }
+
+    /// `to_qualified_without_children` takes a tree like structure of dependencies, coming in from
+    /// `bsconfig`, and turns it into a flat list. The main thing we extract here are the source
+    /// folders, and optional subdirs, where potentially, the subdirs recurse or not.
+    pub fn to_qualified_without_children(&self, sub_path: Option<PathBuf>) -> PackageSource {
+        match self {
+            Source::Shorthand(dir) => PackageSource {
+                dir: sub_path
+                    .map(|p| p.join(Path::new(dir)))
+                    .unwrap_or(Path::new(dir).to_path_buf())
+                    .to_string_lossy()
+                    .to_string(),
+                subdirs: None,
+                type_: self.get_type(),
+            },
+            Source::Qualified(PackageSource {
+                dir,
+                type_,
+                subdirs: Some(Subdirs::Recurse(should_recurse)),
+            }) => PackageSource {
+                dir: sub_path
+                    .map(|p| p.join(Path::new(dir)))
+                    .unwrap_or(Path::new(dir).to_path_buf())
+                    .to_string_lossy()
+                    .to_string(),
+                subdirs: Some(Subdirs::Recurse(*should_recurse)),
+                type_: type_.to_owned(),
+            },
+            Source::Qualified(PackageSource { dir, type_, .. }) => PackageSource {
+                dir: sub_path
+                    .map(|p| p.join(Path::new(dir)))
+                    .unwrap_or(Path::new(dir).to_path_buf())
+                    .to_string_lossy()
+                    .to_string(),
+                subdirs: None,
+                type_: type_.to_owned(),
+            },
+        }
+    }
 }
 
 impl Eq for Source {}
@@ -104,7 +105,7 @@ impl Eq for Source {}
 #[derive(Deserialize, Debug, Clone)]
 pub struct PackageSpec {
     pub module: String,
-    #[serde(rename = "in-source")]
+    #[serde(rename = "in-source", default = "default_true")]
     pub in_source: bool,
     pub suffix: Option<String>,
 }
@@ -122,10 +123,14 @@ pub struct Warnings {
     pub error: Option<Error>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Reason {
-    #[serde(rename = "react-jsx")]
-    pub react_jsx: i32,
+#[derive(Deserialize, Debug, Clone, PartialEq, Hash)]
+#[serde(untagged)]
+pub enum Reason {
+    Versioned {
+        #[serde(rename = "react-jsx")]
+        react_jsx: i32,
+    },
+    Unversioned(bool),
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -262,6 +267,10 @@ pub fn flatten_ppx_flags(
 pub fn read(path: String) -> Config {
     fs::read_to_string(path.clone())
         .map_err(|e| format!("Could not read bsconfig. {path} - {e}"))
+        // .and_then(|x| {
+        //     dbg!(&x);
+        //     repair(x).map_err(|e| format!("Json was invalid and could not be repaired. {path} - {e}"))
+        // })
         .and_then(|x| {
             serde_json::from_str::<Config>(&x).map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
         })
@@ -332,8 +341,12 @@ impl Config {
                 Some(_version) => panic!("Unsupported JSX version"),
                 None => vec![],
             },
-            (Some(reason), None) => {
-                vec!["-bs-jsx".to_string(), format!("{}", reason.react_jsx)]
+            (Some(Reason::Versioned { react_jsx }), None) => {
+                vec!["-bs-jsx".to_string(), format!("{}", react_jsx)]
+            }
+            (Some(Reason::Unversioned(true)), None) => {
+                // If Reason is 'true' - we should default to the latest
+                vec!["-bs-jsx".to_string()]
             }
             _ => vec![],
         }
@@ -462,7 +475,7 @@ mod tests {
 
         let config = serde_json::from_str::<Config>(json).unwrap();
         if let OneOrMore::Single(source) = config.sources {
-            let source = to_qualified_without_children(&source, None);
+            let source = source.to_qualified_without_children(None);
             assert_eq!(source.type_, Some(String::from("dev")));
         } else {
             dbg!(config.sources);
