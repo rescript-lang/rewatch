@@ -184,7 +184,7 @@ pub fn read_folders(
 fn get_source_dirs(source: bsconfig::Source, sub_path: Option<PathBuf>) -> AHashSet<bsconfig::PackageSource> {
     let mut source_folders: AHashSet<bsconfig::PackageSource> = AHashSet::new();
 
-    let source_folder = bsconfig::to_qualified_without_children(&source, sub_path.to_owned());
+    let source_folder = source.to_qualified_without_children(sub_path.to_owned());
     source_folders.insert(source_folder.to_owned());
 
     let (subdirs, full_recursive) = match source.to_owned() {
