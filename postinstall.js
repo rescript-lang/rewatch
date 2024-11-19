@@ -35,7 +35,11 @@ const installWindowsBinary = () => {
 
 switch (process.platform) {
   case "linux":
-    installMacLinuxBinary("rewatch-linux");
+    if (process.arch === "arm64") {
+      installMacLinuxBinary("rewatch-linux-arm64");
+    } else {
+      installMacLinuxBinary("rewatch-linux");
+    }
     break;
   case "darwin":
     installMacLinuxBinary("rewatch-macos");
