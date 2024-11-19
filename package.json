@@ -13,6 +13,7 @@
     "/rewatch",
     "/rewatch.cmd",
     "/rewatch-linux",
+    "/rewatch-linux-arm64",
     "/rewatch-macos",
     "/rewatch-windows.exe"
   ]
