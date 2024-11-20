@@ -140,6 +140,7 @@ pub fn get_bsc(root_path: &str, workspace_root: Option<String>) -> String {
     let subfolder = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "darwinarm64",
         ("macos", _) => "darwin",
+        ("linux", "aarch64") => "linuxarm64",
         ("linux", _) => "linux",
         ("windows", _) => "win32",
         _ => panic!("Unsupported architecture"),
