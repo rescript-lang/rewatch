@@ -101,7 +101,7 @@ fn main() {
 
     // The 'normal run' mode will show the 'pretty' formatted progress. But if we turn off the log
     // level, we should never show that.
-    let show_progress = log_level_filter != LevelFilter::Off;
+    let show_progress = log_level_filter == LevelFilter::Info;
 
     match lock::get(&folder) {
         lock::Lock::Error(ref e) => {
