@@ -3,6 +3,7 @@ use super::packages;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::AHashSet;
+use anyhow::Result;
 use console::style;
 use rayon::prelude::*;
 use std::io::Write;
@@ -318,11 +319,11 @@ pub fn cleanup_after_build(build_state: &BuildState) {
     });
 }
 
-pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) {
+pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Result<()> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
-    let packages = packages::make(&None, &project_root, &workspace_root);
-    let root_config_name = packages::get_package_name(&project_root);
+    let packages = packages::make(&None, &project_root, &workspace_root, show_progress)?;
+    let root_config_name = packages::get_package_name(&project_root)?;
     let bsc_path = match bsc_path {
         Some(bsc_path) => bsc_path,
         None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
@@ -399,4 +400,6 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) {
         );
         let _ = std::io::stdout().flush();
     }
+
+    Ok(())
 }

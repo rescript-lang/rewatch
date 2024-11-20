@@ -1,5 +1,6 @@
 use crate::build::packages;
 use crate::helpers::deserialize::*;
+use anyhow::Result;
 use convert_case::{Case, Casing};
 use serde::Deserialize;
 use std::fs;
@@ -267,17 +268,11 @@ pub fn flatten_ppx_flags(
 }
 
 /// Try to convert a bsconfig from a certain path to a bsconfig struct
-pub fn read(path: String) -> Config {
-    fs::read_to_string(path.clone())
-        .map_err(|e| format!("Could not read bsconfig. {path} - {e}"))
-        // .and_then(|x| {
-        //     dbg!(&x);
-        //     repair(x).map_err(|e| format!("Json was invalid and could not be repaired. {path} - {e}"))
-        // })
-        .and_then(|x| {
-            serde_json::from_str::<Config>(&x).map_err(|e| format!("Could not parse bsconfig. {path} - {e}"))
-        })
-        .expect("Errors reading bsconfig")
+pub fn read(path: String) -> Result<Config> {
+    let read = fs::read_to_string(path.clone())?;
+    let parse = serde_json::from_str::<Config>(&read)?;
+
+    Ok(parse)
 }
 
 fn check_if_rescript11_or_higher(version: &str) -> Result<bool, String> {

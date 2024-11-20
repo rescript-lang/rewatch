@@ -13,6 +13,7 @@ use crate::helpers::emojis::*;
 use crate::helpers::{self, get_workspace_root};
 use crate::sourcedirs;
 use ahash::AHashSet;
+use anyhow::{anyhow, Result};
 use build_types::*;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -54,15 +55,19 @@ pub struct CompilerArgs {
     pub parser_args: Vec<String>,
 }
 
-pub fn get_compiler_args(path: &str, rescript_version: Option<String>, bsc_path: Option<String>) -> String {
+pub fn get_compiler_args(
+    path: &str,
+    rescript_version: Option<String>,
+    bsc_path: Option<String>,
+) -> Result<String> {
     let filename = &helpers::get_abs_path(path);
     let package_root = helpers::get_abs_path(
         &helpers::get_nearest_config(&std::path::PathBuf::from(path)).expect("Couldn't find package root"),
     );
     let workspace_root = get_workspace_root(&package_root).map(|p| helpers::get_abs_path(&p));
     let root_rescript_config =
-        packages::read_config(&workspace_root.to_owned().unwrap_or(package_root.to_owned()));
-    let rescript_config = packages::read_config(&package_root);
+        packages::read_config(&workspace_root.to_owned().unwrap_or(package_root.to_owned()))?;
+    let rescript_config = packages::read_config(&package_root)?;
     let rescript_version = if let Some(rescript_version) = rescript_version {
         rescript_version
     } else {
@@ -111,28 +116,13 @@ pub fn get_compiler_args(path: &str, rescript_version: Option<String>, bsc_path:
         &workspace_root,
         &None,
     );
-    serde_json::to_string_pretty(&CompilerArgs {
+
+    let result = serde_json::to_string_pretty(&CompilerArgs {
         compiler_args,
         parser_args,
-    })
-    .unwrap()
-}
+    })?;
 
-#[derive(Debug, Clone)]
-pub enum InitializeBuildError {
-    PackageDependencyValidation,
-}
-
-impl fmt::Display for InitializeBuildError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::PackageDependencyValidation => write!(
-                f,
-                "{}  {}Could not Validate Package Dependencies",
-                LINE_CLEAR, CROSS,
-            ),
-        }
-    }
+    Ok(result)
 }
 
 pub fn initialize_build(
@@ -141,14 +131,14 @@ pub fn initialize_build(
     show_progress: bool,
     path: &str,
     bsc_path: Option<String>,
-) -> Result<BuildState, InitializeBuildError> {
+) -> Result<BuildState> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let bsc_path = match bsc_path {
         Some(bsc_path) => bsc_path,
         None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
     };
-    let root_config_name = packages::get_package_name(&project_root);
+    let root_config_name = packages::get_package_name(&project_root)?;
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     if show_progress {
@@ -157,7 +147,7 @@ pub fn initialize_build(
     }
 
     let timing_package_tree = Instant::now();
-    let packages = packages::make(filter, &project_root, &workspace_root);
+    let packages = packages::make(filter, &project_root, &workspace_root, show_progress)?;
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     if show_progress {
@@ -173,7 +163,7 @@ pub fn initialize_build(
     }
 
     if !packages::validate_packages_dependencies(&packages) {
-        return Err(InitializeBuildError::PackageDependencyValidation);
+        return Err(anyhow!("Failed to validate package dependencies"));
     }
 
     let timing_source_files = Instant::now();
@@ -435,27 +425,6 @@ pub fn incremental_build(
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum BuildError {
-    InitializeBuild(InitializeBuildError),
-    IncrementalBuild(IncrementalBuildError),
-}
-
-impl fmt::Display for BuildError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::InitializeBuild(e) => {
-                write!(f, "{}  {}Error Initializing Build: {}", LINE_CLEAR, CROSS, e)
-            }
-            Self::IncrementalBuild(e) => write!(
-                f,
-                "{}  {}Error Running Incremental Build: {}",
-                LINE_CLEAR, CROSS, e
-            ),
-        }
-    }
-}
-
 // write build.ninja files in the packages after a non-incremental build
 // this is necessary to bust the editor tooling cache. The editor tooling
 // is watching this file.
@@ -477,7 +446,7 @@ pub fn build(
     no_timing: bool,
     create_sourcedirs: bool,
     bsc_path: Option<String>,
-) -> Result<BuildState, BuildError> {
+) -> Result<BuildState> {
     let default_timing: Option<std::time::Duration> = if no_timing {
         Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
     } else {
@@ -485,7 +454,7 @@ pub fn build(
     };
     let timing_total = Instant::now();
     let mut build_state = initialize_build(default_timing, filter, show_progress, path, bsc_path)
-        .map_err(BuildError::InitializeBuild)?;
+        .map_err(|e| anyhow!("Could not initialize build. Error: {e}"))?;
 
     match incremental_build(
         &mut build_state,
@@ -512,7 +481,7 @@ pub fn build(
         Err(e) => {
             clean::cleanup_after_build(&build_state);
             write_build_ninja(&build_state);
-            Err(BuildError::IncrementalBuild(e))
+            Err(anyhow!("Incremental build failed. Error: {e}"))
         }
     }
 }
