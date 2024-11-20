@@ -15,4 +15,4 @@ Can't continue... Found a circular dependency in your code:
 NewNamespace.NS_alias -> Dep01 -> Dep02 -> NS -> NewNamespace.NS_alias
 
 ERROR:
-[2K  ️🛑 Error Running Incremental Build: [2K  ️🛑 Failed to Compile. See Errors Above
+Incremental build failed. Error: [2K  ️🛑 Failed to Compile. See Errors Above
