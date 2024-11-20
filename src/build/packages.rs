@@ -5,6 +5,7 @@ use crate::config;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
+use anyhow::Result;
 use console::style;
 use log::{debug, error};
 use rayon::prelude::*;
@@ -216,7 +217,7 @@ fn get_source_dirs(source: config::Source, sub_path: Option<PathBuf>) -> AHashSe
     source_folders
 }
 
-pub fn read_config(package_dir: &str) -> config::Config {
+pub fn read_config(package_dir: &str) -> Result<config::Config> {
     let prefix = if package_dir.is_empty() {
         "".to_string()
     } else {
@@ -290,6 +291,7 @@ fn read_dependencies(
     parent_path: &str,
     project_root: &str,
     workspace_root: Option<String>,
+    show_progress: bool,
 ) -> Vec<Dependency> {
     return parent_config
         .bs_dependencies
@@ -311,16 +313,34 @@ fn read_dependencies(
             let (config, canonical_path) =
                 match read_dependency(package_name, parent_path, project_root, &workspace_root) {
                     Err(error) => {
-                        log::error!(
+                    if show_progress {
+                        println!(
                             "{} {} Error building package tree. {}",
                             style("[1/2]").bold().dim(),
                             CROSS,
                             error
                         );
+                    }
+
+                        log::error!(
+                            "We could not build package tree reading depencency '{package_name}', at path '{parent_path}'. Error: {error}",
+                        );
+
                         std::process::exit(2)
                     }
-                    Ok(canonical_path) => (read_config(&canonical_path), canonical_path),
+                    Ok(canonical_path) => {
+                        match read_config(&canonical_path) {
+                            Ok(config) => (config, canonical_path),
+                            Err(error) => {
+                                log::error!(
+                                    "We could not build package tree  '{package_name}', at path '{parent_path}', Error: {error}",
+                                );
+                                std::process::exit(2)
+                                    }
+                                }
+                        }
                 };
+
             let is_pinned = parent_config
                 .pinned_dependencies
                 .as_ref()
@@ -333,6 +353,7 @@ fn read_dependencies(
                 &canonical_path,
                 project_root,
                 workspace_root.to_owned(),
+                show_progress
             );
 
             Dependency {
@@ -397,8 +418,12 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
     }
 }
 
-fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap<String, Package> {
-    let root_config = read_config(project_root);
+fn read_packages(
+    project_root: &str,
+    workspace_root: Option<String>,
+    show_progress: bool,
+) -> Result<AHashMap<String, Package>> {
+    let root_config = read_config(project_root)?;
 
     // Store all packages and completely deduplicate them
     let mut map: AHashMap<String, Package> = AHashMap::new();
@@ -414,6 +439,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
         project_root,
         project_root,
         workspace_root,
+        show_progress,
     ));
     dependencies.iter().for_each(|d| {
         if !map.contains_key(&d.name) {
@@ -424,7 +450,7 @@ fn read_packages(project_root: &str, workspace_root: Option<String>) -> AHashMap
         }
     });
 
-    map
+    Ok(map)
 }
 
 /// `get_source_files` is essentially a wrapper around `read_structure`, which read a
@@ -527,12 +553,14 @@ pub fn make(
     filter: &Option<regex::Regex>,
     root_folder: &str,
     workspace_root: &Option<String>,
-) -> AHashMap<String, Package> {
-    let map = read_packages(root_folder, workspace_root.to_owned());
+    show_progress: bool,
+) -> Result<AHashMap<String, Package>> {
+    let map = read_packages(root_folder, workspace_root.to_owned(), show_progress)?;
 
     /* Once we have the deduplicated packages, we can add the source files for each - to minimize
      * the IO */
     let result = extend_with_children(filter, map);
+
     result.values().for_each(|package| {
         if let Some(dirs) = &package.dirs {
             dirs.iter().for_each(|dir| {
@@ -540,12 +568,14 @@ pub fn make(
             })
         }
     });
-    result
+
+    Ok(result)
 }
 
-pub fn get_package_name(path: &str) -> String {
-    let config = read_config(path);
-    config.name
+pub fn get_package_name(path: &str) -> Result<String> {
+    let config = read_config(path)?;
+
+    Ok(config.name)
 }
 
 pub fn parse_packages(build_state: &mut BuildState) {

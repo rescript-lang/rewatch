@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use clap_verbosity_flag::InfoLevel;
 use log::LevelFilter;
@@ -72,7 +73,7 @@ struct Args {
     bsc_path: Option<String>,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
     let log_level_filter = args.verbose.log_level_filter();
 
@@ -93,7 +94,7 @@ fn main() {
         Some(path) => {
             println!(
                 "{}",
-                build::get_compiler_args(&path, args.rescript_version, args.bsc_path)
+                build::get_compiler_args(&path, args.rescript_version, args.bsc_path)?
             );
             std::process::exit(0);
         }
@@ -139,6 +140,8 @@ fn main() {
                     args.after_build,
                     args.create_sourcedirs.unwrap_or(false),
                 );
+
+                Ok(())
             }
         },
     }
