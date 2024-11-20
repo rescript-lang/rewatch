@@ -864,7 +864,9 @@ mod test {
             name: name.clone(),
             config: crate::config::Config {
                 name: name.clone(),
-                sources: crate::config::OneOrMore::Single(Source::Shorthand(String::from("Source"))),
+                sources: Some(crate::config::OneOrMore::Single(Source::Shorthand(String::from(
+                    "Source",
+                )))),
                 package_specs: None,
                 warnings: None,
                 suffix: None,
