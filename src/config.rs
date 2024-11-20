@@ -140,21 +140,22 @@ pub enum NamespaceConfig {
     String(String),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum JsxMode {
-    #[serde(rename = "classic")]
     Classic,
-    #[serde(rename = "automatic")]
     Automatic,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
 pub enum JsxModule {
-    #[serde(rename = "react")]
     React,
+    Other(String),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct JsxSpecs {
     pub version: Option<i32>,
     pub module: Option<JsxModule>,
@@ -376,6 +377,9 @@ impl Config {
                 Some(JsxModule::React) => {
                     vec!["-bs-jsx-module".to_string(), "react".to_string()]
                 }
+                Some(JsxModule::Other(module)) => {
+                    vec!["-bs-jsx-module".to_string(), module]
+                }
                 None => vec![],
             },
             _ => vec![],
@@ -476,7 +480,7 @@ mod tests {
         "#;
 
         let config = serde_json::from_str::<Config>(json).unwrap();
-        if let OneOrMore::Single(source) = config.sources {
+        if let Some(OneOrMore::Single(source)) = config.sources {
             let source = source.to_qualified_without_children(None);
             assert_eq!(source.type_, Some(String::from("dev")));
         } else {
@@ -505,6 +509,35 @@ mod tests {
         let config = serde_json::from_str::<Config>(json).unwrap();
         assert!(config.gentype_config.is_some());
         assert_eq!(config.get_gentype_arg(), vec!["-bs-gentype".to_string()]);
+    }
+
+    #[test]
+    fn test_other_jsx_module() {
+        let json = r#"
+        {
+            "name": "my-monorepo",
+            "sources": [ { "dir": "src/", "subdirs": true } ],
+            "package-specs": [ { "module": "es6", "in-source": true } ],
+            "suffix": ".mjs",
+            "pinned-dependencies": [ "@teamwalnut/app" ],
+            "bs-dependencies": [ "@teamwalnut/app" ],
+            "jsx": {
+                "module": "Voby.JSX"
+            }
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert!(config.jsx.is_some());
+        assert_eq!(
+            config.jsx.unwrap(),
+            JsxSpecs {
+                version: None,
+                module: Some(JsxModule::Other(String::from("Voby.JSX"))),
+                mode: None,
+                v3_dependencies: None,
+            },
+        );
     }
 
     #[test]
