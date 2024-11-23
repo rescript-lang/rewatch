@@ -3,7 +3,10 @@
 
 var hello = "world";
 
+var a = 0;
+
 export {
   hello ,
+  a ,
 }
 /* No side effect */
