@@ -9,7 +9,7 @@
     ],
     "package-specs": [
         {
-            "module": "esmodule",
+            "module": "es6",
             "in-source": true
         }
     ],
