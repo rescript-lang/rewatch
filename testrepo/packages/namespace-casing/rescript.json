@@ -1,0 +1,22 @@
+{
+    "name": "namespace-casing",
+    "namespace": "NamespaceCasingAPI",
+    "sources": [
+        {
+            "dir": "src",
+            "subdirs": true
+        }
+    ],
+    "package-specs": [
+        {
+            "module": "esmodule",
+            "in-source": true
+        }
+    ],
+    "suffix": ".mjs",
+    "bs-dependencies": [],
+    "bsc-flags": [],
+    "jsx": {
+        "version": 4
+    }
+}

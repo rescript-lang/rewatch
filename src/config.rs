@@ -295,6 +295,35 @@ fn namespace_from_package_name(package_name: &str) -> String {
 }
 
 impl Config {
+    fn namespace_of_package_name(s: &str) -> String {
+        let len = s.len();
+        let mut buf = String::with_capacity(len);
+        
+        fn aux(s: &str, capital: bool, buf: &mut String, off: usize) {
+            if off >= s.len() {
+                return;
+            }
+    
+            let ch = s.as_bytes()[off] as char;
+            match ch {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => {
+                    let new_capital = false;
+                    buf.push(if capital { ch.to_ascii_uppercase() } else { ch });
+                    aux(s, new_capital, buf, off + 1);
+                }
+                '/' | '-' => {
+                    aux(s, true, buf, off + 1);
+                }
+                _ => {
+                    aux(s, capital, buf, off + 1);
+                }
+            }
+        }
+    
+        aux(s, true, &mut buf, 0);
+        buf
+    }
+
     pub fn get_namespace(&self) -> packages::Namespace {
         let namespace_from_package = namespace_from_package_name(&self.name);
         match (self.namespace.as_ref(), self.namespace_entry.as_ref()) {
@@ -312,7 +341,8 @@ impl Config {
                 namespace if namespace.is_case(Case::UpperFlat) => {
                     packages::Namespace::Namespace(namespace.to_string())
                 }
-                namespace => packages::Namespace::Namespace(namespace.to_string().to_case(Case::Pascal)),
+                namespace => packages::Namespace::Namespace(Self::namespace_of_package_name(namespace)),
+                    // namespace.to_string().to_case(Case::Pascal)),
             },
             (Some(self::NamespaceConfig::String(str)), Some(entry)) => match str.as_str() {
                 "true" => packages::Namespace::NamespaceWithEntry {
