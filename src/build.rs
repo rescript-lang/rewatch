@@ -153,7 +153,7 @@ pub fn initialize_build(
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     if show_progress {
-        print!(
+        println!(
             "{}{} {}Built package tree in {:.2}s",
             LINE_CLEAR,
             style("[1/7]").bold().dim(),
