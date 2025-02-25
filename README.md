@@ -53,7 +53,7 @@ Arguments:
           - clean: Clean the build artifacts
 
   [FOLDER]
-          The relative path to where the main bsconfig.json resides. IE - the root of your project
+          The relative path to where the main rescript.json resides. IE - the root of your project
 
 Options:
   -f, --filter <FILTER>
@@ -62,8 +62,8 @@ Options:
   -a, --after-build <AFTER_BUILD>
           This allows one to pass an additional command to the watcher, which allows it to run when finished. For instance, to play a sound when done compiling, or to run a test suite. NOTE - You may need to add '--color=always' to your subcommand in case you want to output colour as well
 
-  -n, --no-timing <NO_TIMING>
-          [possible values: true, false]
+  -n, --no-timing
+          
 
   -v, --verbose...
           Increase logging verbosity
@@ -71,13 +71,14 @@ Options:
   -q, --quiet...
           Decrease logging verbosity
 
-  -c, --create-sourcedirs <CREATE_SOURCEDIRS>
+  -c, --create-sourcedirs
           This creates a source_dirs.json file at the root of the monorepo, which is needed when you want to use Reanalyze
-          
-          [possible values: true, false]
 
       --compiler-args <COMPILER_ARGS>
           This prints the compiler arguments. It expects the path to a rescript.json file. This also requires --bsc-path and --rescript-version to be present
+
+      --dev
+          This is the flag to also compile development dependencies It's important to know that we currently do not discern between project src, and dependencies. So enabling this flag will enable building _all_ development dependencies of _all_ packages
 
       --rescript-version <RESCRIPT_VERSION>
           To be used in conjunction with compiler_args
@@ -90,7 +91,6 @@ Options:
 
   -V, --version
           Print version
-
 ```
 
 # Contributing
