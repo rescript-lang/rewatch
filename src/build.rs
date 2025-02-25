@@ -142,7 +142,7 @@ pub fn initialize_build(
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     if show_progress {
-        println!("{} {}Building package tree...", style("[1/7]").bold().dim(), TREE);
+        print!("{} {}Building package tree...", style("[1/7]").bold().dim(), TREE);
         let _ = stdout().flush();
     }
 
@@ -169,7 +169,7 @@ pub fn initialize_build(
     let timing_source_files = Instant::now();
 
     if show_progress {
-        println!(
+        print!(
             "{} {}Finding source files...",
             style("[2/7]").bold().dim(),
             LOOKING_GLASS
@@ -199,7 +199,7 @@ pub fn initialize_build(
                 .as_secs_f64()
         );
 
-        println!(
+        print!(
             "{} {}Reading compile state...",
             style("[3/7]").bold().dim(),
             COMPILE_STATE
@@ -221,7 +221,7 @@ pub fn initialize_build(
                 .as_secs_f64()
         );
 
-        println!(
+        print!(
             "{} {}Cleaning up previous build...",
             style("[4/7]").bold().dim(),
             SWEEP
@@ -373,6 +373,14 @@ pub fn incremental_build(
     } else {
         ProgressBar::hidden()
     };
+    pb.set_style(
+        ProgressStyle::with_template(&format!(
+            "{} {}Compiling... {{spinner}} {{pos}}/{{len}} {{msg}}",
+            format_step(current_step, total_steps),
+            SWORDS
+        ))
+        .unwrap(),
+    );
 
     let (compile_errors, compile_warnings, num_compiled_modules) =
         compile::compile(build_state, show_progress, || pb.inc(1), |size| pb.set_length(size))
