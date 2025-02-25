@@ -10,7 +10,7 @@ use crate::helpers;
 use ahash::{AHashMap, AHashSet};
 use anyhow::{anyhow, Result};
 use console::style;
-use log::{debug, log_enabled, trace, Level::Info};
+use log::{debug, trace};
 use rayon::prelude::*;
 use std::path::Path;
 use std::process::Command;
@@ -18,6 +18,7 @@ use std::time::SystemTime;
 
 pub fn compile(
     build_state: &mut BuildState,
+    show_progress: bool,
     inc: impl Fn() + std::marker::Sync,
     set_length: impl Fn(u64),
 ) -> Result<(String, String, usize)> {
@@ -212,7 +213,7 @@ pub fn compile(
                     None
                 }
                 .inspect(|_res| {
-                    if !(log_enabled!(Info)) {
+                    if show_progress {
                         inc();
                     }
                 })

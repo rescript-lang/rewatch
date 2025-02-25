@@ -151,7 +151,7 @@ pub fn initialize_build(
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     if show_progress {
-        println!(
+        print!(
             "{}{} {}Built package tree in {:.2}s",
             LINE_CLEAR,
             style("[1/7]").bold().dim(),
@@ -375,7 +375,7 @@ pub fn incremental_build(
     };
 
     let (compile_errors, compile_warnings, num_compiled_modules) =
-        compile::compile(build_state, || pb.inc(1), |size| pb.set_length(size))
+        compile::compile(build_state, show_progress, || pb.inc(1), |size| pb.set_length(size))
             .map_err(|e| IncrementalBuildError::CompileError(Some(e.to_string())))?;
 
     let compile_duration = start_compiling.elapsed();
