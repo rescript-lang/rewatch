@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{builder::BoolishValueParser, Parser, ValueEnum};
+use clap::{Parser, ValueEnum};
 use clap_verbosity_flag::InfoLevel;
 use log::LevelFilter;
 use regex::Regex;
