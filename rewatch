@@ -3,18 +3,27 @@
 # Get the directory of the script to work from.
 DIR=$(dirname "$0")
 
-if [ "$(uname)" = "Darwin" ]; then
-    # Run the Mac Version
-    $DIR/rewatch-macos.exe $@
-elif [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
-    # Run the Linux Version
-    elif [ "$(expr substr $(uname -m) 1 7)" = "aarch64" ]; then
-        # Run the Linux ARM64 Version
-        $DIR/rewatch-linux-arm64.exe $@
-    else 
-        $DIR/rewatch-linux.exe $@
+# Detect platform and architecture
+PLATFORM=$(uname -s)
+ARCH=$(uname -m)
+
+if [ "$PLATFORM" = "Darwin" ]; then
+    # macOS
+    $DIR/rewatch-macos "$@"
+elif [ "$PLATFORM" = "Linux" ]; then
+    # Linux
+    if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+        # ARM64 architecture
+        $DIR/rewatch-linux-arm64 "$@"
+    else
+        # Other architectures (x86_64, etc.)
+        $DIR/rewatch-linux "$@"
     fi
+elif echo "$PLATFORM" | grep -i "MINGW\|MSYS\|CYGWIN" > /dev/null; then
+    # Windows (when running in Git Bash, MSYS2, Cygwin, etc.)
+    $DIR/rewatch.exe "$@"
 else
-    echo "No release available for '$(uname)'"
+    echo "No release available for '$PLATFORM'"
     exit 1
 fi
+
