@@ -62,8 +62,9 @@ Options:
   -a, --after-build <AFTER_BUILD>
           This allows one to pass an additional command to the watcher, which allows it to run when finished. For instance, to play a sound when done compiling, or to run a test suite. NOTE - You may need to add '--color=always' to your subcommand in case you want to output colour as well
 
-  -n, --no-timing
-          
+  -n, --no-timing [<NO_TIMING>]
+          [default: false]
+          [possible values: true, false]
 
   -v, --verbose...
           Increase logging verbosity
@@ -71,14 +72,20 @@ Options:
   -q, --quiet...
           Decrease logging verbosity
 
-  -c, --create-sourcedirs
+  -c, --create-sourcedirs [<CREATE_SOURCEDIRS>]
           This creates a source_dirs.json file at the root of the monorepo, which is needed when you want to use Reanalyze
+          
+          [default: false]
+          [possible values: true, false]
 
       --compiler-args <COMPILER_ARGS>
           This prints the compiler arguments. It expects the path to a rescript.json file. This also requires --bsc-path and --rescript-version to be present
 
-      --dev
+      --dev [<DEV>]
           This is the flag to also compile development dependencies It's important to know that we currently do not discern between project src, and dependencies. So enabling this flag will enable building _all_ development dependencies of _all_ packages
+          
+          [default: false]
+          [possible values: true, false]
 
       --rescript-version <RESCRIPT_VERSION>
           To be used in conjunction with compiler_args
@@ -91,6 +98,7 @@ Options:
 
   -V, --version
           Print version
+
 ```
 
 # Contributing
