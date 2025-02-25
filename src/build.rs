@@ -311,6 +311,7 @@ pub fn incremental_build(
                     num_dirty_modules,
                     default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
                 );
+                pb.finish();
             }
         }
         Err(err) => {
@@ -323,6 +324,7 @@ pub fn incremental_build(
                     CROSS,
                     default_timing.unwrap_or(timing_ast_elapsed).as_secs_f64()
                 );
+                pb.finish();
             }
 
             log::error!("Could not parse source files: {}", &err);
@@ -382,9 +384,13 @@ pub fn incremental_build(
         .unwrap(),
     );
 
-    let (compile_errors, compile_warnings, num_compiled_modules) =
-        compile::compile(build_state, show_progress, || pb.inc(1), |size| pb.set_length(size))
-            .map_err(|e| IncrementalBuildError::CompileError(Some(e.to_string())))?;
+    let (compile_errors, compile_warnings, num_compiled_modules) = compile::compile(
+        build_state,
+        show_progress,
+        || pb.inc(1),
+        |size| pb.set_length(size),
+    )
+    .map_err(|e| IncrementalBuildError::CompileError(Some(e.to_string())))?;
 
     let compile_duration = start_compiling.elapsed();
 

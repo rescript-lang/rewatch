@@ -333,7 +333,7 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Resul
 
     let timing_clean_compiler_assets = Instant::now();
     if show_progress {
-        println!(
+        print!(
             "{} {}Cleaning compiler assets...",
             style("[1/2]").bold().dim(),
             SWEEP
@@ -342,7 +342,7 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Resul
     };
     packages.iter().for_each(|(_, package)| {
         if show_progress {
-            println!(
+            print!(
                 "{}{} {}Cleaning {}...",
                 LINE_CLEAR,
                 style("[1/2]").bold().dim(),
