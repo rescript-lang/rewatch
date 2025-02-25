@@ -41,28 +41,35 @@ struct Args {
     #[arg(short, long)]
     after_build: Option<String>,
 
-    #[arg(short, long)]
-    no_timing: Option<bool>,
+    #[arg(short, long, default_value = "false")]
+    no_timing: bool,
 
     /// Verbosity:
     /// -v -> Debug
     /// -vv -> Trace
     /// -q -> Warn
-    /// -qq -> Error 
-    /// -qqq -> Off. 
+    /// -qq -> Error
+    /// -qqq -> Off.
     /// Default (/ no argument given): 'info'
     #[command(flatten)]
     verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
 
     /// This creates a source_dirs.json file at the root of the monorepo, which is needed when you
     /// want to use Reanalyze
-    #[arg(short, long)]
-    create_sourcedirs: Option<bool>,
+    #[arg(short, long, default_value = "false")]
+    create_sourcedirs: bool,
 
     /// This prints the compiler arguments. It expects the path to a rescript.json file.
     /// This also requires --bsc-path and --rescript-version to be present
     #[arg(long)]
     compiler_args: Option<String>,
+
+    /// This is the flag to also compile development dependencies
+    /// It's important to know that we currently do not discern between project src, and
+    /// dependencies. So enabling this flag will enable building _all_ development dependencies of
+    /// _all_ packages
+    #[arg(long, default_value = "false")]
+    dev: bool,
 
     /// To be used in conjunction with compiler_args
     #[arg(long)]
@@ -94,7 +101,7 @@ fn main() -> Result<()> {
         Some(path) => {
             println!(
                 "{}",
-                build::get_compiler_args(&path, args.rescript_version, args.bsc_path)?
+                build::get_compiler_args(&path, args.rescript_version, args.bsc_path, args.dev)?
             );
             std::process::exit(0);
         }
@@ -116,9 +123,10 @@ fn main() -> Result<()> {
                     &filter,
                     &folder,
                     show_progress,
-                    args.no_timing.unwrap_or(false),
-                    args.create_sourcedirs.unwrap_or(false),
+                    args.no_timing,
+                    args.create_sourcedirs,
                     args.bsc_path,
+                    args.dev,
                 ) {
                     Err(e) => {
                         log::error!("{e}");
@@ -138,7 +146,8 @@ fn main() -> Result<()> {
                     show_progress,
                     &folder,
                     args.after_build,
-                    args.create_sourcedirs.unwrap_or(false),
+                    args.create_sourcedirs,
+                    args.dev,
                 );
 
                 Ok(())

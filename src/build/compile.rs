@@ -21,6 +21,7 @@ pub fn compile(
     show_progress: bool,
     inc: impl Fn() + std::marker::Sync,
     set_length: impl Fn(u64),
+    build_dev_deps: bool,
 ) -> Result<(String, String, usize)> {
     let mut compiled_modules = AHashSet::<String>::new();
     let dirty_modules = build_state
@@ -169,6 +170,7 @@ pub fn compile(
                                         &build_state.packages,
                                         &build_state.project_root,
                                         &build_state.workspace_root,
+                                        build_dev_deps,
                                     );
                                     Some(result)
                                 }
@@ -185,6 +187,7 @@ pub fn compile(
                                 &build_state.packages,
                                 &build_state.project_root,
                                 &build_state.workspace_root,
+                                build_dev_deps,
                             );
                             let cmi_digest_after = helpers::compute_file_hash(&cmi_path);
 
@@ -359,20 +362,19 @@ pub fn compiler_args(
     // if packages are known, we pass a reference here
     // this saves us a scan to find their paths
     packages: &Option<&AHashMap<String, packages::Package>>,
+    build_dev_deps: bool,
 ) -> Vec<String> {
     let normal_deps = config.bs_dependencies.as_ref().unwrap_or(&vec![]).to_owned();
 
     let bsc_flags = config::flatten_flags(&config.bsc_flags);
     // don't compile dev-deps yet
-    // let dev_deps = source
-    //     .package
-    //     .config
-    //     .bs_dev_dependencies
-    //     .as_ref()
-    //     .unwrap_or(&vec![])
-    //     .to_owned();
+    let dev_deps = if build_dev_deps {
+        config.bs_dev_dependencies.as_ref().unwrap_or(&vec![]).to_owned()
+    } else {
+        vec![]
+    };
 
-    let deps = [normal_deps]
+    let deps = [dev_deps, normal_deps]
         .concat()
         .par_iter()
         .map(|package_name| {
@@ -511,6 +513,7 @@ fn compile_file(
     packages: &AHashMap<String, packages::Package>,
     project_root: &str,
     workspace_root: &Option<String>,
+    build_dev_deps: bool,
 ) -> Result<Option<String>> {
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match &module.source_type {
@@ -534,6 +537,7 @@ fn compile_file(
         project_root,
         workspace_root,
         &Some(packages),
+        build_dev_deps,
     );
 
     let to_mjs = Command::new(bsc_path)

@@ -803,7 +803,7 @@ fn get_unallowed_dependents(
 struct UnallowedDependency {
     bs_deps: Vec<String>,
     pinned_deps: Vec<String>,
-    bs_dev_deps: Vec<String>,
+    bs_build_dev_deps: Vec<String>,
 }
 
 pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> bool {
@@ -827,7 +827,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
                 let empty_unallowed_deps = UnallowedDependency {
                     bs_deps: vec![],
                     pinned_deps: vec![],
-                    bs_dev_deps: vec![],
+                    bs_build_dev_deps: vec![],
                 };
 
                 let unallowed_dependency = detected_unallowed_dependencies.entry(String::from(package_name));
@@ -835,7 +835,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
                 match *dependency_type {
                     "bs-dependencies" => value.bs_deps.push(unallowed_dependency_name),
                     "pinned-dependencies" => value.pinned_deps.push(unallowed_dependency_name),
-                    "bs-dev-dependencies" => value.bs_dev_deps.push(unallowed_dependency_name),
+                    "bs-dev-dependencies" => value.bs_build_dev_deps.push(unallowed_dependency_name),
                     _ => (),
                 }
             }
@@ -851,7 +851,7 @@ pub fn validate_packages_dependencies(packages: &AHashMap<String, Package>) -> b
         [
             ("bs-dependencies", unallowed_deps.bs_deps.to_owned()),
             ("pinned-dependencies", unallowed_deps.pinned_deps.to_owned()),
-            ("bs-dev-dependencies", unallowed_deps.bs_dev_deps.to_owned()),
+            ("bs-dev-dependencies", unallowed_deps.bs_build_dev_deps.to_owned()),
         ]
         .iter()
         .for_each(|(deps_type, map)| {
@@ -887,7 +887,7 @@ mod test {
         name: String,
         bs_deps: Vec<String>,
         pinned_deps: Vec<String>,
-        dev_deps: Vec<String>,
+        build_dev_deps: Vec<String>,
         allowed_dependents: Option<Vec<String>>,
     ) -> Package {
         Package {
@@ -902,7 +902,7 @@ mod test {
                 suffix: None,
                 pinned_dependencies: Some(pinned_deps),
                 bs_dependencies: Some(bs_deps),
-                bs_dev_dependencies: Some(dev_deps),
+                bs_dev_dependencies: Some(build_dev_deps),
                 ppx_flags: None,
                 bsc_flags: None,
                 reason: None,

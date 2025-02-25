@@ -59,6 +59,7 @@ pub fn get_compiler_args(
     path: &str,
     rescript_version: Option<String>,
     bsc_path: Option<String>,
+    build_dev_deps: bool,
 ) -> Result<String> {
     let filename = &helpers::get_abs_path(path);
     let package_root = helpers::get_abs_path(
@@ -115,6 +116,7 @@ pub fn get_compiler_args(
         &package_root,
         &workspace_root,
         &None,
+        build_dev_deps,
     );
 
     let result = serde_json::to_string_pretty(&CompilerArgs {
@@ -277,6 +279,7 @@ pub fn incremental_build(
     show_progress: bool,
     only_incremental: bool,
     create_sourcedirs: bool,
+    build_dev_deps: bool,
 ) -> Result<(), IncrementalBuildError> {
     logs::initialize(&build_state.packages);
     let num_dirty_modules = build_state.modules.values().filter(|m| is_dirty(m)).count() as u64;
@@ -389,6 +392,7 @@ pub fn incremental_build(
         show_progress,
         || pb.inc(1),
         |size| pb.set_length(size),
+        build_dev_deps,
     )
     .map_err(|e| IncrementalBuildError::CompileError(Some(e.to_string())))?;
 
@@ -460,6 +464,7 @@ pub fn build(
     no_timing: bool,
     create_sourcedirs: bool,
     bsc_path: Option<String>,
+    build_dev_deps: bool,
 ) -> Result<BuildState> {
     let default_timing: Option<std::time::Duration> = if no_timing {
         Some(std::time::Duration::new(0.0 as u64, 0.0 as u32))
@@ -477,6 +482,7 @@ pub fn build(
         show_progress,
         false,
         create_sourcedirs,
+        build_dev_deps,
     ) {
         Ok(_) => {
             if show_progress {
