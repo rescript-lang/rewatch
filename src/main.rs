@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::{builder::BoolishValueParser, Parser, ValueEnum};
 use clap_verbosity_flag::InfoLevel;
 use log::LevelFilter;
 use regex::Regex;
@@ -41,7 +41,8 @@ struct Args {
     #[arg(short, long)]
     after_build: Option<String>,
 
-    #[arg(short, long, default_value = "false")]
+    // Disable timing on the output
+    #[arg(short, long, default_value = "false", num_args = 0..=1)]
     no_timing: bool,
 
     /// Verbosity:
@@ -56,7 +57,7 @@ struct Args {
 
     /// This creates a source_dirs.json file at the root of the monorepo, which is needed when you
     /// want to use Reanalyze
-    #[arg(short, long, default_value = "false")]
+    #[arg(short, long, default_value_t = false, num_args = 0..=1)]
     create_sourcedirs: bool,
 
     /// This prints the compiler arguments. It expects the path to a rescript.json file.
@@ -68,7 +69,7 @@ struct Args {
     /// It's important to know that we currently do not discern between project src, and
     /// dependencies. So enabling this flag will enable building _all_ development dependencies of
     /// _all_ packages
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value_t = false, num_args = 0..=1)]
     dev: bool,
 
     /// To be used in conjunction with compiler_args
