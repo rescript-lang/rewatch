@@ -6,7 +6,8 @@
       "packages/main",
       "packages/dep01",
       "packages/dep02",
-      "packages/new-namespace"
+      "packages/new-namespace",
+      "packages/namespace-casing"
     ]
   },
   "scripts": {
