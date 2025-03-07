@@ -263,12 +263,7 @@ pub fn parser_args(
     contents: &str,
 ) -> (PathBuf, Vec<String>) {
     let file = &filename.to_string();
-    // let path = PathBuf::from(filename);
-    // let ast_extension = path_to_ast_extension(&path);
-    // let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
     let ast_path = helpers::get_ast_path(file);
-    // make the dir of the ast_path if it doesn't exist yet:
-
     let ppx_flags = config::flatten_ppx_flags(
         &if let Some(workspace_root) = workspace_root {
             format!("{}/node_modules", &workspace_root)
