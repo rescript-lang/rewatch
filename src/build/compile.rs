@@ -162,7 +162,7 @@ pub fn compile(
                                     let result = compile_file(
                                         package,
                                         root_package,
-                                        &package.get_iast_path(&path),
+                                        &helpers::get_ast_path(&path).to_string_lossy(),
                                         module,
                                         &build_state.rescript_version,
                                         true,
@@ -179,7 +179,7 @@ pub fn compile(
                             let result = compile_file(
                                 package,
                                 root_package,
-                                &package.get_ast_path(&source_file.implementation.path),
+                                &helpers::get_ast_path(&source_file.implementation.path).to_string_lossy(),
                                 module,
                                 &build_state.rescript_version,
                                 false,
@@ -415,9 +415,6 @@ pub fn compiler_args(
         packages::Namespace::NoNamespace => vec![],
     };
 
-    let jsx_args = root_config.get_jsx_args();
-    let jsx_module_args = root_config.get_jsx_module_args();
-    let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
     let gentype_arg = root_config.get_gentype_arg();
 
@@ -480,13 +477,10 @@ pub fn compiler_args(
         read_cmi_args,
         vec!["-I".to_string(), ".".to_string()],
         deps.concat(),
-        gentype_arg,
-        jsx_args,
-        jsx_module_args,
-        jsx_mode_args,
         uncurried_args,
         bsc_flags.to_owned(),
         warning_args,
+        gentype_arg,
         // vec!["-warn-error".to_string(), "A".to_string()],
         // ^^ this one fails for bisect-ppx
         // this is the default
@@ -497,6 +491,7 @@ pub fn compiler_args(
         //     "-I".to_string(),
         //     abs_node_modules_path.to_string() + "/rescript/ocaml",
         // ],
+        vec!["-bs-v".to_string(), format!("{}", version)],
         vec![ast_path.to_string()],
     ]
     .concat()
@@ -539,7 +534,6 @@ fn compile_file(
         &Some(packages),
         build_dev_deps,
     );
-
     let to_mjs = Command::new(bsc_path)
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)
@@ -566,35 +560,41 @@ fn compile_file(
             // perhaps we can do this copying somewhere else
             if !is_interface {
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmi"),
+                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmj"),
+                    build_path_abs.to_string() + "/" + &module_name + ".cmj",
                 );
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmt"),
+                    build_path_abs.to_string() + "/" + &module_name + ".cmt",
                 );
             } else {
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmti"),
+                    build_path_abs.to_string() + "/" + &module_name + ".cmti",
+                );
+                let _ = std::fs::copy(
+                    std::path::Path::new(&package.get_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmi"),
+                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
             }
             match &module.source_type {
@@ -617,7 +617,7 @@ fn compile_file(
 
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_build_path())
+                        std::path::Path::new(&package.get_bs_build_path())
                             .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
