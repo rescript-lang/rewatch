@@ -553,15 +553,6 @@ pub fn make(
      * the IO */
     let result = extend_with_children(filter, map);
 
-    // not necessary anymore because we create the dirs in parse
-    // result.values().for_each(|package| {
-    //     if let Some(dirs) = &package.dirs {
-    //         dirs.iter().for_each(|dir| {
-    //             let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
-    //         })
-    //     }
-    // });
-
     Ok(result)
 }
 
