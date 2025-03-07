@@ -29,7 +29,12 @@ pub fn generate_asts(
             match &module.source_type {
                 SourceType::MlMap(_mlmap) => {
                     let path = package.get_mlmap_path();
-                    (module_name.to_owned(), Ok((path, None)), Ok(None), false)
+                    (
+                        module_name.to_owned(),
+                        Ok((Path::new(&path).to_path_buf(), None)),
+                        Ok(None),
+                        false,
+                    )
                 }
 
                 SourceType::SourceFile(source_file) => {
@@ -69,13 +74,20 @@ pub fn generate_asts(
                     } else {
                         (
                             Ok((
-                                helpers::get_basename(&source_file.implementation.path).to_string() + ".ast",
+                                Path::new(
+                                    &(helpers::get_basename(&source_file.implementation.path).to_string()
+                                        + ".ast"),
+                                )
+                                .to_path_buf(),
                                 None,
                             )),
-                            Ok(source_file
-                                .interface
-                                .as_ref()
-                                .map(|i| (helpers::get_basename(&i.path).to_string() + ".iast", None))),
+                            Ok(source_file.interface.as_ref().map(|i| {
+                                (
+                                    Path::new(&(helpers::get_basename(&i.path).to_string() + ".iast"))
+                                        .to_path_buf(),
+                                    None,
+                                )
+                            })),
                             false,
                         )
                     };
@@ -86,8 +98,8 @@ pub fn generate_asts(
         })
         .collect::<Vec<(
             String,
-            Result<(String, Option<helpers::StdErr>), String>,
-            Result<Option<(String, Option<helpers::StdErr>)>, String>,
+            Result<(PathBuf, Option<helpers::StdErr>), String>,
+            Result<Option<(PathBuf, Option<helpers::StdErr>)>, String>,
             bool,
         )>>()
         .into_iter()
@@ -250,11 +262,14 @@ pub fn parser_args(
     workspace_root: &Option<String>,
     root_path: &str,
     contents: &str,
-) -> (String, Vec<String>) {
+) -> (PathBuf, Vec<String>) {
     let file = &filename.to_string();
-    let path = PathBuf::from(filename);
-    let ast_extension = path_to_ast_extension(&path);
-    let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
+    // let path = PathBuf::from(filename);
+    // let ast_extension = path_to_ast_extension(&path);
+    // let ast_path = (helpers::get_basename(&file.to_string()).to_owned()) + ast_extension;
+    let ast_path = helpers::get_ast_path(file);
+    // make the dir of the ast_path if it doesn't exist yet:
+
     let ppx_flags = config::flatten_ppx_flags(
         &if let Some(workspace_root) = workspace_root {
             format!("{}/node_modules", &workspace_root)
@@ -272,7 +287,7 @@ pub fn parser_args(
 
     let file = "../../".to_string() + file;
     (
-        ast_path.to_string(),
+        ast_path.to_owned(),
         [
             vec!["-bs-v".to_string(), format!("{}", version)],
             ppx_flags,
@@ -285,7 +300,7 @@ pub fn parser_args(
                 "-absname".to_string(),
                 "-bs-ast".to_string(),
                 "-o".to_string(),
-                ast_path.to_string(),
+                ast_path.to_string_lossy().to_string(),
                 file,
             ],
         ]
@@ -300,7 +315,7 @@ fn generate_ast(
     version: &str,
     bsc_path: &str,
     workspace_root: &Option<String>,
-) -> Result<(String, Option<helpers::StdErr>), String> {
+) -> Result<(PathBuf, Option<helpers::StdErr>), String> {
     let file_path = PathBuf::from(&package.path).join(filename);
     let contents = helpers::read_file(&file_path).expect("Error reading file");
 
@@ -313,6 +328,11 @@ fn generate_ast(
         workspace_root,
         &root_package.path,
         &contents,
+    );
+
+    // generate the dir of the ast_path (it mirrors the source file dir)
+    helpers::create_build_path(
+        &(package.get_build_path() + "/" + &ast_path.parent().unwrap().to_string_lossy()),
     );
 
     /* Create .ast */
@@ -342,24 +362,13 @@ fn generate_ast(
         ))
     };
     if let Ok((ast_path, _)) = &result {
-        let dir = std::path::Path::new(filename).parent().unwrap();
+        // let dir = std::path::Path::new(filename).parent().unwrap();
         let _ = std::fs::copy(
-            build_path_abs.to_string() + "/" + ast_path,
-            std::path::Path::new(&package.get_bs_build_path())
-                .join(dir)
-                .join(ast_path),
+            Path::new(&build_path_abs).join(&ast_path),
+            std::path::Path::new(&package.get_build_path()).join(ast_path.file_name().unwrap()),
         );
     }
     result
-}
-
-fn path_to_ast_extension(path: &Path) -> &str {
-    let extension = path.extension().unwrap().to_str().unwrap();
-    if helpers::is_interface_ast_file(extension) {
-        ".iast"
-    } else {
-        ".ast"
-    }
 }
 
 fn include_ppx(flag: &str, contents: &str) -> bool {

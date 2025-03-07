@@ -94,14 +94,6 @@ impl Package {
                 .expect("namespace should be set for mlmap module")
             + ".cmi"
     }
-
-    pub fn get_ast_path(&self, source_file: &str) -> String {
-        helpers::get_compiler_asset(self, &packages::Namespace::NoNamespace, source_file, "ast")
-    }
-
-    pub fn get_iast_path(&self, source_file: &str) -> String {
-        helpers::get_compiler_asset(self, &packages::Namespace::NoNamespace, source_file, "iast")
-    }
 }
 
 impl PartialEq for Package {
