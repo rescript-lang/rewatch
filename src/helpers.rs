@@ -236,7 +236,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&package.get_bs_build_path())
+    std::path::Path::new(&package.get_build_path())
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()

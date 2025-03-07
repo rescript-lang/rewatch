@@ -63,12 +63,12 @@ pub struct Package {
 }
 
 pub fn get_build_path(canonical_path: &str) -> String {
-    format!("{}/lib/ocaml", canonical_path)
+    format!("{}/lib/bs", canonical_path)
 }
 
 impl Package {
-    pub fn get_bs_build_path(&self) -> String {
-        format!("{}/lib/bs", self.path)
+    pub fn get_ocaml_build_path(&self) -> String {
+        format!("{}/lib/ocaml", self.path)
     }
 
     pub fn get_build_path(&self) -> String {
@@ -553,13 +553,14 @@ pub fn make(
      * the IO */
     let result = extend_with_children(filter, map);
 
-    result.values().for_each(|package| {
-        if let Some(dirs) = &package.dirs {
-            dirs.iter().for_each(|dir| {
-                let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
-            })
-        }
-    });
+    // not necessary anymore because we create the dirs in parse
+    // result.values().for_each(|package| {
+    //     if let Some(dirs) = &package.dirs {
+    //         dirs.iter().for_each(|dir| {
+    //             let _ = std::fs::create_dir_all(std::path::Path::new(&package.get_bs_build_path()).join(dir));
+    //         })
+    //     }
+    // });
 
     Ok(result)
 }
@@ -581,7 +582,7 @@ pub fn parse_packages(build_state: &mut BuildState) {
                 build_state.module_names.extend(package_modules)
             }
             let build_path_abs = package.get_build_path();
-            let bs_build_path = package.get_bs_build_path();
+            let bs_build_path = package.get_ocaml_build_path();
             helpers::create_build_path(&build_path_abs);
             helpers::create_build_path(&bs_build_path);
 

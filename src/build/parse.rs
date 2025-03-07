@@ -213,24 +213,23 @@ pub fn generate_asts(
                         .namespace
                         .to_suffix()
                         .expect("namespace should be set for mlmap module");
-                    // copy the mlmap to the bs build path for editor tooling
                     let base_build_path = package.get_build_path() + "/" + &suffix;
-                    let base_bs_build_path = package.get_bs_build_path() + "/" + &suffix;
+                    let base_ocaml_build_path = package.get_ocaml_build_path() + "/" + &suffix;
                     let _ = std::fs::copy(
                         base_build_path.to_string() + ".cmi",
-                        base_bs_build_path.to_string() + ".cmi",
+                        base_ocaml_build_path.to_string() + ".cmi",
                     );
                     let _ = std::fs::copy(
                         base_build_path.to_string() + ".cmt",
-                        base_bs_build_path.to_string() + ".cmt",
+                        base_ocaml_build_path.to_string() + ".cmt",
                     );
                     let _ = std::fs::copy(
                         base_build_path.to_string() + ".cmj",
-                        base_bs_build_path.to_string() + ".cmj",
+                        base_ocaml_build_path.to_string() + ".cmj",
                     );
                     let _ = std::fs::copy(
                         base_build_path.to_string() + ".mlmap",
-                        base_bs_build_path.to_string() + ".mlmap",
+                        base_ocaml_build_path.to_string() + ".mlmap",
                     );
                     match (mlmap_hash, mlmap_hash_after) {
                         (Some(digest), Some(digest_after)) => !digest.eq(&digest_after),
@@ -362,7 +361,6 @@ fn generate_ast(
         ))
     };
     if let Ok((ast_path, _)) = &result {
-        // let dir = std::path::Path::new(filename).parent().unwrap();
         let _ = std::fs::copy(
             Path::new(&build_path_abs).join(&ast_path),
             std::path::Path::new(&package.get_build_path()).join(ast_path.file_name().unwrap()),

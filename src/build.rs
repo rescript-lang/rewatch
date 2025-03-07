@@ -452,7 +452,7 @@ pub fn incremental_build(
 pub fn write_build_ninja(build_state: &BuildState) {
     for package in build_state.packages.values() {
         // write empty file:
-        let mut f = File::create(std::path::Path::new(&package.get_bs_build_path()).join("build.ninja"))
+        let mut f = File::create(std::path::Path::new(&package.get_build_path()).join("build.ninja"))
             .expect("Unable to write file");
         f.write_all(b"").expect("unable to write to ninja file");
     }

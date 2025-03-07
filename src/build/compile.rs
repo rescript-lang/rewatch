@@ -611,13 +611,13 @@ fn compile_file(
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_bs_build_path()).join(path),
+                        std::path::Path::new(&package.get_build_path()).join(path),
                     )
                     .expect("copying source file failed");
 
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_bs_build_path())
+                        std::path::Path::new(&package.get_build_path())
                             .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
