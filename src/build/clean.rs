@@ -356,7 +356,7 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Resul
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
 
-        let path_str = package.get_bs_build_path();
+        let path_str = package.get_ocaml_build_path();
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
     });
