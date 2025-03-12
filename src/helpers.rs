@@ -212,7 +212,7 @@ pub fn get_compiler_asset(
         "ast" | "iast" => &packages::Namespace::NoNamespace,
         _ => namespace,
     };
-    package.get_build_path()
+    package.get_ocaml_build_path()
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
         + "."

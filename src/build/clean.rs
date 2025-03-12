@@ -158,7 +158,7 @@ pub fn cleanup_previous_build(
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
 
-            let compile_dirty = compile_assets_state.cmi_modules.get(module_name);
+            let compile_dirty = compile_assets_state.cmt_modules.get(module_name);
             if let Some(compile_dirty) = compile_dirty {
                 let last_modified = Some(ast_last_modified);
 
