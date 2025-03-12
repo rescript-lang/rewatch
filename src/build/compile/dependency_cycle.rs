@@ -1,9 +1,8 @@
 use super::super::build_types::*;
 use crate::helpers;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub fn find(modules: &Vec<(&String, &Module)>) -> Vec<String> {
-    // If a cycle was found, find the shortest cycle using BFS
     find_shortest_cycle(modules)
 }
 
@@ -12,25 +11,84 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
 
     // Build a graph representation for easier traversal
     let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    for (name, module) in modules {
-        let deps = module.deps.iter().cloned().collect();
-        graph.insert(name.to_string(), deps);
+    let mut in_degrees: HashMap<String, usize> = HashMap::new();
+
+    // First pass: collect all nodes and initialize in-degrees
+    for (name, _) in modules {
+        graph.insert(name.to_string(), Vec::new());
+        in_degrees.insert(name.to_string(), 0);
     }
 
-    // Try BFS from each node to find the shortest cycle
-    for start_node in graph.keys() {
-        let start = start_node.clone();
-        if let Some(cycle) = find_cycle_bfs(&start, &graph) {
-            if shortest_cycle.is_empty() || cycle.len() < shortest_cycle.len() {
-                shortest_cycle = cycle;
+    // Second pass: build the graph and count in-degrees
+    for (name, module) in modules {
+        let deps: Vec<String> = module.deps.iter().cloned().collect();
+
+        // Update the graph
+        *graph.get_mut(&name.to_string()).unwrap() = deps.clone();
+
+        // Update in-degrees
+        for dep in deps {
+            if let Some(count) = in_degrees.get_mut(&dep) {
+                *count += 1;
             }
+        }
+    }
+
+    // OPTIMIZATION 1: Start with nodes that are more likely to be in cycles
+    // Sort nodes by their connectivity (in-degree + out-degree)
+    let mut start_nodes: Vec<String> = graph.keys().cloned().collect();
+    start_nodes.sort_by(|a, b| {
+        let a_connectivity = in_degrees.get(a).unwrap_or(&0) + graph.get(a).map_or(0, |v| v.len());
+        let b_connectivity = in_degrees.get(b).unwrap_or(&0) + graph.get(b).map_or(0, |v| v.len());
+        b_connectivity.cmp(&a_connectivity) // Sort in descending order
+    });
+
+    // OPTIMIZATION 2: Keep track of the current shortest cycle length for early termination
+    let mut current_shortest_length = usize::MAX;
+
+    // OPTIMIZATION 3: Cache nodes that have been checked and don't have cycles
+    let mut no_cycle_cache: HashSet<String> = HashSet::new();
+
+    // Try BFS from each node to find the shortest cycle
+    for start_node in start_nodes {
+        // Skip nodes that we know don't have cycles
+        if no_cycle_cache.contains(&start_node) {
+            continue;
+        }
+
+        // Skip nodes with no outgoing edges or no incoming edges
+        if graph.get(&start_node).map_or(true, |v| v.is_empty())
+            || in_degrees.get(&start_node).map_or(true, |&d| d == 0)
+        {
+            no_cycle_cache.insert(start_node.clone());
+            continue;
+        }
+
+        if let Some(cycle) = find_cycle_bfs(&start_node, &graph, current_shortest_length) {
+            if shortest_cycle.is_empty() || cycle.len() < shortest_cycle.len() {
+                shortest_cycle = cycle.clone();
+                current_shortest_length = cycle.len();
+
+                // OPTIMIZATION 4: If we find a very short cycle (length <= 3), we can stop early
+                // as it's unlikely to find a shorter one
+                if cycle.len() <= 3 {
+                    break;
+                }
+            }
+        } else {
+            // Cache this node as not having a cycle
+            no_cycle_cache.insert(start_node);
         }
     }
 
     shortest_cycle
 }
 
-fn find_cycle_bfs(start: &String, graph: &HashMap<String, Vec<String>>) -> Option<Vec<String>> {
+fn find_cycle_bfs(
+    start: &String,
+    graph: &HashMap<String, Vec<String>>,
+    max_length: usize,
+) -> Option<Vec<String>> {
     // Use a BFS to find the shortest cycle
     let mut queue = VecDeque::new();
     // Store node -> (distance, parent)
@@ -42,6 +100,12 @@ fn find_cycle_bfs(start: &String, graph: &HashMap<String, Vec<String>>) -> Optio
 
     while let Some(current) = queue.pop_front() {
         let (dist, _) = *visited.get(&current).unwrap();
+
+        // OPTIMIZATION: Early termination if we've gone too far
+        // If we're already at max_length, we won't find a shorter cycle from here
+        if dist >= max_length - 1 {
+            continue;
+        }
 
         // Check all neighbors
         if let Some(neighbors) = graph.get(&current) {
