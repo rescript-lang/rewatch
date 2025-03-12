@@ -1,5 +1,4 @@
 use super::build_types::*;
-use super::is_dirty;
 use super::packages;
 use crate::helpers;
 use ahash::AHashSet;
@@ -76,7 +75,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                     .get_package(&module.package_name)
                     .expect("Package not found");
                 let ast_path = package.get_ast_path(&source_file.implementation.path);
-                if is_dirty(module) || !build_state.deps_initialized {
+                if module.deps_dirty || !build_state.deps_initialized {
                     let mut deps = get_dep_modules(
                         &ast_path,
                         package.namespace.to_suffix(),
@@ -114,6 +113,7 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
         .for_each(|(module_name, deps)| {
             if let Some(module) = build_state.modules.get_mut(&module_name) {
                 module.deps = deps.clone();
+                module.deps_dirty = false;
             }
             deps.iter().for_each(|dep_name| {
                 if let Some(module) = build_state.modules.get_mut(dep_name) {
