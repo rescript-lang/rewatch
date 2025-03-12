@@ -358,7 +358,7 @@ fn generate_ast(
     if let Ok((ast_path, _)) = &result {
         let _ = std::fs::copy(
             Path::new(&build_path_abs).join(&ast_path),
-            std::path::Path::new(&package.get_build_path()).join(ast_path.file_name().unwrap()),
+            std::path::Path::new(&package.get_ocaml_build_path()).join(ast_path.file_name().unwrap()),
         );
     }
     result

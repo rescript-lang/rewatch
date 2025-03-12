@@ -66,9 +66,13 @@ pub fn get_build_path(canonical_path: &str) -> String {
     format!("{}/lib/bs", canonical_path)
 }
 
+pub fn get_ocaml_build_path(canonical_path: &str) -> String {
+    format!("{}/lib/ocaml", canonical_path)
+}
+
 impl Package {
     pub fn get_ocaml_build_path(&self) -> String {
-        format!("{}/lib/ocaml", self.path)
+        get_ocaml_build_path(&self.path)
     }
 
     pub fn get_build_path(&self) -> String {

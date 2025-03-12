@@ -379,16 +379,16 @@ pub fn compiler_args(
         .par_iter()
         .map(|package_name| {
             let canonicalized_path = if let Some(packages) = packages {
-                packages
-                    .get(package_name)
-                    .expect("expect package")
-                    .path
-                    .to_string()
+                let package = packages.get(package_name).expect("expect package");
+                package.path.to_string()
             } else {
                 packages::read_dependency(package_name, project_root, project_root, workspace_root)
                     .expect("cannot find dep")
             };
-            vec!["-I".to_string(), packages::get_build_path(&canonicalized_path)]
+            vec![
+                "-I".to_string(),
+                packages::get_ocaml_build_path(&canonicalized_path),
+            ]
         })
         .collect::<Vec<Vec<String>>>();
 
@@ -475,7 +475,7 @@ pub fn compiler_args(
     vec![
         namespace_args,
         read_cmi_args,
-        vec!["-I".to_string(), ".".to_string()],
+        vec!["-I".to_string(), "../ocaml".to_string()],
         deps.concat(),
         uncurried_args,
         bsc_flags.to_owned(),
@@ -510,6 +510,7 @@ fn compile_file(
     workspace_root: &Option<String>,
     build_dev_deps: bool,
 ) -> Result<Option<String>> {
+    let ocaml_build_path_abs = package.get_ocaml_build_path();
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match &module.source_type {
         SourceType::SourceFile(ref source_file) => Ok(&source_file.implementation.path),
@@ -566,13 +567,13 @@ fn compile_file(
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmi"),
-                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
                 let _ = std::fs::copy(
                     std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmj"),
-                    build_path_abs.to_string() + "/" + &module_name + ".cmj",
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmj",
                 );
                 let _ = std::fs::copy(
                     std::path::Path::new(&package.get_build_path())
@@ -581,20 +582,20 @@ fn compile_file(
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmt"),
-                    build_path_abs.to_string() + "/" + &module_name + ".cmt",
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmt",
                 );
             } else {
                 let _ = std::fs::copy(
                     std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmti"),
-                    build_path_abs.to_string() + "/" + &module_name + ".cmti",
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmti",
                 );
                 let _ = std::fs::copy(
                     std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmi"),
-                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
             }
             match &module.source_type {
