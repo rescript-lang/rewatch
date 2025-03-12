@@ -23,16 +23,18 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
     for (name, module) in modules {
         let deps: Vec<String> = module.deps.iter().cloned().collect();
 
-        // Update the graph
-        *graph.get_mut(&name.to_string()).unwrap() = deps.clone();
-
         // Update in-degrees
-        for dep in deps {
-            if let Some(count) = in_degrees.get_mut(&dep) {
+        for dep in &deps {
+            if let Some(count) = in_degrees.get_mut(dep) {
                 *count += 1;
             }
         }
+
+        // Update the graph
+        *graph.get_mut(&name.to_string()).unwrap() = deps.clone();
     }
+    // Remove all nodes in the graph that have no incoming edges
+    graph.retain(|_, deps| !deps.is_empty());
 
     // OPTIMIZATION 1: Start with nodes that are more likely to be in cycles
     // Sort nodes by their connectivity (in-degree + out-degree)
@@ -56,10 +58,8 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
             continue;
         }
 
-        // Skip nodes with no outgoing edges or no incoming edges
-        if graph.get(&start_node).map_or(true, |v| v.is_empty())
-            || in_degrees.get(&start_node).map_or(true, |&d| d == 0)
-        {
+        // Skip nodes with no incoming edges
+        if in_degrees.get(&start_node).map_or(true, |&d| d == 0) {
             no_cycle_cache.insert(start_node.clone());
             continue;
         }
