@@ -1,5 +1,6 @@
 use super::super::build_types::*;
 use crate::helpers;
+use ahash::AHashSet;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub fn find(modules: &Vec<(&String, &Module)>) -> Vec<String> {
@@ -10,35 +11,35 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
     let mut shortest_cycle: Vec<String> = Vec::new();
 
     // Build a graph representation for easier traversal
-    let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    let mut in_degrees: HashMap<String, usize> = HashMap::new();
 
+    let mut graph: HashMap<&String, &AHashSet<String>> = HashMap::new();
+    let mut in_degrees: HashMap<&String, usize> = HashMap::new();
+
+    let empty = AHashSet::new();
     // First pass: collect all nodes and initialize in-degrees
     for (name, _) in modules {
-        graph.insert(name.to_string(), Vec::new());
-        in_degrees.insert(name.to_string(), 0);
+        graph.insert(name, &empty);
+        in_degrees.insert(name, 0);
     }
 
     // Second pass: build the graph and count in-degrees
     for (name, module) in modules {
-        let deps: Vec<String> = module.deps.iter().cloned().collect();
-
         // Update in-degrees
-        for dep in &deps {
+        for dep in module.deps.iter() {
             if let Some(count) = in_degrees.get_mut(dep) {
                 *count += 1;
             }
         }
 
         // Update the graph
-        *graph.get_mut(&name.to_string()).unwrap() = deps.clone();
+        *graph.get_mut(*name).unwrap() = &module.deps;
     }
     // Remove all nodes in the graph that have no incoming edges
     graph.retain(|_, deps| !deps.is_empty());
 
     // OPTIMIZATION 1: Start with nodes that are more likely to be in cycles
     // Sort nodes by their connectivity (in-degree + out-degree)
-    let mut start_nodes: Vec<String> = graph.keys().cloned().collect();
+    let mut start_nodes: Vec<&String> = graph.keys().cloned().collect();
     start_nodes.sort_by(|a, b| {
         let a_connectivity = in_degrees.get(a).unwrap_or(&0) + graph.get(a).map_or(0, |v| v.len());
         let b_connectivity = in_degrees.get(b).unwrap_or(&0) + graph.get(b).map_or(0, |v| v.len());
@@ -54,7 +55,7 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
     // Try BFS from each node to find the shortest cycle
     for start_node in start_nodes {
         // Skip nodes that we know don't have cycles
-        if no_cycle_cache.contains(&start_node) {
+        if no_cycle_cache.contains(start_node) {
             continue;
         }
 
@@ -77,7 +78,7 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
             }
         } else {
             // Cache this node as not having a cycle
-            no_cycle_cache.insert(start_node);
+            no_cycle_cache.insert(start_node.to_string());
         }
     }
 
@@ -86,7 +87,7 @@ fn find_shortest_cycle(modules: &Vec<(&String, &Module)>) -> Vec<String> {
 
 fn find_cycle_bfs(
     start: &String,
-    graph: &HashMap<String, Vec<String>>,
+    graph: &HashMap<&String, &AHashSet<String>>,
     max_length: usize,
 ) -> Option<Vec<String>> {
     // Use a BFS to find the shortest cycle
@@ -109,7 +110,7 @@ fn find_cycle_bfs(
 
         // Check all neighbors
         if let Some(neighbors) = graph.get(&current) {
-            for neighbor in neighbors {
+            for neighbor in neighbors.iter() {
                 // If we found the start node again, we have a cycle
                 if neighbor == start {
                     // Reconstruct the cycle
