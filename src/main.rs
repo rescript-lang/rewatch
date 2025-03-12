@@ -114,7 +114,7 @@ fn main() -> Result<()> {
 
     match lock::get(&folder) {
         lock::Lock::Error(ref e) => {
-            log::error!("Could not start Rewatch: {e}");
+            println!("Could not start Rewatch: {e}");
             std::process::exit(1)
         }
         lock::Lock::Aquired(_) => match command {
@@ -130,7 +130,7 @@ fn main() -> Result<()> {
                     args.dev,
                 ) {
                     Err(e) => {
-                        log::error!("{e}");
+                        println!("{e}");
                         std::process::exit(1)
                     }
                     Ok(_) => {

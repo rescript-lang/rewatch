@@ -282,7 +282,7 @@ pub fn start(
         )
         .await
         {
-            log::error!("{:?}", e)
+            println!("{:?}", e)
         }
     })
 }

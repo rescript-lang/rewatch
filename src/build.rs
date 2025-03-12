@@ -330,7 +330,7 @@ pub fn incremental_build(
                 pb.finish();
             }
 
-            log::error!("Could not parse source files: {}", &err);
+            println!("Could not parse source files: {}", &err);
             return Err(IncrementalBuildError::SourceFileParseError);
         }
     }
@@ -405,7 +405,7 @@ pub fn incremental_build(
     pb.finish();
     if !compile_errors.is_empty() {
         if helpers::contains_ascii_characters(&compile_warnings) {
-            log::error!("{}", &compile_warnings);
+            println!("{}", &compile_warnings);
         }
         if show_progress {
             println!(
@@ -417,7 +417,7 @@ pub fn incremental_build(
                 default_timing.unwrap_or(compile_duration).as_secs_f64()
             );
         }
-        log::error!("{}", &compile_errors);
+        println!("{}", &compile_errors);
         // mark the original files as dirty again, because we didn't complete a full build
         for (module_name, module) in build_state.modules.iter_mut() {
             if tracked_dirty_modules.contains(module_name) {

@@ -98,6 +98,7 @@ pub fn generate_asts(
                 // the compile_dirty flag if it was set before
                 if is_dirty {
                     module.compile_dirty = true;
+                    module.deps_dirty = true;
                 }
                 let package = build_state
                     .packages
@@ -113,9 +114,6 @@ pub fn generate_asts(
                         Ok((_path, Some(stderr_warnings))) if package.is_pinned_dep => {
                             source_file.implementation.parse_state = ParseState::Warning;
                             source_file.implementation.parse_dirty = true;
-                            if let Some(interface) = source_file.interface.as_mut() {
-                                interface.parse_dirty = false;
-                            }
                             logs::append(package, &stderr_warnings);
                             stderr.push_str(&stderr_warnings);
                         }
@@ -124,9 +122,6 @@ pub fn generate_asts(
                             // dependency (so some external dep). We can ignore those
                             source_file.implementation.parse_state = ParseState::Success;
                             source_file.implementation.parse_dirty = false;
-                            if let Some(interface) = source_file.interface.as_mut() {
-                                interface.parse_dirty = false;
-                            }
                         }
                         Err(err) => {
                             // Some compilation error
