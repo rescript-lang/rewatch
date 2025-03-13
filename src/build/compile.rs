@@ -148,7 +148,7 @@ pub fn compile(
                                 "cmi",
                             );
 
-                            let cmi_digest = helpers::compute_file_hash(&cmi_path);
+                            let cmi_digest = helpers::compute_file_hash(&Path::new(&cmi_path));
 
                             let package = build_state
                                 .get_package(&module.package_name)
@@ -189,7 +189,7 @@ pub fn compile(
                                 &build_state.workspace_root,
                                 build_dev_deps,
                             );
-                            let cmi_digest_after = helpers::compute_file_hash(&cmi_path);
+                            let cmi_digest_after = helpers::compute_file_hash(&Path::new(&cmi_path));
 
                             // we want to compare both the hash of interface and the implementation
                             // compile assets to verify that nothing changed. We also need to checke the interface
@@ -466,7 +466,11 @@ pub fn compiler_args(
             format!(
                 "{}:{}:{}",
                 root_config.get_module(),
-                Path::new(file_path).parent().unwrap().to_str().unwrap(),
+                // compile into lib/bs and later install in the right place
+                Path::new("lib/bs")
+                    .join(Path::new(file_path).parent().unwrap())
+                    .to_str()
+                    .unwrap(),
                 root_config.get_suffix()
             ),
         ]
@@ -610,15 +614,37 @@ fn compile_file(
                     // we need to copy the source file to the build directory.
                     // editor tools expects the source file in lib/bs for finding the current package
                     // and in lib/ocaml when referencing modules in other packages
-                    let _ = std::fs::copy(
-                        std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_build_path()).join(path),
-                    )
-                    .expect("copying source file failed");
+
+                    // update: we now generate the file in lib/bs/... and then install it in the right
+                    // in-source location if the hash is different
+
+                    // the in-source file. This is the currently "installed" file
+                    let in_source_hash =
+                        helpers::compute_file_hash(&std::path::Path::new(&package.path).join(path));
+
+                    // this is the file that we just generated
+                    let generated_hash = helpers::compute_file_hash(
+                        &std::path::Path::new(&package.get_build_path()).join(path),
+                    );
+
+                    match (in_source_hash, generated_hash) {
+                        (Some(in_source_hash), Some(generated_hash)) if in_source_hash == generated_hash => {
+                            // do nothing, the hashes are the same!
+                            ()
+                        }
+                        _ => {
+                            // copy the file to the in-source location
+                            let _ = std::fs::copy(
+                                std::path::Path::new(&package.get_bs_build_path()).join(path),
+                                std::path::Path::new(&package.path).join(path),
+                            )
+                            .expect("copying source file failed");
+                        }
+                    }
 
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_build_path())
+                        std::path::Path::new(&package.get_ocaml_build_path())
                             .join(std::path::Path::new(path).file_name().unwrap()),
                     )
                     .expect("copying source file failed");
