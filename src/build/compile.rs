@@ -673,7 +673,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                 let dependent_module = build_state.modules.get(dependent).unwrap();
                 match dependent_module.source_type {
                     SourceType::SourceFile(_) => {
-                        match (module.last_compiled_cmt, module.last_compiled_cmi) {
+                        match (module.last_compiled_cmt, module.last_compiled_cmt) {
                             (None, None) | (Some(_), None) | (None, Some(_)) => {
                                 // println!(
                                 //     "🛑 {} is a dependent of {} but has no cmt/cmi",
@@ -687,7 +687,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                         // we compare the last compiled time of the dependent module with the last
                         // compile of the interface of the module it depends on, if the interface
                         // didn't change it doesn't matter
-                        match (dependent_module.last_compiled_cmt, module.last_compiled_cmi) {
+                        match (dependent_module.last_compiled_cmt, module.last_compiled_cmt) {
                             (Some(last_compiled_dependent), Some(last_compiled)) => {
                                 if last_compiled_dependent < last_compiled {
                                     // println!(
@@ -720,7 +720,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                             let dependent_module = build_state.modules.get(dependent_of_namespace).unwrap();
 
                             if let (Some(last_compiled_dependent), Some(last_compiled)) =
-                                (dependent_module.last_compiled_cmt, module.last_compiled_cmi)
+                                (dependent_module.last_compiled_cmt, module.last_compiled_cmt)
                             {
                                 if last_compiled_dependent < last_compiled {
                                     modules_with_expired_deps.insert(dependent.to_string());
