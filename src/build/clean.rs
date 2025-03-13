@@ -159,6 +159,10 @@ pub fn cleanup_previous_build(
                 .expect("Could not find module for ast file");
 
             let compile_dirty = compile_assets_state.cmt_modules.get(module_name);
+            // if there is a new AST but it has not been compiled yet, we mark the module as compile dirty
+            // we do this by checking if the cmt file is newer than the AST file. We always compile the
+            // interface AND implementation. For some reason the CMI file is not always rewritten if it
+            // doesn't have any changes, that's why we just look at the CMT file.
             if let Some(compile_dirty) = compile_dirty {
                 let last_modified = Some(ast_last_modified);
 
