@@ -308,11 +308,18 @@ pub fn format_namespaced_module_name(module_name: &str) -> String {
     }
 }
 
-pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
+pub fn compute_file_hash(path: &Path) -> Option<blake3::Hash> {
     match fs::read(path) {
         Ok(str) => Some(blake3::hash(&str)),
         Err(_) => None,
     }
+}
+
+pub fn get_source_file_from_rescript_file(path: &Path, suffix: &str) -> PathBuf {
+    path.with_extension(
+        // suffix.to_string includes the ., so we need to remove it
+        &suffix.to_string()[1..],
+    )
 }
 
 fn has_rescript_config(path: &Path) -> bool {
