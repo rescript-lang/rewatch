@@ -119,23 +119,11 @@ pub fn get_deps(build_state: &mut BuildState, deleted_modules: &AHashSet<String>
                 module.deps = deps.clone();
                 module.deps_dirty = false;
             }
+            deps.iter().for_each(|dep_name| {
+                if let Some(module) = build_state.modules.get_mut(dep_name) {
+                    module.dependents.insert(module_name.to_string());
+                }
+            });
         });
-    update_reverse_deps(build_state);
     build_state.deps_initialized = true;
-}
-
-pub fn update_reverse_deps(build_state: &mut BuildState) {
-    let deps = build_state
-        .modules
-        .iter()
-        .map(|(module_name, module)| (module_name.to_string(), module.deps.clone()))
-        .collect::<Vec<(String, AHashSet<String>)>>();
-
-    deps.iter().for_each(|(module_name, deps)| {
-        deps.iter().for_each(|dep_name| {
-            if let Some(dependent_module) = build_state.modules.get_mut(dep_name) {
-                dependent_module.dependents.insert(module_name.to_string());
-            }
-        });
-    })
 }
