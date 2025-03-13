@@ -158,7 +158,11 @@ pub fn cleanup_previous_build(
                 .get_mut(module_name)
                 .expect("Could not find module for ast file");
 
-            let compile_dirty = compile_assets_state.cmi_modules.get(module_name);
+            let compile_dirty = compile_assets_state.cmt_modules.get(module_name);
+            // if there is a new AST but it has not been compiled yet, we mark the module as compile dirty
+            // we do this by checking if the cmt file is newer than the AST file. We always compile the
+            // interface AND implementation. For some reason the CMI file is not always rewritten if it
+            // doesn't have any changes, that's why we just look at the CMT file.
             if let Some(compile_dirty) = compile_dirty {
                 let last_modified = Some(ast_last_modified);
 
@@ -356,7 +360,7 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Resul
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
 
-        let path_str = package.get_bs_build_path();
+        let path_str = package.get_ocaml_build_path();
         let path = std::path::Path::new(&path_str);
         let _ = std::fs::remove_dir_all(path);
     });

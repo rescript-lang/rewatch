@@ -184,6 +184,24 @@ pub fn string_ends_with_any(s: &Path, suffixes: &[&str]) -> bool {
         .any(|&suffix| s.extension().unwrap_or(&OsString::new()).to_str().unwrap_or("") == suffix)
 }
 
+fn path_to_ast_extension(path: &Path) -> &str {
+    let extension = path.extension().unwrap().to_str().unwrap();
+    if extension.ends_with("i") {
+        ".iast"
+    } else {
+        ".ast"
+    }
+}
+
+pub fn get_ast_path(source_file: &str) -> PathBuf {
+    let source_path = Path::new(source_file);
+
+    source_path.parent().unwrap().join(
+        file_path_to_compiler_asset_basename(source_file, &packages::Namespace::NoNamespace)
+            + path_to_ast_extension(source_path),
+    )
+}
+
 pub fn get_compiler_asset(
     package: &packages::Package,
     namespace: &packages::Namespace,
@@ -194,18 +212,15 @@ pub fn get_compiler_asset(
         "ast" | "iast" => &packages::Namespace::NoNamespace,
         _ => namespace,
     };
-    package.get_build_path()
+    package.get_ocaml_build_path()
         + "/"
         + &file_path_to_compiler_asset_basename(source_file, namespace)
         + "."
         + extension
 }
 
-pub fn canonicalize_string_path(path: &str) -> Option<String> {
-    return Path::new(path)
-        .canonicalize()
-        .ok()
-        .map(|path| path.to_str().expect("Could not canonicalize").to_string());
+pub fn canonicalize_string_path(path: &str) -> Option<PathBuf> {
+    return Path::new(path).canonicalize().ok();
 }
 
 pub fn get_bs_compiler_asset(
@@ -221,7 +236,7 @@ pub fn get_bs_compiler_asset(
 
     let dir = std::path::Path::new(&source_file).parent().unwrap();
 
-    std::path::Path::new(&package.get_bs_build_path())
+    std::path::Path::new(&package.get_build_path())
         .join(dir)
         .join(file_path_to_compiler_asset_basename(source_file, namespace) + extension)
         .to_str()

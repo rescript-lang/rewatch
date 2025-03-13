@@ -162,7 +162,7 @@ pub fn compile(
                                     let result = compile_file(
                                         package,
                                         root_package,
-                                        &package.get_iast_path(&path),
+                                        &helpers::get_ast_path(&path).to_string_lossy(),
                                         module,
                                         &build_state.rescript_version,
                                         true,
@@ -179,7 +179,7 @@ pub fn compile(
                             let result = compile_file(
                                 package,
                                 root_package,
-                                &package.get_ast_path(&source_file.implementation.path),
+                                &helpers::get_ast_path(&source_file.implementation.path).to_string_lossy(),
                                 module,
                                 &build_state.rescript_version,
                                 false,
@@ -379,16 +379,16 @@ pub fn compiler_args(
         .par_iter()
         .map(|package_name| {
             let canonicalized_path = if let Some(packages) = packages {
-                packages
-                    .get(package_name)
-                    .expect("expect package")
-                    .path
-                    .to_string()
+                let package = packages.get(package_name).expect("expect package");
+                package.path.to_string()
             } else {
                 packages::read_dependency(package_name, project_root, project_root, workspace_root)
                     .expect("cannot find dep")
             };
-            vec!["-I".to_string(), packages::get_build_path(&canonicalized_path)]
+            vec![
+                "-I".to_string(),
+                packages::get_ocaml_build_path(&canonicalized_path),
+            ]
         })
         .collect::<Vec<Vec<String>>>();
 
@@ -415,9 +415,6 @@ pub fn compiler_args(
         packages::Namespace::NoNamespace => vec![],
     };
 
-    let jsx_args = root_config.get_jsx_args();
-    let jsx_module_args = root_config.get_jsx_module_args();
-    let jsx_mode_args = root_config.get_jsx_mode_args();
     let uncurried_args = root_config.get_uncurried_args(version);
     let gentype_arg = root_config.get_gentype_arg();
 
@@ -478,15 +475,12 @@ pub fn compiler_args(
     vec![
         namespace_args,
         read_cmi_args,
-        vec!["-I".to_string(), ".".to_string()],
+        vec!["-I".to_string(), "../ocaml".to_string()],
         deps.concat(),
-        gentype_arg,
-        jsx_args,
-        jsx_module_args,
-        jsx_mode_args,
         uncurried_args,
         bsc_flags.to_owned(),
         warning_args,
+        gentype_arg,
         // vec!["-warn-error".to_string(), "A".to_string()],
         // ^^ this one fails for bisect-ppx
         // this is the default
@@ -497,6 +491,7 @@ pub fn compiler_args(
         //     "-I".to_string(),
         //     abs_node_modules_path.to_string() + "/rescript/ocaml",
         // ],
+        vec!["-bs-v".to_string(), format!("{}", version)],
         vec![ast_path.to_string()],
     ]
     .concat()
@@ -515,6 +510,7 @@ fn compile_file(
     workspace_root: &Option<String>,
     build_dev_deps: bool,
 ) -> Result<Option<String>> {
+    let ocaml_build_path_abs = package.get_ocaml_build_path();
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match &module.source_type {
         SourceType::SourceFile(ref source_file) => Ok(&source_file.implementation.path),
@@ -539,7 +535,6 @@ fn compile_file(
         &Some(packages),
         build_dev_deps,
     );
-
     let to_mjs = Command::new(bsc_path)
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)
@@ -566,35 +561,41 @@ fn compile_file(
             // perhaps we can do this copying somewhere else
             if !is_interface {
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmi",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmi"),
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmj",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmj"),
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmj",
                 );
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmt",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         // because editor tooling doesn't support namespace entries yet
                         // we just remove the @ for now. This makes sure the editor support
                         // doesn't break
                         .join(module_name.to_owned() + ".cmt"),
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmt",
                 );
             } else {
                 let _ = std::fs::copy(
-                    build_path_abs.to_string() + "/" + &module_name + ".cmti",
-                    std::path::Path::new(&package.get_bs_build_path())
+                    std::path::Path::new(&package.get_build_path())
                         .join(dir)
                         .join(module_name.to_owned() + ".cmti"),
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmti",
+                );
+                let _ = std::fs::copy(
+                    std::path::Path::new(&package.get_build_path())
+                        .join(dir)
+                        .join(module_name.to_owned() + ".cmi"),
+                    ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
             }
             match &module.source_type {
@@ -611,7 +612,7 @@ fn compile_file(
                     // and in lib/ocaml when referencing modules in other packages
                     let _ = std::fs::copy(
                         std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_bs_build_path()).join(path),
+                        std::path::Path::new(&package.get_build_path()).join(path),
                     )
                     .expect("copying source file failed");
 
@@ -672,7 +673,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                 let dependent_module = build_state.modules.get(dependent).unwrap();
                 match dependent_module.source_type {
                     SourceType::SourceFile(_) => {
-                        match (module.last_compiled_cmt, module.last_compiled_cmi) {
+                        match (module.last_compiled_cmt, module.last_compiled_cmt) {
                             (None, None) | (Some(_), None) | (None, Some(_)) => {
                                 // println!(
                                 //     "🛑 {} is a dependent of {} but has no cmt/cmi",
@@ -686,7 +687,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                         // we compare the last compiled time of the dependent module with the last
                         // compile of the interface of the module it depends on, if the interface
                         // didn't change it doesn't matter
-                        match (dependent_module.last_compiled_cmt, module.last_compiled_cmi) {
+                        match (dependent_module.last_compiled_cmt, module.last_compiled_cmt) {
                             (Some(last_compiled_dependent), Some(last_compiled)) => {
                                 if last_compiled_dependent < last_compiled {
                                     // println!(
@@ -719,7 +720,7 @@ pub fn mark_modules_with_expired_deps_dirty(build_state: &mut BuildState) {
                             let dependent_module = build_state.modules.get(dependent_of_namespace).unwrap();
 
                             if let (Some(last_compiled_dependent), Some(last_compiled)) =
-                                (dependent_module.last_compiled_cmt, module.last_compiled_cmi)
+                                (dependent_module.last_compiled_cmt, module.last_compiled_cmt)
                             {
                                 if last_compiled_dependent < last_compiled {
                                     modules_with_expired_deps.insert(dependent.to_string());
