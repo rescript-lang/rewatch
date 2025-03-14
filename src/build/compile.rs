@@ -611,10 +611,6 @@ fn compile_file(
                     implementation: Implementation { path, .. },
                     ..
                 }) => {
-                    // we need to copy the source file to the build directory.
-                    // editor tools expects the source file in lib/bs for finding the current package
-                    // and in lib/ocaml when referencing modules in other packages
-
                     // update: we now generate the file in lib/bs/... and then install it in the right
                     // in-source location if the hash is different
 
@@ -635,19 +631,12 @@ fn compile_file(
                         _ => {
                             // copy the file to the in-source location
                             let _ = std::fs::copy(
-                                std::path::Path::new(&package.get_bs_build_path()).join(path),
+                                std::path::Path::new(&package.get_build_path()).join(path),
                                 std::path::Path::new(&package.path).join(path),
                             )
                             .expect("copying source file failed");
                         }
                     }
-
-                    let _ = std::fs::copy(
-                        std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_ocaml_build_path())
-                            .join(std::path::Path::new(path).file_name().unwrap()),
-                    )
-                    .expect("copying source file failed");
                 }
                 _ => (),
             }
