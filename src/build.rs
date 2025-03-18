@@ -405,9 +405,6 @@ pub fn incremental_build(
     }
     pb.finish();
     if !compile_errors.is_empty() {
-        if helpers::contains_ascii_characters(&compile_warnings) {
-            println!("{}", &compile_warnings);
-        }
         if show_progress {
             println!(
                 "{}{} {}Compiled {} modules in {:.2}s",
@@ -418,7 +415,12 @@ pub fn incremental_build(
                 default_timing.unwrap_or(compile_duration).as_secs_f64()
             );
         }
-        println!("{}", &compile_errors);
+        if helpers::contains_ascii_characters(&compile_warnings) {
+            println!("{}", &compile_warnings);
+        }
+        if helpers::contains_ascii_characters(&compile_errors) {
+            println!("{}", &compile_errors);
+        }
         // mark the original files as dirty again, because we didn't complete a full build
         for (module_name, module) in build_state.modules.iter_mut() {
             if tracked_dirty_modules.contains(module_name) {
@@ -437,8 +439,9 @@ pub fn incremental_build(
                 default_timing.unwrap_or(compile_duration).as_secs_f64()
             );
         }
+
         if helpers::contains_ascii_characters(&compile_warnings) {
-            log::warn!("{}", &compile_warnings);
+            println!("{}", &compile_warnings);
         }
         Ok(())
     }

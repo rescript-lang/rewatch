@@ -8,7 +8,7 @@ use super::packages;
 use crate::config;
 use crate::helpers;
 use ahash::{AHashMap, AHashSet};
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use console::style;
 use log::{debug, trace};
 use rayon::prelude::*;
@@ -22,7 +22,7 @@ pub fn compile(
     inc: impl Fn() + std::marker::Sync,
     set_length: impl Fn(u64),
     build_dev_deps: bool,
-) -> Result<(String, String, usize)> {
+) -> anyhow::Result<(String, String, usize)> {
     let mut compiled_modules = AHashSet::<String>::new();
     let dirty_modules = build_state
         .modules
@@ -513,15 +513,14 @@ fn compile_file(
     project_root: &str,
     workspace_root: &Option<String>,
     build_dev_deps: bool,
-) -> Result<Option<String>> {
+) -> Result<Option<String>, String> {
     let ocaml_build_path_abs = package.get_ocaml_build_path();
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match &module.source_type {
         SourceType::SourceFile(ref source_file) => Ok(&source_file.implementation.path),
-        sourcetype => Err(anyhow!(
+        sourcetype => Err(format!(
             "Tried to compile a file that is not a source file ({}). Path to AST: {}. ",
-            sourcetype,
-            ast_path
+            sourcetype, ast_path
         )),
     }?;
     let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
@@ -548,12 +547,11 @@ fn compile_file(
         Ok(x) if !x.status.success() => {
             let stderr = String::from_utf8_lossy(&x.stderr);
             let stdout = String::from_utf8_lossy(&x.stdout);
-            Err(anyhow!(stderr.to_string() + &stdout))
+            Err(stderr.to_string() + &stdout)
         }
-        Err(e) => Err(anyhow!(
+        Err(e) => Err(format!(
             "Could not compile file. Error: {}. Path to AST: {:?}",
-            e,
-            ast_path
+            e, ast_path
         )),
         Ok(x) => {
             let err = std::str::from_utf8(&x.stderr)
@@ -602,26 +600,30 @@ fn compile_file(
                     ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
             }
-            match &module.source_type {
-                SourceType::SourceFile(SourceFile {
-                    interface: Some(Interface { path, .. }),
-                    ..
-                })
-                | SourceType::SourceFile(SourceFile {
-                    implementation: Implementation { path, .. },
-                    ..
-                }) => {
+            match (&module.source_type, is_interface) {
+                (
+                    SourceType::SourceFile(SourceFile {
+                        implementation: Implementation { path, .. },
+                        ..
+                    }),
+                    false,
+                ) => {
                     // update: we now generate the file in lib/bs/... and then install it in the right
                     // in-source location if the hash is different
 
                     // the in-source file. This is the currently "installed" file
                     let in_source_hash =
-                        helpers::compute_file_hash(&std::path::Path::new(&package.path).join(path));
+                        helpers::compute_file_hash(&helpers::get_source_file_from_rescript_file(
+                            &std::path::Path::new(&package.path).join(path),
+                            &root_package.config.get_suffix(),
+                        ));
 
                     // this is the file that we just generated
-                    let generated_hash = helpers::compute_file_hash(
-                        &std::path::Path::new(&package.get_build_path()).join(path),
-                    );
+                    let generated_hash =
+                        helpers::compute_file_hash(&helpers::get_source_file_from_rescript_file(
+                            &std::path::Path::new(&package.get_build_path()).join(path),
+                            &root_package.config.get_suffix(),
+                        ));
 
                     match (in_source_hash, generated_hash) {
                         (Some(in_source_hash), Some(generated_hash)) if in_source_hash == generated_hash => {
@@ -629,12 +631,19 @@ fn compile_file(
                             ()
                         }
                         _ => {
+                            let source = helpers::get_source_file_from_rescript_file(
+                                &std::path::Path::new(&package.get_build_path()).join(path),
+                                &root_package.config.get_suffix(),
+                            );
+                            let destination = helpers::get_source_file_from_rescript_file(
+                                &std::path::Path::new(&package.path).join(path),
+                                &root_package.config.get_suffix(),
+                            );
+                            // println!("copying source file to in-source location");
+                            // println!("{}", source.display());
+                            // println!("{}", destination.display());
                             // copy the file to the in-source location
-                            let _ = std::fs::copy(
-                                std::path::Path::new(&package.get_build_path()).join(path),
-                                std::path::Path::new(&package.path).join(path),
-                            )
-                            .expect("copying source file failed");
+                            let _ = std::fs::copy(source, destination).expect("copying source file failed");
                         }
                     }
                 }
@@ -642,7 +651,7 @@ fn compile_file(
             }
 
             if helpers::contains_ascii_characters(&err) {
-                if package.is_pinned_dep {
+                if package.is_pinned_dep || package.is_local_dep {
                     // supress warnings of external deps
                     Ok(Some(err))
                 } else {
