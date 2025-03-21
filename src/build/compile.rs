@@ -466,11 +466,7 @@ pub fn compiler_args(
             format!(
                 "{}:{}:{}",
                 root_config.get_module(),
-                // compile into lib/bs and later install in the right place
-                Path::new("lib/bs")
-                    .join(Path::new(file_path).parent().unwrap())
-                    .to_str()
-                    .unwrap(),
+                Path::new(file_path).parent().unwrap().to_str().unwrap(),
                 root_config.get_suffix()
             ),
         ]
@@ -599,55 +595,6 @@ fn compile_file(
                         .join(module_name.to_owned() + ".cmi"),
                     ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
-            }
-            match (&module.source_type, is_interface) {
-                (
-                    SourceType::SourceFile(SourceFile {
-                        implementation: Implementation { path, .. },
-                        ..
-                    }),
-                    false,
-                ) => {
-                    // update: we now generate the file in lib/bs/... and then install it in the right
-                    // in-source location if the hash is different
-
-                    // the in-source file. This is the currently "installed" file
-                    let in_source_hash =
-                        helpers::compute_file_hash(&helpers::get_source_file_from_rescript_file(
-                            &std::path::Path::new(&package.path).join(path),
-                            &root_package.config.get_suffix(),
-                        ));
-
-                    // this is the file that we just generated
-                    let generated_hash =
-                        helpers::compute_file_hash(&helpers::get_source_file_from_rescript_file(
-                            &std::path::Path::new(&package.get_build_path()).join(path),
-                            &root_package.config.get_suffix(),
-                        ));
-
-                    match (in_source_hash, generated_hash) {
-                        (Some(in_source_hash), Some(generated_hash)) if in_source_hash == generated_hash => {
-                            // do nothing, the hashes are the same!
-                            ()
-                        }
-                        _ => {
-                            let source = helpers::get_source_file_from_rescript_file(
-                                &std::path::Path::new(&package.get_build_path()).join(path),
-                                &root_package.config.get_suffix(),
-                            );
-                            let destination = helpers::get_source_file_from_rescript_file(
-                                &std::path::Path::new(&package.path).join(path),
-                                &root_package.config.get_suffix(),
-                            );
-                            // println!("copying source file to in-source location");
-                            // println!("{}", source.display());
-                            // println!("{}", destination.display());
-                            // copy the file to the in-source location
-                            let _ = std::fs::copy(source, destination).expect("copying source file failed");
-                        }
-                    }
-                }
-                _ => (),
             }
 
             if helpers::contains_ascii_characters(&err) {
