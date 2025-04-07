@@ -1,9 +1,24 @@
 #!/bin/sh
 
+# Check if we're running in patch mode
+if [ "$1" = "patch" ]; then
+  # Get the current version from package.json
+  current_version=$(jq -r '.version' package.json)
+  # Increment the patch version
+  version=$(echo $current_version | awk -F. -v OFS=. '{$NF += 1; print}')
+  echo "Creating patch release: $current_version -> $version"
+elif [ "$1" = "minor" ]; then
+  # Get the current version from package.json
+  current_version=$(jq -r '.version' package.json)
+  # Increment the minor version
+  version=$(echo $current_version | awk -F. -v OFS=. '{$2 += 1; $NF = 0; print}')
+  echo "Creating minor release: $current_version -> $version"
 # ensure that we have at least one argument conforming to semver
-if [ $# -ne 1 ] || ! echo $1 | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
-  echo "Usage: $0 <version>"
+elif [ $# -ne 1 ] || ! echo $1 | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
+  echo "Usage: $0 <version> or $0 patch or $0 minor"
   exit 1
+else
+  version=$1
 fi
 
 # ensure we are on the master branch otherwise exit
@@ -27,25 +42,6 @@ if [ -n "$(git ls-files --others --exclude-standard)" ]; then
   exit 1
 fi
 
-# if the first argument is not a valid semver, exit
-if ! echo $1 | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
-  echo "Invalid semver, exiting"
-  exit 1
-fi
-
-# get the current version from package.json
-current_version=$(jq -r '.version' package.json)
-
-# take the version from teh virst argument unless it's "patch" or "minor"
-# don't use the semver tool because it's not installed on the CI
-if [ "$2" = "patch" ]; then
-  version=$(echo $current_version | awk -F. -v OFS=. '{$NF += 1; print}')
-elif [ "$2" = "minor" ]; then
-  version=$(echo $current_version | awk -F. -v OFS=. '{$2 += 1; $NF = 0; print}')
-else
-  version=$1
-fi
-
 # update the version in package.json
 sed -i '' -e "s/\"version\": \".*\"/\"version\": \"$version\"/" package.json
 
@@ -57,7 +53,7 @@ cargo build
 git add Cargo.toml package.json Cargo.lock
 git commit -m ":rocket: - Release v$version"
 
-# tag current commit with the first argument
+# tag current commit with the version
 git tag -a v$version -m ":rocket: - Release v$version"
 
 # push the changes
