@@ -914,6 +914,7 @@ mod test {
             dirs: None,
             is_pinned_dep: false,
             is_root: false,
+            is_local_dep: false,
         }
     }
     #[test]

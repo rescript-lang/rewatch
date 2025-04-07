@@ -315,13 +315,6 @@ pub fn compute_file_hash(path: &Path) -> Option<blake3::Hash> {
     }
 }
 
-pub fn get_source_file_from_rescript_file(path: &Path, suffix: &str) -> PathBuf {
-    path.with_extension(
-        // suffix.to_string includes the ., so we need to remove it
-        &suffix.to_string()[1..],
-    )
-}
-
 fn has_rescript_config(path: &Path) -> bool {
     path.join("bsconfig.json").exists() || path.join("rescript.json").exists()
 }
