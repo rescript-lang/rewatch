@@ -59,6 +59,7 @@ pub struct Package {
     pub path: String,
     pub dirs: Option<AHashSet<PathBuf>>,
     pub is_pinned_dep: bool,
+    pub is_local_dep: bool,
     pub is_root: bool,
 }
 
@@ -410,6 +411,7 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
             .to_string(),
         dirs: None,
         is_pinned_dep,
+        is_local_dep: !package_path.contains("node_modules"),
         is_root,
     }
 }
@@ -912,6 +914,7 @@ mod test {
             dirs: None,
             is_pinned_dep: false,
             is_root: false,
+            is_local_dep: false,
         }
     }
     #[test]

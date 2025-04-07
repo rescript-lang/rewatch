@@ -8,7 +8,7 @@ use super::packages;
 use crate::config;
 use crate::helpers;
 use ahash::{AHashMap, AHashSet};
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use console::style;
 use log::{debug, trace};
 use rayon::prelude::*;
@@ -22,7 +22,7 @@ pub fn compile(
     inc: impl Fn() + std::marker::Sync,
     set_length: impl Fn(u64),
     build_dev_deps: bool,
-) -> Result<(String, String, usize)> {
+) -> anyhow::Result<(String, String, usize)> {
     let mut compiled_modules = AHashSet::<String>::new();
     let dirty_modules = build_state
         .modules
@@ -148,7 +148,7 @@ pub fn compile(
                                 "cmi",
                             );
 
-                            let cmi_digest = helpers::compute_file_hash(&cmi_path);
+                            let cmi_digest = helpers::compute_file_hash(&Path::new(&cmi_path));
 
                             let package = build_state
                                 .get_package(&module.package_name)
@@ -189,7 +189,7 @@ pub fn compile(
                                 &build_state.workspace_root,
                                 build_dev_deps,
                             );
-                            let cmi_digest_after = helpers::compute_file_hash(&cmi_path);
+                            let cmi_digest_after = helpers::compute_file_hash(&Path::new(&cmi_path));
 
                             // we want to compare both the hash of interface and the implementation
                             // compile assets to verify that nothing changed. We also need to checke the interface
@@ -509,15 +509,14 @@ fn compile_file(
     project_root: &str,
     workspace_root: &Option<String>,
     build_dev_deps: bool,
-) -> Result<Option<String>> {
+) -> Result<Option<String>, String> {
     let ocaml_build_path_abs = package.get_ocaml_build_path();
     let build_path_abs = package.get_build_path();
     let implementation_file_path = match &module.source_type {
         SourceType::SourceFile(ref source_file) => Ok(&source_file.implementation.path),
-        sourcetype => Err(anyhow!(
+        sourcetype => Err(format!(
             "Tried to compile a file that is not a source file ({}). Path to AST: {}. ",
-            sourcetype,
-            ast_path
+            sourcetype, ast_path
         )),
     }?;
     let module_name = helpers::file_path_to_module_name(implementation_file_path, &package.namespace);
@@ -544,12 +543,11 @@ fn compile_file(
         Ok(x) if !x.status.success() => {
             let stderr = String::from_utf8_lossy(&x.stderr);
             let stdout = String::from_utf8_lossy(&x.stdout);
-            Err(anyhow!(stderr.to_string() + &stdout))
+            Err(stderr.to_string() + &stdout)
         }
-        Err(e) => Err(anyhow!(
+        Err(e) => Err(format!(
             "Could not compile file. Error: {}. Path to AST: {:?}",
-            e,
-            ast_path
+            e, ast_path
         )),
         Ok(x) => {
             let err = std::str::from_utf8(&x.stderr)
@@ -598,36 +596,9 @@ fn compile_file(
                     ocaml_build_path_abs.to_string() + "/" + &module_name + ".cmi",
                 );
             }
-            match &module.source_type {
-                SourceType::SourceFile(SourceFile {
-                    interface: Some(Interface { path, .. }),
-                    ..
-                })
-                | SourceType::SourceFile(SourceFile {
-                    implementation: Implementation { path, .. },
-                    ..
-                }) => {
-                    // we need to copy the source file to the build directory.
-                    // editor tools expects the source file in lib/bs for finding the current package
-                    // and in lib/ocaml when referencing modules in other packages
-                    let _ = std::fs::copy(
-                        std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_build_path()).join(path),
-                    )
-                    .expect("copying source file failed");
-
-                    let _ = std::fs::copy(
-                        std::path::Path::new(&package.path).join(path),
-                        std::path::Path::new(&package.get_build_path())
-                            .join(std::path::Path::new(path).file_name().unwrap()),
-                    )
-                    .expect("copying source file failed");
-                }
-                _ => (),
-            }
 
             if helpers::contains_ascii_characters(&err) {
-                if package.is_pinned_dep {
+                if package.is_pinned_dep || package.is_local_dep {
                     // supress warnings of external deps
                     Ok(Some(err))
                 } else {

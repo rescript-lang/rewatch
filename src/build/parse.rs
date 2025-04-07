@@ -205,9 +205,9 @@ pub fn generate_asts(
                     // probably better to do this in a different function
                     // specific to compiling mlmaps
                     let compile_path = package.get_mlmap_compile_path();
-                    let mlmap_hash = helpers::compute_file_hash(&compile_path);
+                    let mlmap_hash = helpers::compute_file_hash(&Path::new(&compile_path));
                     namespaces::compile_mlmap(package, module_name, &build_state.bsc_path);
-                    let mlmap_hash_after = helpers::compute_file_hash(&compile_path);
+                    let mlmap_hash_after = helpers::compute_file_hash(&Path::new(&compile_path));
 
                     let suffix = package
                         .namespace

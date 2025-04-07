@@ -308,7 +308,7 @@ pub fn format_namespaced_module_name(module_name: &str) -> String {
     }
 }
 
-pub fn compute_file_hash(path: &str) -> Option<blake3::Hash> {
+pub fn compute_file_hash(path: &Path) -> Option<blake3::Hash> {
     match fs::read(path) {
         Ok(str) => Some(blake3::hash(&str)),
         Err(_) => None,
