@@ -357,3 +357,10 @@ pub fn read_file(path: &Path) -> Result<String, std::io::Error> {
     file.read_to_string(&mut contents)?;
     Ok(contents)
 }
+
+pub fn get_source_file_from_rescript_file(path: &Path, suffix: &str) -> PathBuf {
+    path.with_extension(
+        // suffix.to_string includes the ., so we need to remove it
+        &suffix.to_string()[1..],
+    )
+}
