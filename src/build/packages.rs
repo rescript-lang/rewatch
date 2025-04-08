@@ -5,7 +5,7 @@ use crate::config;
 use crate::helpers;
 use crate::helpers::emojis::*;
 use ahash::{AHashMap, AHashSet};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use console::style;
 use log::{debug, error};
 use rayon::prelude::*;
@@ -374,6 +374,25 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
+fn read_package_name(package_dir: &str) -> Result<String> {
+    let package_json_path = if package_dir.is_empty() {
+        "package.json".to_string()
+    } else {
+        format!("{}/package.json", package_dir)
+    };
+
+    let package_json_contents =
+        fs::read_to_string(&package_json_path).map_err(|e| anyhow!("Could not read package.json: {}", e))?;
+
+    let package_json: serde_json::Value = serde_json::from_str(&package_json_contents)
+        .map_err(|e| anyhow!("Could not parse package.json: {}", e))?;
+
+    package_json["name"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("No name field found in package.json"))
+}
+
 fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool, is_root: bool) -> Package {
     let source_folders = match config.sources.to_owned() {
         Some(config::OneOrMore::Single(source)) => get_source_dirs(source, None),
@@ -397,7 +416,7 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
     };
 
     Package {
-        name: config.name.to_owned(),
+        name: read_package_name(package_path).expect("Could not read package name"),
         config: config.to_owned(),
         source_folders,
         source_files: None,
