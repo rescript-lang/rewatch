@@ -416,7 +416,7 @@ pub fn compiler_args(
     };
 
     let uncurried_args = root_config.get_uncurried_args(version);
-    let gentype_arg = root_config.get_gentype_arg();
+    let gentype_arg = config.get_gentype_arg();
 
     let warning_args: Vec<String> = match config.warnings.to_owned() {
         None => vec![],
