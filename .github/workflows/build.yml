@@ -16,16 +16,10 @@ jobs:
     runs-on: macos-latest
     env:
       RUST_BACKTRACE: "1"
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-      - name: setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-        with:
-          version: "v0.7.7"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
