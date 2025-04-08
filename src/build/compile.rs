@@ -597,6 +597,75 @@ fn compile_file(
                 );
             }
 
+            match &module.source_type {
+                SourceType::SourceFile(SourceFile {
+                    interface: Some(Interface { path, .. }),
+                    ..
+                }) => {
+                    // we need to copy the source file to the build directory.
+                    // editor tools expects the source file in lib/bs for finding the current package
+                    // and in lib/ocaml when referencing modules in other packages
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_build_path()).join(path),
+                    )
+                    .expect("copying source file failed");
+
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_ocaml_build_path())
+                            .join(std::path::Path::new(path).file_name().unwrap()),
+                    )
+                    .expect("copying source file failed");
+                }
+                _ => (),
+            }
+            match &module.source_type {
+                SourceType::SourceFile(SourceFile {
+                    implementation: Implementation { path, .. },
+                    ..
+                }) => {
+                    // we need to copy the source file to the build directory.
+                    // editor tools expects the source file in lib/bs for finding the current package
+                    // and in lib/ocaml when referencing modules in other packages
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_build_path()).join(path),
+                    )
+                    .expect("copying source file failed");
+
+                    let _ = std::fs::copy(
+                        std::path::Path::new(&package.path).join(path),
+                        std::path::Path::new(&package.get_ocaml_build_path())
+                            .join(std::path::Path::new(path).file_name().unwrap()),
+                    )
+                    .expect("copying source file failed");
+                }
+                _ => (),
+            }
+
+            // copy js file
+            match &module.source_type {
+                SourceType::SourceFile(SourceFile {
+                    implementation: Implementation { path, .. },
+                    ..
+                }) => {
+                    let source = helpers::get_source_file_from_rescript_file(
+                        &std::path::Path::new(&package.path).join(path),
+                        &root_package.config.get_suffix(),
+                    );
+                    let destination = helpers::get_source_file_from_rescript_file(
+                        &std::path::Path::new(&package.get_build_path()).join(path),
+                        &root_package.config.get_suffix(),
+                    );
+
+                    if source.exists() {
+                        let _ = std::fs::copy(&source, &destination).expect("copying source file failed");
+                    }
+                }
+                _ => (),
+            }
+
             if helpers::contains_ascii_characters(&err) {
                 if package.is_pinned_dep || package.is_local_dep {
                     // supress warnings of external deps
