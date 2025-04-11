@@ -141,7 +141,7 @@ pub fn initialize_build(
         Some(bsc_path) => bsc_path,
         None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
     };
-    let root_config_name = packages::get_package_name(&project_root)?;
+    let root_config_name = packages::read_package_name(&project_root)?;
     let rescript_version = helpers::get_rescript_version(&bsc_path);
 
     if show_progress {
