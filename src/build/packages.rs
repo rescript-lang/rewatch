@@ -416,7 +416,6 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
     };
 
     let package_name = read_package_name(package_path).expect("Could not read package name");
-    println!("creating package: {:?}", package_name);
     Package {
         name: package_name,
         config: config.to_owned(),
