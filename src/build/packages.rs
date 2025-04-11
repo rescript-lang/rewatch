@@ -374,7 +374,7 @@ fn flatten_dependencies(dependencies: Vec<Dependency>) -> Vec<Dependency> {
     flattened
 }
 
-fn read_package_name(package_dir: &str) -> Result<String> {
+pub fn read_package_name(package_dir: &str) -> Result<String> {
     let package_json_path = if package_dir.is_empty() {
         "package.json".to_string()
     } else {
@@ -415,8 +415,10 @@ fn make_package(config: config::Config, package_path: &str, is_pinned_dep: bool,
         }
     };
 
+    let package_name = read_package_name(package_path).expect("Could not read package name");
+    println!("creating package: {:?}", package_name);
     Package {
-        name: read_package_name(package_path).expect("Could not read package name"),
+        name: package_name,
         config: config.to_owned(),
         source_folders,
         source_files: None,
@@ -444,10 +446,8 @@ fn read_packages(
 
     // Store all packages and completely deduplicate them
     let mut map: AHashMap<String, Package> = AHashMap::new();
-    map.insert(
-        root_config.name.to_owned(),
-        make_package(root_config.to_owned(), project_root, false, true),
-    );
+    let root_package = make_package(root_config.to_owned(), project_root, false, true);
+    map.insert(root_package.name.to_string(), root_package);
 
     let mut registered_dependencies_set: AHashSet<String> = AHashSet::new();
     let dependencies = flatten_dependencies(read_dependencies(
@@ -460,10 +460,8 @@ fn read_packages(
     ));
     dependencies.iter().for_each(|d| {
         if !map.contains_key(&d.name) {
-            map.insert(
-                d.name.to_owned(),
-                make_package(d.config.to_owned(), &d.path, d.is_pinned, false),
-            );
+            let package = make_package(d.config.to_owned(), &d.path, d.is_pinned, false);
+            map.insert(package.name.to_string(), package);
         }
     });
 
@@ -579,12 +577,6 @@ pub fn make(
     let result = extend_with_children(filter, map);
 
     Ok(result)
-}
-
-pub fn get_package_name(path: &str) -> Result<String> {
-    let config = read_config(path)?;
-
-    Ok(config.name)
 }
 
 pub fn parse_packages(build_state: &mut BuildState) {
