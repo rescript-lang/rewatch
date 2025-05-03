@@ -31,7 +31,7 @@ if [ "$file_count" -eq 22 ];
 then
   success "Found files with correct suffix"
 else
-  error "Suffix not correctly used"
+  error "Suffix not correctly used, got $file_count files"
   exit 1
 fi
 
