@@ -1,5 +1,5 @@
 {
-    "name": "namespace-casing",
+    "name": "@testrepo/namespace-casing",
     "namespace": "NamespaceCasingAPI",
     "sources": [
         {
