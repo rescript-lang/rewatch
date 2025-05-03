@@ -1,3 +1,3 @@
-let meh = (a: int) => {
+let meh = (_: int) => {
   true
 }
