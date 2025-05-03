@@ -430,23 +430,43 @@ pub fn compiler_args(
         false => vec![],
     };
 
+    let package_name_arg = vec!["-bs-package-name".to_string(), config.name.to_owned()];
+
     let implementation_args = if is_interface {
         debug!("Compiling interface file: {}", &module_name);
         vec![]
     } else {
         debug!("Compiling file: {}", &module_name);
+        let specs = config.get_package_specs();
 
-        vec![
-            "-bs-package-name".to_string(),
-            config.name.to_owned(),
-            "-bs-package-output".to_string(),
-            format!(
-                "{}:{}:{}",
-                root_config.get_module(),
-                Path::new(file_path).parent().unwrap().to_str().unwrap(),
-                root_config.get_suffix()
-            ),
-        ]
+        specs
+            .iter()
+            .map(|spec| {
+                return vec![
+                    "-bs-package-output".to_string(),
+                    format!(
+                        "{}:{}:{}",
+                        root_config.get_module(),
+                        if spec.in_source {
+                            Path::new(file_path)
+                                .parent()
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_string()
+                        } else {
+                            format!(
+                                "lib/{}/{}",
+                                spec.get_out_of_source_dir(),
+                                Path::new(file_path).parent().unwrap().to_str().unwrap()
+                            )
+                        },
+                        root_config.get_suffix()
+                    ),
+                ];
+            })
+            .flatten()
+            .collect()
     };
 
     vec![
@@ -463,6 +483,7 @@ pub fn compiler_args(
         // this is the default
         // we should probably parse the right ones from the package config
         // vec!["-w".to_string(), "a".to_string()],
+        package_name_arg,
         implementation_args,
         // vec![
         //     "-I".to_string(),
@@ -588,6 +609,7 @@ fn compile_file(
         &Some(packages),
         build_dev_deps,
     );
+
     let to_mjs = Command::new(bsc_path)
         .current_dir(helpers::canonicalize_string_path(&build_path_abs.to_owned()).unwrap())
         .args(to_mjs_args)

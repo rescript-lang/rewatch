@@ -325,9 +325,7 @@ fn generate_ast(
     );
 
     // generate the dir of the ast_path (it mirrors the source file dir)
-    helpers::create_build_path(
-        &(package.get_build_path() + "/" + &ast_path.parent().unwrap().to_string_lossy()),
-    );
+    helpers::create_path(&(package.get_build_path() + "/" + &ast_path.parent().unwrap().to_string_lossy()));
 
     /* Create .ast */
     let result = if let Some(res_to_ast) = Some(

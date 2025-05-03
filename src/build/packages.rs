@@ -67,6 +67,14 @@ pub fn get_build_path(canonical_path: &str) -> String {
     format!("{}/lib/bs", canonical_path)
 }
 
+pub fn get_js_path(canonical_path: &str) -> String {
+    format!("{}/lib/js", canonical_path)
+}
+
+pub fn get_es6_path(canonical_path: &str) -> String {
+    format!("{}/lib/es6", canonical_path)
+}
+
 pub fn get_ocaml_build_path(canonical_path: &str) -> String {
     format!("{}/lib/ocaml", canonical_path)
 }
@@ -78,6 +86,14 @@ impl Package {
 
     pub fn get_build_path(&self) -> String {
         get_build_path(&self.path)
+    }
+
+    pub fn get_js_path(&self) -> String {
+        get_js_path(&self.path)
+    }
+
+    pub fn get_es6_path(&self) -> String {
+        get_es6_path(&self.path)
     }
 
     pub fn get_mlmap_path(&self) -> String {
@@ -594,8 +610,48 @@ pub fn parse_packages(build_state: &mut BuildState) {
             }
             let build_path_abs = package.get_build_path();
             let bs_build_path = package.get_ocaml_build_path();
-            helpers::create_build_path(&build_path_abs);
-            helpers::create_build_path(&bs_build_path);
+            helpers::create_path(&build_path_abs);
+            helpers::create_path(&bs_build_path);
+            let root_config = build_state
+                .get_package(&build_state.root_config_name)
+                .expect("cannot find root config");
+
+            root_config.config.get_package_specs().iter().for_each(|spec| {
+                if !spec.in_source {
+                    // we don't want to calculate this if we don't have out of source specs
+                    // we do this twice, but we almost never have multiple package specs
+                    // so this optimization is less important
+                    let relative_dirs: AHashSet<PathBuf> = match &package.source_files {
+                        Some(source_files) => source_files
+                            .keys()
+                            .map(|source_file| {
+                                Path::new(source_file)
+                                    .parent()
+                                    .expect("parent dir not found")
+                                    .to_owned()
+                            })
+                            .collect(),
+                        _ => AHashSet::new(),
+                    };
+                    if spec.is_common_js() {
+                        helpers::create_path(&package.get_js_path());
+                        relative_dirs.iter().for_each(|path_buf| {
+                            helpers::create_path_for_path(&Path::join(
+                                &PathBuf::from(package.get_js_path()),
+                                path_buf,
+                            ))
+                        })
+                    } else {
+                        helpers::create_path(&package.get_es6_path());
+                        relative_dirs.iter().for_each(|path_buf| {
+                            helpers::create_path_for_path(&Path::join(
+                                &PathBuf::from(package.get_es6_path()),
+                                path_buf,
+                            ))
+                        })
+                    }
+                }
+            });
 
             package.namespace.to_suffix().iter().for_each(|namespace| {
                 // generate the mlmap "AST" file for modules that have a namespace configured

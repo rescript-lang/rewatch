@@ -111,6 +111,23 @@ pub struct PackageSpec {
     pub suffix: Option<String>,
 }
 
+impl PackageSpec {
+    pub fn get_out_of_source_dir(&self) -> String {
+        match self.module.as_str() {
+            "commonjs" => "js",
+            _ => "es6",
+        }
+        .to_string()
+    }
+
+    pub fn is_common_js(&self) -> bool {
+        match self.module.as_str() {
+            "commonjs" => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Error {
@@ -446,6 +463,14 @@ impl Config {
         match &self.gentype_config {
             Some(_) => vec!["-bs-gentype".to_string()],
             None => vec![],
+        }
+    }
+
+    pub fn get_package_specs(&self) -> Vec<PackageSpec> {
+        match self.package_specs.clone() {
+            None => vec![],
+            Some(OneOrMore::Single(spec)) => vec![spec],
+            Some(OneOrMore::Multiple(vec)) => vec,
         }
     }
 }
