@@ -4,6 +4,9 @@
 [2/7] 👀 Found source files in 0.00s
 [3/7] 📝 Reading compile state...[2K
 [3/7] 📝 Read compile state 0.00s
+[4/7] 🧹 Cleaning up previous build...
+[2K
+[4/7] 🧹 Cleaned 0/13 0.00s
 [4/7] 🧹 Cleaning up previous build...[2K
 [4/7] 🧹 Cleaned 0/11 0.00s
 [2K
@@ -11,7 +14,7 @@
 [2K
 [6/7] ️🌴 Collected deps in 0.00s
 [2K
-[7/7] ️🛑 Compiled 1 modules in 0.00s
+[7/7] ️🛑 Compiled 0 modules in 0.00s
 ERROR:
 [7/7] ❌ Compiled 0 modules in 0.00s
 
