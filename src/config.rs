@@ -289,7 +289,7 @@ fn check_if_rescript11_or_higher(version: &str) -> Result<bool, String> {
 fn namespace_from_package_name(package_name: &str) -> String {
     let len = package_name.len();
     let mut buf = String::with_capacity(len);
-    
+
     fn aux(s: &str, capital: bool, buf: &mut String, off: usize) {
         if off >= s.len() {
             return;
@@ -529,7 +529,7 @@ mod tests {
 
         let config = serde_json::from_str::<Config>(json).unwrap();
         if let Some(OneOrMore::Multiple(sources)) = config.sources {
-            let src_dir = sources[0].to_qualified_without_children(None);
+            assert_eq!(sources.len(), 2);
             let test_dir = sources[1].to_qualified_without_children(None);
 
             assert_eq!(test_dir.type_, Some(String::from("dev")));
