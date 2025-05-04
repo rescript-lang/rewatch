@@ -437,7 +437,7 @@ pub fn compiler_args(
         vec![]
     } else {
         debug!("Compiling file: {}", &module_name);
-        let specs = config.get_package_specs();
+        let specs = root_config.get_package_specs();
 
         specs
             .iter()
