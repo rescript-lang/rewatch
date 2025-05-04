@@ -12,7 +12,7 @@ use anyhow::anyhow;
 use console::style;
 use log::{debug, trace};
 use rayon::prelude::*;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::time::SystemTime;
 
