@@ -134,6 +134,7 @@ pub fn initialize_build(
     show_progress: bool,
     path: &str,
     bsc_path: Option<String>,
+    build_dev_deps: bool,
 ) -> Result<BuildState> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
@@ -150,7 +151,13 @@ pub fn initialize_build(
     }
 
     let timing_package_tree = Instant::now();
-    let packages = packages::make(filter, &project_root, &workspace_root, show_progress)?;
+    let packages = packages::make(
+        filter,
+        &project_root,
+        &workspace_root,
+        show_progress,
+        build_dev_deps,
+    )?;
     let timing_package_tree_elapsed = timing_package_tree.elapsed();
 
     if show_progress {
@@ -476,8 +483,15 @@ pub fn build(
         None
     };
     let timing_total = Instant::now();
-    let mut build_state = initialize_build(default_timing, filter, show_progress, path, bsc_path)
-        .map_err(|e| anyhow!("Could not initialize build. Error: {e}"))?;
+    let mut build_state = initialize_build(
+        default_timing,
+        filter,
+        show_progress,
+        path,
+        bsc_path,
+        build_dev_deps,
+    )
+    .map_err(|e| anyhow!("Could not initialize build. Error: {e}"))?;
 
     match incremental_build(
         &mut build_state,

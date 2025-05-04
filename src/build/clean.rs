@@ -326,7 +326,14 @@ pub fn cleanup_after_build(build_state: &BuildState) {
 pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Result<()> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
-    let packages = packages::make(&None, &project_root, &workspace_root, show_progress)?;
+    let packages = packages::make(
+        &None,
+        &project_root,
+        &workspace_root,
+        show_progress,
+        // Always clean dev dependencies
+        true,
+    )?;
     let root_config_name = packages::read_package_name(&project_root)?;
     let bsc_path = match bsc_path {
         Some(bsc_path) => bsc_path,

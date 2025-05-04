@@ -506,6 +506,40 @@ mod tests {
     }
 
     #[test]
+    fn test_dev_sources_multiple() {
+        let json = r#"
+        {
+            "name": "@rescript/core",
+            "version": "0.5.0",
+            "sources": [
+                { "dir": "src" },
+                { "dir": "test", "type": "dev" }
+            ],
+            "package-specs": {
+              "module": "esmodule",
+              "in-source": true
+            },
+            "bs-dev-dependencies": ["@rescript/tools"],
+            "suffix": ".mjs",
+            "warnings": {
+              "error": "+101"
+            }
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        if let Some(OneOrMore::Multiple(sources)) = config.sources {
+            let src_dir = sources[0].to_qualified_without_children(None);
+            let test_dir = sources[1].to_qualified_without_children(None);
+
+            assert_eq!(test_dir.type_, Some(String::from("dev")));
+        } else {
+            dbg!(config.sources);
+            unreachable!()
+        }
+    }
+
+    #[test]
     fn test_detect_gentypeconfig() {
         let json = r#"
         {
