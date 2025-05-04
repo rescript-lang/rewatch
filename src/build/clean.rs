@@ -70,16 +70,31 @@ pub fn clean_mjs_files(build_state: &BuildState) {
                     .packages
                     .get(&build_state.root_config_name)
                     .expect("Could not find root package");
-                Some((
-                    std::path::PathBuf::from(package.path.to_string())
-                        .join(&source_file.implementation.path)
-                        .to_string_lossy()
-                        .to_string(),
-                    root_package.config.get_suffix(),
-                ))
+
+                Some(
+                    root_package
+                        .config
+                        .get_package_specs()
+                        .iter()
+                        .filter_map(|spec| {
+                            if spec.in_source {
+                                Some((
+                                    std::path::PathBuf::from(package.path.to_string())
+                                        .join(&source_file.implementation.path)
+                                        .to_string_lossy()
+                                        .to_string(),
+                                    spec.get_suffix(),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<(String, String)>>(),
+                )
             }
             _ => None,
         })
+        .flatten()
         .collect::<Vec<(String, String)>>();
 
     rescript_file_locations

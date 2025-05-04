@@ -465,7 +465,7 @@ pub fn compiler_args(
                                 .unwrap()
                             )
                         },
-                        root_config.get_suffix()
+                        spec.get_suffix()
                     ),
                 ];
             })
@@ -725,26 +725,31 @@ fn compile_file(
             }
 
             // copy js file
-            match &module.source_type {
-                SourceType::SourceFile(SourceFile {
-                    implementation: Implementation { path, .. },
-                    ..
-                }) => {
-                    let source = helpers::get_source_file_from_rescript_file(
-                        &std::path::Path::new(&package.path).join(path),
-                        &root_package.config.get_suffix(),
-                    );
-                    let destination = helpers::get_source_file_from_rescript_file(
-                        &std::path::Path::new(&package.get_build_path()).join(path),
-                        &root_package.config.get_suffix(),
-                    );
+            root_package.config.get_package_specs().iter().for_each(|spec| {
+                if spec.in_source {
+                    match &module.source_type {
+                        SourceType::SourceFile(SourceFile {
+                            implementation: Implementation { path, .. },
+                            ..
+                        }) => {
+                            let source = helpers::get_source_file_from_rescript_file(
+                                &std::path::Path::new(&package.path).join(path),
+                                &spec.get_suffix(),
+                            );
+                            let destination = helpers::get_source_file_from_rescript_file(
+                                &std::path::Path::new(&package.get_build_path()).join(path),
+                                &spec.get_suffix(),
+                            );
 
-                    if source.exists() {
-                        let _ = std::fs::copy(&source, &destination).expect("copying source file failed");
+                            if source.exists() {
+                                let _ =
+                                    std::fs::copy(&source, &destination).expect("copying source file failed");
+                            }
+                        }
+                        _ => (),
                     }
                 }
-                _ => (),
-            }
+            });
 
             if helpers::contains_ascii_characters(&err) {
                 if package.is_pinned_dep || package.is_local_dep {

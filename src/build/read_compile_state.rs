@@ -103,7 +103,12 @@ pub fn read(build_state: &mut BuildState) -> CompileAssetsState {
                                 last_modified: last_modified.to_owned(),
                                 ast_file_path,
                                 is_root: *package_is_root,
-                                suffix: root_package.config.get_suffix(),
+                                suffix: root_package
+                                    .config
+                                    .get_package_specs()
+                                    .first()
+                                    .map(|spec| spec.get_suffix())
+                                    .unwrap(),
                             },
                         );
                         let _ = ast_rescript_file_locations.insert(res_file_path);
