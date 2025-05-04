@@ -12,7 +12,6 @@ use crate::build::compile::{mark_modules_with_deleted_deps_dirty, mark_modules_w
 use crate::helpers::emojis::*;
 use crate::helpers::{self, get_workspace_root};
 use crate::sourcedirs;
-use ahash::AHashSet;
 use anyhow::{anyhow, Result};
 use build_types::*;
 use console::style;
@@ -283,7 +282,7 @@ impl fmt::Display for IncrementalBuildError {
 pub fn incremental_build(
     build_state: &mut BuildState,
     default_timing: Option<Duration>,
-    initial_build: bool,
+    _initial_build: bool,
     show_progress: bool,
     only_incremental: bool,
     create_sourcedirs: bool,
@@ -357,17 +356,7 @@ pub fn incremental_build(
         );
     }
 
-    // track the compile dirty state, we reset it when the compile fails
-    let mut tracked_dirty_modules = AHashSet::new();
-    for (module_name, module) in build_state.modules.iter() {
-        if module.compile_dirty {
-            tracked_dirty_modules.insert(module_name.to_owned());
-        }
-    }
-    if initial_build {
-        // repair broken state
-        mark_modules_with_expired_deps_dirty(build_state);
-    }
+    mark_modules_with_expired_deps_dirty(build_state);
     mark_modules_with_deleted_deps_dirty(build_state);
     current_step += 1;
 
@@ -427,12 +416,6 @@ pub fn incremental_build(
         }
         if helpers::contains_ascii_characters(&compile_errors) {
             println!("{}", &compile_errors);
-        }
-        // mark the original files as dirty again, because we didn't complete a full build
-        for (module_name, module) in build_state.modules.iter_mut() {
-            if tracked_dirty_modules.contains(module_name) {
-                module.compile_dirty = true;
-            }
         }
         Err(IncrementalBuildError::CompileError(None))
     } else {
