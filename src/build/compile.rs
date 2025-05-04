@@ -12,7 +12,7 @@ use anyhow::anyhow;
 use console::style;
 use log::{debug, trace};
 use rayon::prelude::*;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
 
@@ -446,7 +446,7 @@ pub fn compiler_args(
                     "-bs-package-output".to_string(),
                     format!(
                         "{}:{}:{}",
-                        root_config.get_module(),
+                        spec.module,
                         if spec.in_source {
                             Path::new(file_path)
                                 .parent()
@@ -456,9 +456,13 @@ pub fn compiler_args(
                                 .to_string()
                         } else {
                             format!(
-                                "lib/{}/{}",
-                                spec.get_out_of_source_dir(),
-                                Path::new(file_path).parent().unwrap().to_str().unwrap()
+                                "lib/{}",
+                                Path::join(
+                                    Path::new(&spec.get_out_of_source_dir()),
+                                    Path::new(file_path).parent().unwrap()
+                                )
+                                .to_str()
+                                .unwrap()
                             )
                         },
                         root_config.get_suffix()
