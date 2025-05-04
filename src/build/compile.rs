@@ -148,7 +148,7 @@ pub fn compile(
                                 "cmi",
                             );
 
-                            let cmi_digest = helpers::compute_file_hash(&Path::new(&cmi_path));
+                            let cmi_digest = helpers::compute_file_hash(Path::new(&cmi_path));
 
                             let package = build_state
                                 .get_package(&module.package_name)
@@ -189,7 +189,7 @@ pub fn compile(
                                 &build_state.workspace_root,
                                 build_dev_deps,
                             );
-                            let cmi_digest_after = helpers::compute_file_hash(&Path::new(&cmi_path));
+                            let cmi_digest_after = helpers::compute_file_hash(Path::new(&cmi_path));
 
                             // we want to compare both the hash of interface and the implementation
                             // compile assets to verify that nothing changed. We also need to checke the interface
@@ -326,7 +326,7 @@ pub fn compile(
         if files_total_count == compile_universe_count {
             break;
         }
-        if in_progress_modules.len() == 0 || in_progress_modules.eq(&current_in_progres_modules) {
+        if in_progress_modules.is_empty() || in_progress_modules.eq(&current_in_progres_modules) {
             // find the dependency cycle
             let cycle = dependency_cycle::find(
                 &compile_universe
