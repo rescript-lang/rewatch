@@ -366,7 +366,8 @@ pub fn compiler_args(
 ) -> Vec<String> {
     let bsc_flags = config::flatten_flags(&config.bsc_flags);
 
-    let deps = get_deps(config, project_root, workspace_root, packages, build_dev_deps);
+    let dependency_paths =
+        get_dependency_paths(config, project_root, workspace_root, packages, build_dev_deps);
 
     let module_name = helpers::file_path_to_module_name(file_path, &config.get_namespace());
 
@@ -452,7 +453,7 @@ pub fn compiler_args(
         namespace_args,
         read_cmi_args,
         vec!["-I".to_string(), "../ocaml".to_string()],
-        deps.concat(),
+        dependency_paths.concat(),
         uncurried_args,
         bsc_flags.to_owned(),
         warning_args,
@@ -473,7 +474,29 @@ pub fn compiler_args(
     .concat()
 }
 
-fn get_deps(
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum DependentPackage {
+    Normal(String),
+    Dev(String),
+}
+
+impl DependentPackage {
+    fn name(&self) -> &str {
+        match self {
+            Self::Normal(name) => name,
+            Self::Dev(name) => name,
+        }
+    }
+
+    fn is_dev(&self) -> bool {
+        match self {
+            Self::Normal(_) => false,
+            Self::Dev(_) => true,
+        }
+    }
+}
+
+fn get_dependency_paths(
     config: &config::Config,
     project_root: &str,
     workspace_root: &Option<String>,
@@ -485,7 +508,7 @@ fn get_deps(
         .clone()
         .unwrap_or_default()
         .into_iter()
-        .map(|d| (d, false))
+        .map(DependentPackage::Normal)
         .collect();
     let dev_deps = if build_dev_deps {
         config
@@ -493,7 +516,7 @@ fn get_deps(
             .clone()
             .unwrap_or_default()
             .into_iter()
-            .map(|d| (d, true))
+            .map(DependentPackage::Dev)
             .collect()
     } else {
         vec![]
@@ -502,8 +525,9 @@ fn get_deps(
     [dev_deps, normal_deps]
         .concat()
         .par_iter()
-        .filter_map(|(package_name, is_dev_dependency)| {
-            let dep = if let Some(packages) = packages {
+        .filter_map(|dependent_package| {
+            let package_name = dependent_package.name();
+            let dependency_path = if let Some(packages) = packages {
                 packages.get(package_name).map(|package| package.path.to_string())
             } else {
                 packages::read_dependency(package_name, project_root, project_root, workspace_root).ok()
@@ -515,13 +539,14 @@ fn get_deps(
                 ]
             });
 
-            if !is_dev_dependency && dep.is_none() {
+            if !dependent_package.is_dev() && dependency_path.is_none() {
                 panic!(
-                    "Expected to find dependent package {package_name} of {}",
-                    config.name
+                    "Expected to find dependent package {} of {}",
+                    package_name, config.name
                 );
             }
-            dep
+
+            dependency_path
         })
         .collect::<Vec<Vec<String>>>()
 }
