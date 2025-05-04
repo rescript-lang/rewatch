@@ -364,33 +364,9 @@ pub fn compiler_args(
     packages: &Option<&AHashMap<String, packages::Package>>,
     build_dev_deps: bool,
 ) -> Vec<String> {
-    let normal_deps = config.bs_dependencies.as_ref().unwrap_or(&vec![]).to_owned();
-
     let bsc_flags = config::flatten_flags(&config.bsc_flags);
-    // don't compile dev-deps yet
-    let dev_deps = if build_dev_deps {
-        config.bs_dev_dependencies.as_ref().unwrap_or(&vec![]).to_owned()
-    } else {
-        vec![]
-    };
 
-    let deps = [dev_deps, normal_deps]
-        .concat()
-        .par_iter()
-        .map(|package_name| {
-            let canonicalized_path = if let Some(packages) = packages {
-                let package = packages.get(package_name).expect("expect package");
-                package.path.to_string()
-            } else {
-                packages::read_dependency(package_name, project_root, project_root, workspace_root)
-                    .expect("cannot find dep")
-            };
-            vec![
-                "-I".to_string(),
-                packages::get_ocaml_build_path(&canonicalized_path),
-            ]
-        })
-        .collect::<Vec<Vec<String>>>();
+    let deps = get_deps(config, project_root, workspace_root, packages, build_dev_deps);
 
     let module_name = helpers::file_path_to_module_name(file_path, &config.get_namespace());
 
@@ -495,6 +471,59 @@ pub fn compiler_args(
         vec![ast_path.to_string()],
     ]
     .concat()
+}
+
+fn get_deps(
+    config: &config::Config,
+    project_root: &str,
+    workspace_root: &Option<String>,
+    packages: &Option<&AHashMap<String, packages::Package>>,
+    build_dev_deps: bool,
+) -> Vec<Vec<String>> {
+    let normal_deps = config
+        .bs_dependencies
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|d| (d, false))
+        .collect();
+    let dev_deps = if build_dev_deps {
+        config
+            .bs_dev_dependencies
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| (d, true))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    [dev_deps, normal_deps]
+        .concat()
+        .par_iter()
+        .filter_map(|(package_name, is_dev_dependency)| {
+            let dep = if let Some(packages) = packages {
+                packages.get(package_name).map(|package| package.path.to_string())
+            } else {
+                packages::read_dependency(package_name, project_root, project_root, workspace_root).ok()
+            }
+            .map(|canonicalized_path| {
+                vec![
+                    "-I".to_string(),
+                    packages::get_ocaml_build_path(&canonicalized_path),
+                ]
+            });
+
+            if !is_dev_dependency && dep.is_none() {
+                panic!(
+                    "Expected to find dependent package {package_name} of {}",
+                    config.name
+                );
+            }
+            dep
+        })
+        .collect::<Vec<Vec<String>>>()
 }
 
 fn compile_file(
