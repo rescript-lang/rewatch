@@ -127,8 +127,8 @@ impl PackageSpec {
         }
     }
 
-    pub fn get_suffix(&self) -> String {
-        self.suffix.to_owned().unwrap_or(".js".to_string())
+    pub fn get_suffix(&self) -> Option<String> {
+        self.suffix.to_owned()
     }
 }
 
@@ -456,6 +456,12 @@ impl Config {
             Some(OneOrMore::Multiple(vec)) => vec,
         }
     }
+
+    pub fn get_suffix(&self, spec: &PackageSpec) -> String {
+        spec.get_suffix()
+            .or(self.suffix.clone())
+            .unwrap_or(".js".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -476,8 +482,11 @@ mod tests {
         "#;
 
         let config = serde_json::from_str::<Config>(json).unwrap();
-        assert_eq!(config.get_suffix(), ".mjs");
-        assert_eq!(config.get_module(), "es6");
+        let specs = config.get_package_specs();
+        assert_eq!(specs.len(), 1);
+        let spec = specs.first().unwrap();
+        assert_eq!(spec.module, "es6");
+        assert_eq!(config.get_suffix(spec), ".mjs");
     }
 
     #[test]
