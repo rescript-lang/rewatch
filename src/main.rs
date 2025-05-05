@@ -15,6 +15,10 @@ enum Command {
     Watch,
     /// Clean the build artifacts
     Clean,
+    /// Format the code
+    Format,
+    /// Dump
+    Dump,
 }
 
 /// Rewatch is an alternative build system for the Rescript Compiler bsb (which uses Ninja internally). It strives
@@ -23,11 +27,12 @@ enum Command {
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Args {
-    #[arg(value_enum)]
-    command: Option<Command>,
+    #[arg(value_enum, default_value_t = Command::Build)]
+    command: Command,
 
     /// The relative path to where the main rescript.json resides. IE - the root of your project.
-    folder: Option<String>,
+    #[arg(default_value = ".")]
+    folder: String,
 
     /// Filter allows for a regex to be supplied which will filter the files to be compiled. For
     /// instance, to filter out test files for compilation while doing feature work.
@@ -79,10 +84,22 @@ struct Args {
     /// A custom path to bsc
     #[arg(long)]
     bsc_path: Option<String>,
+
+    /// Use the legacy build system.
+    ///
+    /// After this flag is encountered, the rest of the command line arguments are passed to the legacy build system.
+    #[arg(long, allow_hyphen_values = true, num_args = 0..)]
+    legacy: Option<Vec<String>>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+
+    if let Some(legacy_args) = args.legacy {
+        let code = build::pass_through_legacy(legacy_args);
+        std::process::exit(code);
+    }
+
     let log_level_filter = args.verbose.log_level_filter();
 
     env_logger::Builder::new()
@@ -91,8 +108,6 @@ fn main() -> Result<()> {
         .target(env_logger::fmt::Target::Stdout)
         .init();
 
-    let command = args.command.unwrap_or(Command::Build);
-    let folder = args.folder.unwrap_or(".".to_string());
     let filter = args
         .filter
         .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
@@ -112,17 +127,17 @@ fn main() -> Result<()> {
     // level, we should never show that.
     let show_progress = log_level_filter == LevelFilter::Info;
 
-    match lock::get(&folder) {
+    match lock::get(&args.folder) {
         lock::Lock::Error(ref e) => {
             println!("Could not start Rewatch: {e}");
             std::process::exit(1)
         }
-        lock::Lock::Aquired(_) => match command {
-            Command::Clean => build::clean::clean(&folder, show_progress, args.bsc_path, args.dev),
+        lock::Lock::Aquired(_) => match args.command {
+            Command::Clean => build::clean::clean(&args.folder, show_progress, args.bsc_path, args.dev),
             Command::Build => {
                 match build::build(
                     &filter,
-                    &folder,
+                    &args.folder,
                     show_progress,
                     args.no_timing,
                     args.create_sourcedirs,
@@ -145,7 +160,7 @@ fn main() -> Result<()> {
                 watcher::start(
                     &filter,
                     show_progress,
-                    &folder,
+                    &args.folder,
                     args.after_build,
                     args.create_sourcedirs,
                     args.dev,
@@ -153,6 +168,12 @@ fn main() -> Result<()> {
                 );
 
                 Ok(())
+            }
+            Command::Format => {
+                todo!("Format not implemented yet");
+            }
+            Command::Dump => {
+                todo!("Dump not implemented yet");
             }
         },
     }

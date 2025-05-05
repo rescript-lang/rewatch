@@ -150,6 +150,25 @@ pub fn create_path_for_path(path: &Path) {
     fs::DirBuilder::new().recursive(true).create(path).unwrap();
 }
 
+pub fn get_rescript_legacy(root_path: &str, workspace_root: Option<String>) -> String {
+    match (
+        PathBuf::from(format!("{}/node_modules/rescript/rescript-legacy", root_path)).canonicalize(),
+        workspace_root.map(|workspace_root| {
+            PathBuf::from(format!(
+                "{}/node_modules/rescript/rescript-legacy",
+                workspace_root
+            ))
+            .canonicalize()
+        }),
+    ) {
+        (Ok(path), _) => path,
+        (_, Some(Ok(path))) => path,
+        _ => panic!("Could not find rescript"),
+    }
+    .to_string_lossy()
+    .to_string()
+}
+
 pub fn get_bsc(root_path: &str, workspace_root: Option<String>) -> String {
     let subfolder = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "darwinarm64",

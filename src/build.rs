@@ -22,6 +22,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{stdout, Write};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use self::compile::compiler_args;
@@ -505,4 +506,19 @@ pub fn build(
             Err(anyhow!("Incremental build failed. Error: {e}"))
         }
     }
+}
+
+pub fn pass_through_legacy(args: Vec<String>) -> i32 {
+    let project_root = helpers::get_abs_path(".");
+    let workspace_root = helpers::get_workspace_root(&project_root);
+
+    let bsb_path = helpers::get_rescript_legacy(&project_root, workspace_root);
+
+    let status = std::process::Command::new(bsb_path)
+        .args(args)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status();
+
+    status.map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
