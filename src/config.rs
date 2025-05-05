@@ -203,13 +203,13 @@ pub struct Config {
     pub suffix: Option<String>,
     #[serde(rename = "pinned-dependencies")]
     pub pinned_dependencies: Option<Vec<String>>,
-    #[serde(rename = "bs-dependencies")]
+    #[serde(rename = "dependencies", alias = "bs-dependencies")]
     pub bs_dependencies: Option<Vec<String>>,
-    #[serde(rename = "bs-dev-dependencies")]
+    #[serde(rename = "bs-dev-dependencies", alias = "dev-dependencies")]
     pub bs_dev_dependencies: Option<Vec<String>>,
     #[serde(rename = "ppx-flags")]
     pub ppx_flags: Option<Vec<OneOrMore<String>>>,
-    #[serde(rename = "bsc-flags")]
+    #[serde(rename = "bsc-flags", alias = "compiler-flags")]
     pub bsc_flags: Option<Vec<OneOrMore<String>>>,
     pub reason: Option<Reason>,
     pub namespace: Option<NamespaceConfig>,
