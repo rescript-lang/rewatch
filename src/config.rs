@@ -608,6 +608,134 @@ mod tests {
     }
 
     #[test]
+    fn test_get_suffix() {
+        let json = r#"
+        {
+            "name": "testrepo",
+            "sources": {
+                "dir": "src",
+                "subdirs": true
+            },
+            "package-specs": [
+                {
+                "module": "es6",
+                "in-source": true
+                }
+            ],
+            "suffix": ".mjs"
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(
+            config.get_suffix(&config.get_package_specs().first().unwrap()),
+            ".mjs"
+        );
+    }
+
+    #[test]
+    fn test_dependencies() {
+        let json = r#"
+        {
+            "name": "testrepo",
+            "sources": {
+                "dir": "src",
+                "subdirs": true
+            },
+            "package-specs": [
+                {
+                "module": "es6",
+                "in-source": true
+                }
+            ],
+            "suffix": ".mjs",
+            "bs-dependencies": [ "@testrepo/main" ]
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(config.bs_dependencies, Some(vec!["@testrepo/main".to_string()]));
+    }
+
+    #[test]
+    fn test_dependencies_alias() {
+        let json = r#"
+        {
+            "name": "testrepo",
+            "sources": {
+                "dir": "src",
+                "subdirs": true
+            },
+            "package-specs": [
+                {
+                "module": "es6",
+                "in-source": true
+                }
+            ],
+            "suffix": ".mjs",
+            "dependencies": [ "@testrepo/main" ]
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(config.bs_dependencies, Some(vec!["@testrepo/main".to_string()]));
+    }
+
+    #[test]
+    fn test_dev_dependencies() {
+        let json = r#"
+        {
+            "name": "testrepo",
+            "sources": {
+                "dir": "src",
+                "subdirs": true
+            },
+            "package-specs": [
+                {
+                "module": "es6",
+                "in-source": true
+                }
+            ],
+            "suffix": ".mjs",
+            "bs-dev-dependencies": [ "@testrepo/main" ]
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(
+            config.bs_dev_dependencies,
+            Some(vec!["@testrepo/main".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_dev_dependencies_alias() {
+        let json = r#"
+        {
+            "name": "testrepo",
+            "sources": {
+                "dir": "src",
+                "subdirs": true
+            },
+            "package-specs": [
+                {
+                "module": "es6",
+                "in-source": true
+                }
+            ],
+            "suffix": ".mjs",
+            "dev-dependencies": [ "@testrepo/main" ]
+        }
+        "#;
+
+        let config = serde_json::from_str::<Config>(json).unwrap();
+        assert_eq!(
+            config.bs_dev_dependencies,
+            Some(vec!["@testrepo/main".to_string()])
+        );
+    }
+
+    #[test]
     fn test_check_if_rescript11_or_higher() {
         assert_eq!(check_if_rescript11_or_higher("11.0.0"), Ok(true));
         assert_eq!(check_if_rescript11_or_higher("11.0.1"), Ok(true));
