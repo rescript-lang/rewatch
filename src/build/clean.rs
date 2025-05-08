@@ -351,7 +351,7 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Resul
     )?;
     let root_config_name = packages::read_package_name(&project_root)?;
     let bsc_path = match bsc_path {
-        Some(bsc_path) => bsc_path,
+        Some(bsc_path) => helpers::get_abs_path(&bsc_path),
         None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
     };
 
