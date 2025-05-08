@@ -510,17 +510,19 @@ pub fn get_source_files(
     };
 
     let path_dir = Path::new(&source.dir);
-    if (build_dev_deps && type_ == &Some("dev".to_string())) || type_ != &Some("dev".to_string()) {
-        match read_folders(filter, package_dir, path_dir, recurse) {
+    match (build_dev_deps, type_) {
+        (false, Some(type_)) if type_ == "dev" => (),
+        _ => match read_folders(filter, package_dir, path_dir, recurse) {
             Ok(files) => map.extend(files),
+
             Err(_e) => log::error!(
                 "Could not read folder: {:?}. Specified in dependency: {}, located {:?}...",
                 path_dir.to_path_buf().into_os_string(),
                 package_name,
                 package_dir
             ),
-        }
-    }
+        },
+    };
 
     map
 }
