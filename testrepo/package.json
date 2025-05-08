@@ -11,6 +11,9 @@
       "packages/with-dev-deps"
     ]
   },
+  "dependencies": {
+    "rescript": "11.1.4"
+  },
   "scripts": {
     "build": "../target/release/rewatch build .",
     "build:rescript": "rescript build -with-deps",

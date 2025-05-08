@@ -72,7 +72,7 @@ pub fn get_compiler_args(
         rescript_version
     } else {
         let bsc_path = match bsc_path {
-            Some(bsc_path) => bsc_path,
+            Some(bsc_path) => helpers::get_abs_path(&bsc_path),
             None => helpers::get_bsc(&package_root, workspace_root.to_owned()),
         };
         helpers::get_rescript_version(&bsc_path)
@@ -138,7 +138,7 @@ pub fn initialize_build(
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let bsc_path = match bsc_path {
-        Some(bsc_path) => bsc_path,
+        Some(bsc_path) => helpers::get_abs_path(&bsc_path),
         None => helpers::get_bsc(&project_root, workspace_root.to_owned()),
     };
     let root_config_name = packages::read_package_name(&project_root)?;

@@ -139,11 +139,15 @@ pub fn contains_ascii_characters(str: &str) -> bool {
     false
 }
 
-pub fn create_build_path(build_path: &str) {
+pub fn create_path(path: &str) {
     fs::DirBuilder::new()
         .recursive(true)
-        .create(PathBuf::from(build_path.to_string()))
+        .create(PathBuf::from(path.to_string()))
         .unwrap();
+}
+
+pub fn create_path_for_path(path: &Path) {
+    fs::DirBuilder::new().recursive(true).create(path).unwrap();
 }
 
 pub fn get_bsc(root_path: &str, workspace_root: Option<String>) -> String {
