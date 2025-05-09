@@ -1,104 +1,13 @@
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
-use clap_verbosity_flag::InfoLevel;
+use clap::Parser;
 use log::LevelFilter;
 use regex::Regex;
 use std::io::Write;
 
-use rewatch::{build, cmd, lock, watcher};
-
-#[derive(Debug, Clone, ValueEnum)]
-enum Command {
-    /// Build using Rewatch
-    Build,
-    /// Build, then start a watcher
-    Watch,
-    /// Clean the build artifacts
-    Clean,
-    /// Format the code
-    Format,
-    /// Dump
-    Dump,
-}
-
-/// Rewatch is an alternative build system for the Rescript Compiler bsb (which uses Ninja internally). It strives
-/// to deliver consistent and faster builds in monorepo setups with multiple packages, where the
-/// default build system fails to pick up changed interfaces across multiple packages.
-#[derive(Parser, Debug)]
-#[command(version)]
-struct Args {
-    #[arg(value_enum, default_value_t = Command::Build)]
-    command: Command,
-
-    /// The relative path to where the main rescript.json resides. IE - the root of your project.
-    #[arg(default_value = ".")]
-    folder: String,
-
-    /// Filter allows for a regex to be supplied which will filter the files to be compiled. For
-    /// instance, to filter out test files for compilation while doing feature work.
-    #[arg(short, long)]
-    filter: Option<String>,
-
-    /// This allows one to pass an additional command to the watcher, which allows it to run when
-    /// finished. For instance, to play a sound when done compiling, or to run a test suite.
-    /// NOTE - You may need to add '--color=always' to your subcommand in case you want to output
-    /// colour as well
-    #[arg(short, long)]
-    after_build: Option<String>,
-
-    // Disable timing on the output
-    #[arg(short, long, default_value = "false", num_args = 0..=1)]
-    no_timing: bool,
-
-    /// Verbosity:
-    /// -v -> Debug
-    /// -vv -> Trace
-    /// -q -> Warn
-    /// -qq -> Error
-    /// -qqq -> Off.
-    /// Default (/ no argument given): 'info'
-    #[command(flatten)]
-    verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
-
-    /// This creates a source_dirs.json file at the root of the monorepo, which is needed when you
-    /// want to use Reanalyze
-    #[arg(short, long, default_value_t = false, num_args = 0..=1)]
-    create_sourcedirs: bool,
-
-    /// This prints the compiler arguments. It expects the path to a rescript.json file.
-    /// This also requires --bsc-path and --rescript-version to be present
-    #[arg(long)]
-    compiler_args: Option<String>,
-
-    /// This is the flag to also compile development dependencies
-    /// It's important to know that we currently do not discern between project src, and
-    /// dependencies. So enabling this flag will enable building _all_ development dependencies of
-    /// _all_ packages
-    #[arg(long, default_value_t = false, num_args = 0..=1)]
-    dev: bool,
-
-    /// To be used in conjunction with compiler_args
-    #[arg(long)]
-    rescript_version: Option<String>,
-
-    /// A custom path to bsc
-    #[arg(long)]
-    bsc_path: Option<String>,
-
-    /// Use the legacy build system.
-    ///
-    /// After this flag is encountered, the rest of the command line arguments are passed to the legacy build system.
-    #[arg(long, allow_hyphen_values = true, num_args = 0..)]
-    legacy: Option<Vec<String>>,
-}
+use rewatch::{build, cli, cmd, lock, watcher};
 
 fn main() -> Result<()> {
-    let args = Args::parse();
-
-    if let Some(legacy_args) = args.legacy {
-        let code = build::pass_through_legacy(legacy_args);
-        std::process::exit(code);
-    }
+    let args = cli::Cli::parse();
 
     let log_level_filter = args.verbose.log_level_filter();
 
@@ -108,19 +17,27 @@ fn main() -> Result<()> {
         .target(env_logger::fmt::Target::Stdout)
         .init();
 
-    let filter = args
-        .filter
-        .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
+    let command = args.command.unwrap_or(cli::Command::Build(args.build_args));
 
-    match args.compiler_args {
-        None => (),
-        Some(path) => {
+    // handle legacy and compiler args early, because we don't need a lock for them
+    match command {
+        cli::Command::Legacy { legacy_args } => {
+            let code = build::pass_through_legacy(legacy_args);
+            std::process::exit(code);
+        }
+        cli::Command::CompilerArgs {
+            path,
+            dev,
+            rescript_version,
+            bsc_path,
+        } => {
             println!(
                 "{}",
-                build::get_compiler_args(&path, args.rescript_version, args.bsc_path, args.dev)?
+                build::get_compiler_args(&path, rescript_version, bsc_path, dev)?
             );
             std::process::exit(0);
         }
+        _ => (),
     }
 
     // The 'normal run' mode will show the 'pretty' formatted progress. But if we turn off the log
@@ -132,49 +49,59 @@ fn main() -> Result<()> {
             println!("Could not start Rewatch: {e}");
             std::process::exit(1)
         }
-        lock::Lock::Aquired(_) => match args.command {
-            Command::Clean => build::clean::clean(&args.folder, show_progress, args.bsc_path, args.dev),
-            Command::Build => {
+        lock::Lock::Aquired(_) => match command {
+            cli::Command::Clean { bsc_path } => build::clean::clean(&args.folder, show_progress, bsc_path),
+            cli::Command::Build(build_args) => {
+                let filter = build_args
+                    .filter
+                    .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
                 match build::build(
                     &filter,
                     &args.folder,
                     show_progress,
-                    args.no_timing,
-                    args.create_sourcedirs,
-                    args.bsc_path,
-                    args.dev,
+                    build_args.no_timing,
+                    build_args.create_sourcedirs,
+                    build_args.bsc_path,
+                    build_args.dev,
                 ) {
                     Err(e) => {
                         println!("{e}");
                         std::process::exit(1)
                     }
                     Ok(_) => {
-                        if let Some(args_after_build) = args.after_build {
+                        if let Some(args_after_build) = build_args.after_build {
                             cmd::run(args_after_build)
                         }
                         std::process::exit(0)
                     }
                 };
             }
-            Command::Watch => {
+            cli::Command::Watch(watch_args) => {
+                let filter = watch_args
+                    .filter
+                    .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
                 watcher::start(
                     &filter,
                     show_progress,
                     &args.folder,
-                    args.after_build,
-                    args.create_sourcedirs,
-                    args.dev,
-                    args.bsc_path,
+                    watch_args.after_build,
+                    watch_args.create_sourcedirs,
+                    watch_args.dev,
+                    watch_args.bsc_path,
                 );
 
                 Ok(())
             }
-            Command::Format => {
-                todo!("Format not implemented yet");
-            }
-            Command::Dump => {
-                todo!("Dump not implemented yet");
-            }
+            cli::Command::CompilerArgs { .. } | cli::Command::Legacy { .. } => {
+                unreachable!("command already handled")
+            } // Command::Format => {
+              //     let code = build::pass_through_legacy(vec!["format".to_owned()]);
+              //     std::process::exit(code);
+              // }
+              // Command::Dump => {
+              //     let code = build::pass_through_legacy(vec!["dump".to_owned()]);
+              //     std::process::exit(code);
+              // }
         },
     }
 }

@@ -338,7 +338,7 @@ pub fn cleanup_after_build(build_state: &BuildState) {
     });
 }
 
-pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>, build_dev_deps: bool) -> Result<()> {
+pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>) -> Result<()> {
     let project_root = helpers::get_abs_path(path);
     let workspace_root = helpers::get_workspace_root(&project_root);
     let packages = packages::make(
@@ -346,8 +346,9 @@ pub fn clean(path: &str, show_progress: bool, bsc_path: Option<String>, build_de
         &project_root,
         &workspace_root,
         show_progress,
-        // Always clean dev dependencies
-        build_dev_deps,
+        // Build the package tree with dev dependencies.
+        // They should always be cleaned if they are there.
+        true,
     )?;
     let root_config_name = packages::read_package_name(&project_root)?;
     let bsc_path = match bsc_path {

@@ -18,6 +18,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::log_enabled;
 use serde::Serialize;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs::File;
 use std::io::{stdout, Write};
@@ -508,7 +509,7 @@ pub fn build(
     }
 }
 
-pub fn pass_through_legacy(args: Vec<String>) -> i32 {
+pub fn pass_through_legacy(args: Vec<OsString>) -> i32 {
     let project_root = helpers::get_abs_path(".");
     let workspace_root = helpers::get_workspace_root(&project_root);
 
