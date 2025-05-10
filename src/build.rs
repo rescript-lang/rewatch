@@ -509,7 +509,7 @@ pub fn build(
     }
 }
 
-pub fn pass_through_legacy(args: Vec<OsString>) -> i32 {
+pub fn pass_through_legacy(args: &[OsString]) -> i32 {
     let project_root = helpers::get_abs_path(".");
     let workspace_root = helpers::get_workspace_root(&project_root);
 

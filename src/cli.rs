@@ -125,6 +125,18 @@ pub enum Command {
         #[arg(long)]
         bsc_path: Option<String>,
     },
+    /// Alias to `legacy format`.
+    #[command(disable_help_flag = true)]
+    Format {
+        #[arg(allow_hyphen_values = true, num_args = 0..)]
+        format_args: Vec<OsString>,
+    },
+    /// Alias to `legacy dump`.
+    #[command(disable_help_flag = true)]
+    Dump {
+        #[arg(allow_hyphen_values = true, num_args = 0..)]
+        dump_args: Vec<OsString>,
+    },
     /// This prints the compiler arguments. It expects the path to a rescript.json file.
     CompilerArgs {
         /// Path to a rescript.json file

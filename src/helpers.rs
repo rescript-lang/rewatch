@@ -163,7 +163,7 @@ pub fn get_rescript_legacy(root_path: &str, workspace_root: Option<String>) -> S
     ) {
         (Ok(path), _) => path,
         (_, Some(Ok(path))) => path,
-        _ => panic!("Could not find rescript"),
+        _ => panic!("Could not find rescript-legacy"),
     }
     .to_string_lossy()
     .to_string()

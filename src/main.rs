@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::LevelFilter;
 use regex::Regex;
-use std::io::Write;
+use std::{ffi::OsString, io::Write};
 
 use rewatch::{build, cli, cmd, lock, watcher};
 
@@ -19,10 +19,22 @@ fn main() -> Result<()> {
 
     let command = args.command.unwrap_or(cli::Command::Build(args.build_args));
 
-    // handle legacy and compiler args early, because we don't need a lock for them
-    match command {
+    // handle those commands early, because we don't need a lock for them
+    match &command {
         cli::Command::Legacy { legacy_args } => {
             let code = build::pass_through_legacy(legacy_args);
+            std::process::exit(code);
+        }
+        cli::Command::Format { format_args } => {
+            let mut args: Vec<OsString> = vec!["format".into()];
+            args.append(&mut format_args.clone());
+            let code = build::pass_through_legacy(args.as_slice());
+            std::process::exit(code);
+        }
+        cli::Command::Dump { dump_args } => {
+            let mut args: Vec<OsString> = vec!["dump".into()];
+            args.append(&mut dump_args.clone());
+            let code = build::pass_through_legacy(args.as_slice());
             std::process::exit(code);
         }
         cli::Command::CompilerArgs {
@@ -33,7 +45,7 @@ fn main() -> Result<()> {
         } => {
             println!(
                 "{}",
-                build::get_compiler_args(&path, rescript_version, bsc_path, dev)?
+                build::get_compiler_args(&path, rescript_version.clone(), bsc_path.clone(), *dev)?
             );
             std::process::exit(0);
         }
@@ -92,16 +104,12 @@ fn main() -> Result<()> {
 
                 Ok(())
             }
-            cli::Command::CompilerArgs { .. } | cli::Command::Legacy { .. } => {
+            cli::Command::CompilerArgs { .. }
+            | cli::Command::Legacy { .. }
+            | cli::Command::Format { .. }
+            | cli::Command::Dump { .. } => {
                 unreachable!("command already handled")
-            } // Command::Format => {
-              //     let code = build::pass_through_legacy(vec!["format".to_owned()]);
-              //     std::process::exit(code);
-              // }
-              // Command::Dump => {
-              //     let code = build::pass_through_legacy(vec!["dump".to_owned()]);
-              //     std::process::exit(code);
-              // }
+            }
         },
     }
 }
