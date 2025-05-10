@@ -91,7 +91,7 @@ else
   exit 1
 fi
 
-rewatch clean --dev &> /dev/null
+rewatch clean &> /dev/null
 file_count=$(find ./packages/with-dev-deps -name *.mjs | wc -l)
 if [ "$file_count" -eq 0 ];
 then
