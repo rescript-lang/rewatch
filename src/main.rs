@@ -67,6 +67,7 @@ fn main() -> Result<()> {
                 let filter = build_args
                     .filter
                     .map(|filter| Regex::new(filter.as_ref()).expect("Could not parse regex"));
+
                 match build::build(
                     &filter,
                     &args.folder,

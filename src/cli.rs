@@ -8,6 +8,7 @@ use clap_verbosity_flag::InfoLevel;
 /// default build system fails to pick up changed interfaces across multiple packages.
 #[derive(Parser, Debug)]
 #[command(version)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct Cli {
     /// Verbosity:
     /// -v -> Debug
@@ -31,7 +32,7 @@ pub struct Cli {
     pub build_args: BuildArgs,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct BuildArgs {
     /// Filter files by regex
     ///
@@ -66,7 +67,7 @@ pub struct BuildArgs {
     pub dev: bool,
 
     /// Disable timing on the output
-    #[arg(short, long, default_value = "false", num_args = 0..=1)]
+    #[arg(short, long, default_value_t = false, num_args = 0..=1)]
     pub no_timing: bool,
 
     /// Path to bsc
