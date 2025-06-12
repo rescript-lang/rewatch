@@ -86,8 +86,8 @@ fn get_dep_modules(
                 return false;
             }
 
-            // If the module exists, check if it's in the same package (always allowed)
             if let Some(dep_module) = build_state.modules.get(dep) {
+                // If the module exists, check if it's in the same package (always allowed)
                 if dep_module.package_name == package.name {
                     return true;
                 }
@@ -96,7 +96,7 @@ fn get_dep_modules(
                 return allowed_dependencies.contains(&dep_module.package_name);
             }
 
-            false
+            true
         })
         .collect::<AHashSet<String>>();
 }
