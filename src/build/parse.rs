@@ -335,8 +335,9 @@ fn generate_ast(
             .output()
             .expect("Error converting .res to .ast"),
     ) {
-        let stderr = std::str::from_utf8(&res_to_ast.stderr).expect("Expect StdErr to be non-null");
-        if helpers::contains_ascii_characters(stderr) {
+        let stderr = String::from_utf8_lossy(&res_to_ast.stderr).to_string();
+
+        if helpers::contains_ascii_characters(&stderr) {
             if res_to_ast.status.success() {
                 Ok((ast_path, Some(stderr.to_string())))
             } else {
